@@ -143,6 +143,13 @@ jobs:
             
             # Check if we can access teams endpoint with detailed error output
             echo "Testing teams endpoint access..."
+            set +e  # Don't exit on error, capture it instead
+            TEAMS_RESPONSE=$(gh api orgs/$OWNER/teams 2>&1)
+            TEAMS_EXIT_CODE=$?
+            set -e  # Re-enable exit on error
+            
+            echo "Debug: Teams API exit code: $TEAMS_EXIT_CODE"
+            echo "Debug: Teams API response: $TEAMS_RESPONSE"
             TEAMS_RESPONSE=$(gh api orgs/$OWNER/teams 2>&1)
             TEAMS_EXIT_CODE=$?
             
