@@ -100,61 +100,56 @@ jobs:
 
       - name: Create teams
         run: |
-          if gh api orgs/$OWNER/teams > /dev/null 2>&1; then
-            if ! gh api orgs/$OWNER/teams/$MAINTAINERS_TEAM > /dev/null 2>&1; then
-              # Retrieve the numeric ID of the 'maintainers' team to use as the parent_team_id
-              MAINTAINERS_PARENT_ID=$(gh api orgs/$OWNER/teams/maintainers | jq -r '.id')
-              MAINTAINERS_PARENT_ID_NUM=$(echo "$MAINTAINERS_PARENT_ID" | grep -o '[0-9]*')
-              echo "Debug: MAINTAINERS_PARENT_ID_NUM=$MAINTAINERS_PARENT_ID_NUM"
-              if [ -z "$MAINTAINERS_PARENT_ID_NUM" ]; then
-                echo "::error::Invalid team ID format for maintainers. Expected numeric ID."
-                exit 1
-              fi
-              echo "{\"name\": \"$MAINTAINERS_TEAM\", \"description\": \"Maintainers for $REPO_NAME repository\", \"parent_team_id\": $MAINTAINERS_PARENT_ID_NUM}" > maintainer_payload.json
-              gh api orgs/$OWNER/teams \
-                -X POST \
-                -H "Accept: application/vnd.github+json" \
-                --input maintainer_payload.json
-            else
-              echo "Team $MAINTAINERS_TEAM already exists. Skipping creation."
-            fi
-
-            if ! gh api orgs/$OWNER/teams/$CODEOWNERS_TEAM > /dev/null 2>&1; then
-              CODEOWNERS_PARENT_ID=$(gh api orgs/$OWNER/teams/codeowners | jq -r '.id')
-              CODEOWNERS_PARENT_ID_NUM=$(echo "$CODEOWNERS_PARENT_ID" | grep -o '[0-9]*')
-              echo "Debug: CODEOWNERS_PARENT_ID_NUM=$CODEOWNERS_PARENT_ID_NUM"
-              if [ -z "$CODEOWNERS_PARENT_ID_NUM" ]; then
-                echo "::error::Invalid team ID format for codeowners. Expected numeric ID."
-                exit 1
-              fi
-              echo "{\"name\": \"$CODEOWNERS_TEAM\", \"description\": \"Codeowners for $REPO_NAME repository\", \"parent_team_id\": $CODEOWNERS_PARENT_ID_NUM}" > codeowners_payload.json
-              gh api orgs/$OWNER/teams \
-                -X POST \
-                -H "Accept: application/vnd.github+json" \
-                --input codeowners_payload.json
-            else
-              echo "Team $CODEOWNERS_TEAM already exists. Skipping creation."
-            fi
-
-            CODEOWNERS_LIST=$(echo "$CODEOWNERS_LIST" | xargs)
-            # Loop through each provided GitHub username and invite them to the codeowners team
-            # Note: users who are not yet members of the organization will be invited to join
-            # and will need to accept the invitation before they are part of the team and the CODEOWNERS file get fully valid
-            echo "Inviting users to team $CODEOWNERS_TEAM: [$CODEOWNERS_LIST]"
-            for username in $CODEOWNERS_LIST; do
-              clean_user=$(echo "$username" | sed 's/^@//')
-              echo "Checking if @$clean_user is a valid GitHub user..."
-              if gh api users/$clean_user > /dev/null 2>&1; then
-                echo "Inviting @$clean_user to team $CODEOWNERS_TEAM"
-                gh api orgs/$OWNER/teams/$CODEOWNERS_TEAM/memberships/$clean_user -X PUT -f role=member || echo "Failed to invite $clean_user"
-              else
-                echo "::warning::User @$clean_user does not exist or cannot be looked up. Skipping."
-              fi
-            done
-          else
-            echo "Skipping team creation — not running in an organization."
-          fi
-
+          echo "Debug: Checking organization context for: $OWNER"
+          echo "Debug: Current repository context: ${{ github.repository }}"
+          
+          # Check if we can access the organization
+          if gh api orgs/$OWNER > /dev/null 2>&1; then
+            echo "Organization $OWNER is accessible"
+            
+            # Check if we can access the organization
+            if gh api orgs/$OWNER > /dev/null 2>&1; then
+              echo "Organization $OWNER is accessible"
+              
+              # Check if we can access teams endpoint
+              if gh api orgs/$OWNER/teams > /dev/null 2>&1; then
+                echo "Teams endpoint accessible for organization $OWNER"
+                
+                if ! gh api orgs/$OWNER/teams/$MAINTAINERS_TEAM > /dev/null 2>&1; then
+                  # Retrieve the numeric ID of the 'maintainers' team to use as the parent_team_id
+                  MAINTAINERS_PARENT_ID=$(gh api orgs/$OWNER/teams/maintainers | jq -r '.id')
+                  MAINTAINERS_PARENT_ID_NUM=$(echo "$MAINTAINERS_PARENT_ID" | grep -o '[0-9]*')
+                  echo "Debug: MAINTAINERS_PARENT_ID_NUM=$MAINTAINERS_PARENT_ID_NUM"
+                  if [ -z "$MAINTAINERS_PARENT_ID_NUM" ]; then
+                    echo "::error::Invalid team ID format for maintainers. Expected numeric ID."
+                    exit 1
+                  fi
+                  echo "{\"name\": \"$MAINTAINERS_TEAM\", \"description\": \"Maintainers for $REPO_NAME repository\", \"parent_team_id\": $MAINTAINERS_PARENT_ID_NUM}" > maintainer_payload.json
+                  gh api orgs/$OWNER/teams \
+                    -X POST \
+                    -H "Accept: application/vnd.github+json" \
+                    --input maintainer_payload.json
+                else
+                  echo "Team $MAINTAINERS_TEAM already exists. Skipping creation."
+                fi
+  
+                if ! gh api orgs/$OWNER/teams/$CODEOWNERS_TEAM > /dev/null 2>&1; then
+                  CODEOWNERS_PARENT_ID=$(gh api orgs/$OWNER/teams/codeowners | jq -r '.id')
+                  CODEOWNERS_PARENT_ID_NUM=$(echo "$CODEOWNERS_PARENT_ID" | grep -o '[0-9]*')
+                  echo "Debug: CODEOWNERS_PARENT_ID_NUM=$CODEOWNERS_PARENT_ID_NUM"
+                  if [ -z "$CODEOWNERS_PARENT_ID_NUM" ]; then
+                    echo "::error::Invalid team ID format for codeowners. Expected numeric ID."
+                    exit 1
+                  fi
+                  echo "{\"name\": \"$CODEOWNERS_TEAM\", \"description\": \"Codeowners for $REPO_NAME repository\", \"parent_team_id\": $CODEOWNERS_PARENT_ID_NUM}" > codeowners_payload.json
+                  gh api orgs/$OWNER/teams \
+                    -X POST \
+                    -H "Accept: application/vnd.github+json" \
+                    --input codeowners_payload.json
+                else
+                  echo "Team $CODEOWNERS_TEAM already exists. Skipping creation."
+                fi
+  
       - name: Configure repository settings
         run: |
           gh repo edit $OWNER/$REPO_NAME \
