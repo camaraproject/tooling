@@ -74,10 +74,44 @@ jobs:
           OWNER=$(echo '${{ github.repository }}' | cut -d'/' -f1)
 
           echo "Creating new repository: https://github.com/$OWNER/$REPO_NAME"
-          # Creates a new public repository using the template repository as a template
-          gh repo create "$OWNER/$REPO_NAME" --public --template "$OWNER/${{ env.TEMPLATE_REPO_NAME }}"
+          
+          # Check if repository already exists
+          if gh api repos/$OWNER/$REPO_NAME > /dev/null 2>&1; then
+            echo "::error::Repository $OWNER/$REPO_NAME already exists. Please choose a different name."
+            exit 1
+          fi
+
+          # Retry logic for repository creation with backoff
+          MAX_RETRIES=3
+          RETRY_COUNT=0
+          SUCCESS=false
+          
+          while [ $RETRY_COUNT -lt $MAX_RETRIES ] && [ "$SUCCESS" = false ]; do
+            RETRY_COUNT=$((RETRY_COUNT + 1))
+            echo "Repository creation attempt $RETRY_COUNT of $MAX_RETRIES..."
+            
+            # Creates a new public repository using the template repository as a template
+            if gh repo create "$OWNER/$REPO_NAME" --public --template "$OWNER/${{ env.TEMPLATE_REPO_NAME }}" 2>&1; then
+              SUCCESS=true
+              echo "✅ Repository created successfully on attempt $RETRY_COUNT"
+            else
+              echo "❌ Repository creation attempt $RETRY_COUNT failed"
+              if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
+                WAIT_TIME=$((RETRY_COUNT * 10))
+                echo "Waiting ${WAIT_TIME} seconds before retry..."
+                sleep $WAIT_TIME
+              fi
+            fi
+          done
+          
+          if [ "$SUCCESS" = false ]; then
+            echo "::error::Failed to create repository after $MAX_RETRIES attempts. This may be a temporary GitHub issue."
+            echo "::error::Please try again in a few minutes, or check GitHub's status page."
+            exit 1
+          fi
 
           # Wait until the repository is fully accessible
+          echo "Verifying repository accessibility..."
           for i in {1..5}; do
             if gh api repos/$OWNER/$REPO_NAME > /dev/null 2>&1; then
               echo "::notice::Repository $OWNER/$REPO_NAME is now available."
