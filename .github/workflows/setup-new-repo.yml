@@ -107,13 +107,26 @@ jobs:
           if gh api orgs/$OWNER > /dev/null 2>&1; then
             echo "Organization $OWNER is accessible"
             
-            # Check if we can access teams endpoint
-            if gh api orgs/$OWNER/teams > /dev/null 2>&1; then
+            # Check if we can access teams endpoint with detailed error output
+            echo "Testing teams endpoint access..."
+            TEAMS_RESPONSE=$(gh api orgs/$OWNER/teams 2>&1)
+            TEAMS_EXIT_CODE=$?
+            
+            if [ $TEAMS_EXIT_CODE -eq 0 ]; then
               echo "Teams endpoint accessible for organization $OWNER"
+              echo "Debug: Teams response preview: $(echo "$TEAMS_RESPONSE" | head -c 200)"
               
               if ! gh api orgs/$OWNER/teams/$MAINTAINERS_TEAM > /dev/null 2>&1; then
                 # Retrieve the numeric ID of the 'maintainers' team to use as the parent_team_id
-                MAINTAINERS_PARENT_ID=$(gh api orgs/$OWNER/teams/maintainers | jq -r '.id')
+                echo "Creating maintainers team: $MAINTAINERS_TEAM"
+                MAINTAINERS_PARENT_RESPONSE=$(gh api orgs/$OWNER/teams/maintainers 2>&1)
+                MAINTAINERS_EXIT_CODE=$?
+                if [ $MAINTAINERS_EXIT_CODE -ne 0 ]; then
+                  echo "::error::Failed to get maintainers parent team: $MAINTAINERS_PARENT_RESPONSE"
+                  exit 1
+                fi
+                
+                MAINTAINERS_PARENT_ID=$(echo "$MAINTAINERS_PARENT_RESPONSE" | jq -r '.id')
                 MAINTAINERS_PARENT_ID_NUM=$(echo "$MAINTAINERS_PARENT_ID" | grep -o '[0-9]*')
                 echo "Debug: MAINTAINERS_PARENT_ID_NUM=$MAINTAINERS_PARENT_ID_NUM"
                 if [ -z "$MAINTAINERS_PARENT_ID_NUM" ]; then
@@ -130,7 +143,15 @@ jobs:
               fi
 
               if ! gh api orgs/$OWNER/teams/$CODEOWNERS_TEAM > /dev/null 2>&1; then
-                CODEOWNERS_PARENT_ID=$(gh api orgs/$OWNER/teams/codeowners | jq -r '.id')
+                echo "Creating codeowners team: $CODEOWNERS_TEAM"
+                CODEOWNERS_PARENT_RESPONSE=$(gh api orgs/$OWNER/teams/codeowners 2>&1)
+                CODEOWNERS_EXIT_CODE=$?
+                if [ $CODEOWNERS_EXIT_CODE -ne 0 ]; then
+                  echo "::error::Failed to get codeowners parent team: $CODEOWNERS_PARENT_RESPONSE"
+                  exit 1
+                fi
+                
+                CODEOWNERS_PARENT_ID=$(echo "$CODEOWNERS_PARENT_RESPONSE" | jq -r '.id')
                 CODEOWNERS_PARENT_ID_NUM=$(echo "$CODEOWNERS_PARENT_ID" | grep -o '[0-9]*')
                 echo "Debug: CODEOWNERS_PARENT_ID_NUM=$CODEOWNERS_PARENT_ID_NUM"
                 if [ -z "$CODEOWNERS_PARENT_ID_NUM" ]; then
@@ -162,7 +183,9 @@ jobs:
                 fi
               done
             else
-              echo "::warning::Cannot access teams endpoint for organization $OWNER. Token may lack admin:org permissions."
+              echo "::warning::Cannot access teams endpoint for organization $OWNER."
+              echo "Debug: Teams API error: $TEAMS_RESPONSE"
+              echo "Debug: Exit code: $TEAMS_EXIT_CODE"
               echo "Skipping team creation — insufficient organization permissions."
             fi
           else
