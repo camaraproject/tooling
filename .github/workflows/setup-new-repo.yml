@@ -67,6 +67,65 @@ jobs:
             exit 1
           fi
 
+      - name: Debug token permissions
+        run: |
+          echo "=== Token Permission Analysis ==="
+          
+          # Check basic auth
+          echo "Testing basic authentication..."
+          OWNER=$(echo '${{ github.repository }}' | cut -d'/' -f1)
+          
+          # Test organization access with headers
+          echo "Testing organization access..."
+          set +e
+          ORG_RESPONSE=$(gh api orgs/$OWNER --include 2>&1)
+          ORG_EXIT_CODE=$?
+          set -e
+          
+          echo "Organization API exit code: $ORG_EXIT_CODE"
+          if [ $ORG_EXIT_CODE -eq 0 ]; then
+            echo "✅ Organization access successful"
+            # Extract headers to see accepted permissions
+            HEADERS=$(echo "$ORG_RESPONSE" | grep -i "x-accepted-github-permissions\|x-github-request-id\|x-ratelimit")
+            if [ -n "$HEADERS" ]; then
+              echo "Response headers:"
+              echo "$HEADERS"
+            fi
+          else
+            echo "❌ Organization access failed: $ORG_RESPONSE"
+          fi
+          
+          # Test teams endpoint with headers
+          echo ""
+          echo "Testing teams endpoint access..."
+          set +e
+          TEAMS_RESPONSE=$(gh api orgs/$OWNER/teams --include 2>&1)
+          TEAMS_EXIT_CODE=$?
+          set -e
+          
+          echo "Teams API exit code: $TEAMS_EXIT_CODE"
+          if [ $TEAMS_EXIT_CODE -eq 0 ]; then
+            echo "✅ Teams access successful"
+            HEADERS=$(echo "$TEAMS_RESPONSE" | grep -i "x-accepted-github-permissions\|x-github-request-id\|x-ratelimit")
+            if [ -n "$HEADERS" ]; then
+              echo "Response headers:"
+              echo "$HEADERS"
+            fi
+          else
+            echo "❌ Teams access failed"
+            echo "Error details: $TEAMS_RESPONSE"
+            
+            # Look for permission-related headers in the error response
+            PERM_HEADERS=$(echo "$TEAMS_RESPONSE" | grep -i "x-accepted-github-permissions\|permissions\|scope")
+            if [ -n "$PERM_HEADERS" ]; then
+              echo "Permission-related headers/info:"
+              echo "$PERM_HEADERS"
+            fi
+          fi
+          
+          echo ""
+          echo "=== End Token Analysis ==="
+
       - name: Create new repository and set variables
         run: |
           REPO_NAME=${{ github.event.inputs.repo_name }}
