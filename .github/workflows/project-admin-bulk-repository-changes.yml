@@ -1,0 +1,244 @@
+name: Bulk Repository Changes
+
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: 'Operation to perform'
+        required: true
+        type: choice
+        options:
+          - 'disable-wiki'
+          - 'add-changelog-codeowners'
+        default: 'disable-wiki'
+      
+      dry_run:
+        description: 'Run in dry-run mode (no actual changes)'
+        required: true
+        type: boolean
+        default: true
+      
+      # Repository Category Selection
+      include_sandbox_repos:
+        description: 'Include Sandbox API Repositories'
+        required: false
+        type: boolean
+        default: true
+      
+      include_incubating_repos:
+        description: 'Include Incubating API Repositories'
+        required: false
+        type: boolean
+        default: true
+      
+      include_working_group_repos:
+        description: 'Include Working Group Repositories'
+        required: false
+        type: boolean
+        default: true
+      
+      include_other_repos:
+        description: 'Include Other Repositories'
+        required: false
+        type: boolean
+        default: true
+      
+      repository_filter:
+        description: 'Repository name pattern (leave empty for all repos)'
+        required: false
+        type: string
+        default: ''
+      
+      exclude_repos:
+        description: 'Comma-separated list of repos to exclude'
+        required: false
+        type: string
+        default: 'Governance,.github'
+
+jobs:
+  get-repositories:
+    runs-on: ubuntu-latest
+    outputs:
+      repositories: ${{ steps.get-repos.outputs.repositories }}
+      total_count: ${{ steps.get-repos.outputs.total_count }}
+    steps:
+      - name: Get organization repositories
+        id: get-repos
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.CAMARA_TOKEN || secrets.GITHUB_TOKEN }}
+          script: |
+            const org = 'camaraproject';  // Hardcoded for CAMARA project
+            const filterPattern = '${{ github.event.inputs.repository_filter }}';
+            const excludeRepos = '${{ github.event.inputs.exclude_repos }}'.split(',').map(r => r.trim()).filter(r => r);
+            
+            // Category selection inputs
+            const includeSandbox = ${{ fromJson(github.event.inputs.include_sandbox_repos) }};
+            const includeIncubating = ${{ fromJson(github.event.inputs.include_incubating_repos) }};
+            const includeWorkingGroup = ${{ fromJson(github.event.inputs.include_working_group_repos) }};
+            const includeOther = ${{ fromJson(github.event.inputs.include_other_repos) }};
+            
+            console.log(`Getting repositories for organization: ${org}`);
+            console.log(`Filter pattern: ${filterPattern}`);
+            console.log(`Exclude repos: ${excludeRepos}`);
+            console.log(`Include categories:`);
+            console.log(`  - Sandbox API Repositories: ${includeSandbox}`);
+            console.log(`  - Incubating API Repositories: ${includeIncubating}`);
+            console.log(`  - Working Group Repositories: ${includeWorkingGroup}`);
+            console.log(`  - Other Repositories: ${includeOther}`);
+            
+            let allRepos = [];
+            let page = 1;
+            
+            while (true) {
+              const response = await github.rest.repos.listForOrg({
+                org: org,
+                type: 'all',
+                sort: 'name',
+                per_page: 100,
+                page: page
+              });
+              
+              if (response.data.length === 0) break;
+              allRepos = allRepos.concat(response.data);
+              page++;
+            }
+            
+            // Function to categorize repository based on topics
+            function categorizeRepository(topics) {
+              if (topics.includes('sandbox-api-repository')) {
+                return 'sandbox';
+              } else if (topics.includes('incubating-api-repository')) {
+                return 'incubating';
+              } else if (topics.includes('workinggroup')) {
+                return 'working-group';
+              } else {
+                return 'other';
+              }
+            }
+            
+            // Filter repositories based on criteria and categories
+            let filteredRepos = [];
+            let categoryCounts = { sandbox: 0, incubating: 0, 'working-group': 0, other: 0 };
+            
+            for (const repo of allRepos) {
+              // Skip archived repositories
+              if (repo.archived) continue;
+              
+              // Skip excluded repositories  
+              if (excludeRepos.includes(repo.name)) continue;
+              
+              // Apply name filter pattern if provided
+              if (filterPattern && !repo.name.includes(filterPattern)) continue;
+              
+              // Categorize repository based on topics
+              const category = categorizeRepository(repo.topics || []);
+              categoryCounts[category]++;
+              
+              // Check if this category is selected for inclusion
+              let includeThisRepo = false;
+              switch (category) {
+                case 'sandbox':
+                  includeThisRepo = includeSandbox;
+                  break;
+                case 'incubating':
+                  includeThisRepo = includeIncubating;
+                  break;
+                case 'working-group':
+                  includeThisRepo = includeWorkingGroup;
+                  break;
+                case 'other':
+                  includeThisRepo = includeOther;
+                  break;
+              }
+              
+              if (includeThisRepo) {
+                filteredRepos.push(repo);
+              }
+            }
+            
+            const repositories = filteredRepos.map(repo => ({
+              name: repo.name,
+              full_name: repo.full_name,
+              default_branch: repo.default_branch,
+              category: categorizeRepository(repo.topics || [])
+            }));
+            
+            console.log(`\nRepository counts by category:`);
+            console.log(`  - Sandbox API Repositories: ${categoryCounts.sandbox}`);
+            console.log(`  - Incubating API Repositories: ${categoryCounts.incubating}`);
+            console.log(`  - Working Group Repositories: ${categoryCounts['working-group']}`);
+            console.log(`  - Other Repositories: ${categoryCounts.other}`);
+            console.log(`\nSelected ${repositories.length} repositories for processing`);
+            
+            core.setOutput('repositories', JSON.stringify(repositories));
+            core.setOutput('total_count', repositories.length);
+
+  execute-changes:
+    needs: get-repositories
+    if: fromJson(needs.get-repositories.outputs.total_count) > 0
+    strategy:
+      matrix:
+        repository: ${{ fromJson(needs.get-repositories.outputs.repositories) }}
+      max-parallel: 5
+      fail-fast: false
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout workflows
+        uses: actions/checkout@v4
+
+      - name: Execute repository changes
+        uses: ./.github/workflows/project-admin-repository-worker.yml
+        with:
+          repository_name: ${{ matrix.repository.name }}
+          repository_full_name: ${{ matrix.repository.full_name }}
+          default_branch: ${{ matrix.repository.default_branch }}
+          operation: ${{ github.event.inputs.operation }}
+          dry_run: ${{ fromJson(github.event.inputs.dry_run) }}
+
+  summary:
+    needs: [get-repositories, execute-changes]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate summary
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const totalRepos = ${{ needs.get-repositories.outputs.total_count }};
+            const operation = '${{ github.event.inputs.operation }}';
+            const dryRun = ${{ fromJson(github.event.inputs.dry_run) }};
+            
+            // Category selections
+            const includeSandbox = ${{ fromJson(github.event.inputs.include_sandbox_repos) }};
+            const includeIncubating = ${{ fromJson(github.event.inputs.include_incubating_repos) }};
+            const includeWorkingGroup = ${{ fromJson(github.event.inputs.include_working_group_repos) }};
+            const includeOther = ${{ fromJson(github.event.inputs.include_other_repos) }};
+            
+            let selectedCategories = [];
+            if (includeSandbox) selectedCategories.push('Sandbox API');
+            if (includeIncubating) selectedCategories.push('Incubating API');
+            if (includeWorkingGroup) selectedCategories.push('Working Group');
+            if (includeOther) selectedCategories.push('Other');
+            
+            const summary = `
+            ## Bulk Repository Changes Summary
+            
+            **Operation**: ${operation}
+            **Mode**: ${dryRun ? 'DRY RUN' : 'LIVE'}
+            **Total Repositories Processed**: ${totalRepos}
+            **Repository Categories**: ${selectedCategories.join(', ')}
+            **Execution Status**: ${{ needs.execute-changes.result }}
+            
+            ${dryRun ? '⚠️ This was a dry run - no actual changes were made.' : '✅ Changes have been applied to repositories.'}
+            
+            ### Categories Processed:
+            ${includeSandbox ? '✅' : '❌'} Sandbox API Repositories
+            ${includeIncubating ? '✅' : '❌'} Incubating API Repositories  
+            ${includeWorkingGroup ? '✅' : '❌'} Working Group Repositories
+            ${includeOther ? '✅' : '❌'} Other Repositories
+            `;
+            
+            core.summary.addRaw(summary);
+            await core.summary.write();
+            
