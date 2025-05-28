@@ -1,0 +1,174 @@
+name: Single Repository Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      repository_name:
+        description: 'Target repository name (e.g., DeviceStatus)'
+        required: true
+        type: string
+      
+      operation:
+        description: 'Operation to perform'
+        required: true
+        type: choice
+        options:
+          - 'disable-wiki'
+          - 'add-changelog-codeowners'
+        default: 'disable-wiki'
+      
+      dry_run:
+        description: 'Run in dry-run mode (recommended for testing)'
+        required: true
+        type: boolean
+        default: true
+
+jobs:
+  validate-repository:
+    runs-on: ubuntu-latest
+    outputs:
+      repository_exists: ${{ steps.check-repo.outputs.exists }}
+      repository_full_name: ${{ steps.check-repo.outputs.full_name }}
+      default_branch: ${{ steps.check-repo.outputs.default_branch }}
+      repository_info: ${{ steps.check-repo.outputs.info }}
+    steps:
+      - name: Check if repository exists
+        id: check-repo
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.CAMARA_TOKEN || secrets.GITHUB_TOKEN }}
+          script: |
+            const org = 'camaraproject';
+            const repoName = '${{ github.event.inputs.repository_name }}';
+            
+            try {
+              const response = await github.rest.repos.get({
+                owner: org,
+                repo: repoName
+              });
+              
+              const repo = response.data;
+              
+              core.setOutput('exists', 'true');
+              core.setOutput('full_name', repo.full_name);
+              core.setOutput('default_branch', repo.default_branch);
+              
+              const info = {
+                name: repo.name,
+                private: repo.private,
+                archived: repo.archived,
+                language: repo.language,
+                stars: repo.stargazers_count,
+                last_updated: repo.updated_at
+              };
+              core.setOutput('info', JSON.stringify(info));
+              
+              console.log(`✅ Repository found: ${repo.full_name}`);
+              console.log(`   Default branch: ${repo.default_branch}`);
+              console.log(`   Language: ${repo.language || 'N/A'}`);
+              console.log(`   Stars: ${repo.stargazers_count}`);
+              console.log(`   Private: ${repo.private}`);
+              console.log(`   Archived: ${repo.archived}`);
+              
+              if (repo.archived) {
+                core.warning(`Repository ${repo.full_name} is archived - changes may not be possible`);
+              }
+              
+            } catch (error) {
+              core.setOutput('exists', 'false');
+              if (error.status === 404) {
+                core.setFailed(`❌ Repository ${org}/${repoName} not found`);
+              } else if (error.status === 403) {
+                core.setFailed(`❌ Access denied to repository ${org}/${repoName} - check token permissions`);
+              } else {
+                core.setFailed(`❌ Error accessing repository: ${error.message}`);
+              }
+            }
+
+      - name: Display repository information
+        if: steps.check-repo.outputs.exists == 'true'
+        run: |
+          echo "## Repository Information" >> $GITHUB_STEP_SUMMARY
+          echo "**Repository**: ${{ steps.check-repo.outputs.full_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Default Branch**: ${{ steps.check-repo.outputs.default_branch }}" >> $GITHUB_STEP_SUMMARY
+          
+          # Parse and display additional info
+          INFO='${{ steps.check-repo.outputs.info }}'
+          echo "**Private**: $(echo $INFO | jq -r '.private')" >> $GITHUB_STEP_SUMMARY
+          echo "**Archived**: $(echo $INFO | jq -r '.archived')" >> $GITHUB_STEP_SUMMARY
+          echo "**Language**: $(echo $INFO | jq -r '.language // "N/A"')" >> $GITHUB_STEP_SUMMARY
+          echo "**Stars**: $(echo $INFO | jq -r '.stars')" >> $GITHUB_STEP_SUMMARY
+
+  execute-test:
+    needs: validate-repository
+    if: needs.validate-repository.outputs.repository_exists == 'true'
+    uses: ./.github/workflows/project-admin-repository-worker.yml
+    with:
+      repository_name: ${{ github.event.inputs.repository_name }}
+      repository_full_name: ${{ needs.validate-repository.outputs.repository_full_name }}
+      default_branch: ${{ needs.validate-repository.outputs.default_branch }}
+      operation: ${{ github.event.inputs.operation }}
+      dry_run: ${{ fromJson(github.event.inputs.dry_run) }}
+
+  test-summary:
+    needs: [validate-repository, execute-test]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate test summary
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const repoExists = '${{ needs.validate-repository.outputs.repository_exists }}' === 'true';
+            const testResult = '${{ needs.execute-test.result }}';
+            const repoName = '${{ github.event.inputs.repository_name }}';
+            const operation = '${{ github.event.inputs.operation }}';
+            const dryRun = ${{ fromJson(github.event.inputs.dry_run) }};
+            
+            let summary = `# Single Repository Test Results\n\n`;
+            
+            if (!repoExists) {
+              summary += `❌ **Repository Not Found**: camaraproject/${repoName}\n\n`;
+              summary += `Please check:\n`;
+              summary += `- Repository name is correct\n`;
+              summary += `- Repository exists in the camaraproject organization\n`;
+              summary += `- You have access permissions\n`;
+            } else {
+              summary += `✅ **Repository**: camaraproject/${repoName}\n`;
+              summary += `🔧 **Operation**: ${operation}\n`;
+              summary += `🧪 **Mode**: ${dryRun ? 'DRY RUN' : 'LIVE EXECUTION'}\n`;
+              summary += `📊 **Result**: ${testResult}\n\n`;
+              
+              if (testResult === 'success') {
+                summary += `### ✅ Test Completed Successfully\n\n`;
+                if (dryRun) {
+                  summary += `This was a dry run - no actual changes were made to the repository.\n`;
+                  summary += `You can now run this operation in live mode or proceed with bulk execution.\n`;
+                } else {
+                  summary += `Changes have been applied to the repository.\n`;
+                }
+              } else {
+                summary += `### ❌ Test Failed\n\n`;
+                summary += `Please check the workflow logs for detailed error information.\n`;
+              }
+              
+              summary += `\n### Next Steps\n`;
+              if (dryRun && testResult === 'success') {
+                summary += `1. Review the changes shown in the worker job\n`;
+                summary += `2. Test with live execution on this single repository\n`;
+                summary += `3. Run bulk dry-run across all repositories\n`;
+                summary += `4. Execute bulk changes across the organization\n`;
+              } else if (!dryRun && testResult === 'success') {
+                summary += `1. Verify changes in the repository\n`;
+                summary += `2. Run bulk dry-run to test across all repositories\n`;
+                summary += `3. Execute bulk changes if satisfied\n`;
+              } else {
+                summary += `1. Check error logs and fix issues\n`;
+                summary += `2. Re-run single repository test\n`;
+                summary += `3. Proceed with bulk operations once successful\n`;
+              }
+            }
+            
+            core.summary.addRaw(summary);
+            await core.summary.write();
+            

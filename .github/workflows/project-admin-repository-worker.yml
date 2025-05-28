@@ -1,0 +1,289 @@
+name: Repository Worker
+
+on:
+  workflow_call:
+    inputs:
+      repository_name:
+        required: true
+        type: string
+      repository_full_name:
+        required: true
+        type: string
+      default_branch:
+        required: true
+        type: string
+      operation:
+        required: true
+        type: string
+      dry_run:
+        required: true
+        type: boolean
+
+jobs:
+  execute-operation:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout target repository
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.repository_full_name }}
+          token: ${{ secrets.CAMARA_TOKEN || secrets.GITHUB_TOKEN }}
+          ref: ${{ inputs.default_branch }}
+
+      - name: Check Repository Permissions
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.CAMARA_TOKEN || secrets.GITHUB_TOKEN }}
+          script: |
+            const [owner, repo] = '${{ inputs.repository_full_name }}'.split('/');
+            
+            console.log(`Checking permissions for user ${context.actor} on ${owner}/${repo}`);
+            console.log(`Operation: ${{ inputs.operation }}`);
+            
+            // Only do strict permission check for wiki operations
+            if ('${{ inputs.operation }}' !== 'disable-wiki') {
+              console.log('✅ Permission check skipped for non-wiki operations');
+              return;
+            }
+            
+            try {
+              // First, try to get basic repository info to verify access
+              const repoInfo = await github.rest.repos.get({
+                owner: owner,
+                repo: repo
+              });
+              
+              console.log(`Repository access confirmed: ${repoInfo.data.full_name}`);
+              
+              // Try to check user's permission level
+              let hasAdminAccess = false;
+              let permissionSource = 'unknown';
+              
+              // Method 1: Direct collaborator permission check
+              try {
+                const collaboratorPermission = await github.rest.repos.getCollaboratorPermissionLevel({
+                  owner: owner,
+                  repo: repo,
+                  username: context.actor
+                });
+                
+                const permission = collaboratorPermission.data.permission;
+                hasAdminAccess = permission === 'admin';
+                permissionSource = `direct collaborator (${permission})`;
+                
+                console.log(`Direct permission check: ${permission}`);
+                
+              } catch (collabError) {
+                console.log(`Direct collaborator check failed: ${collabError.message}`);
+                
+                // Method 2: Check if user is organization admin
+                try {
+                  const orgMembership = await github.rest.orgs.getMembershipForUser({
+                    org: owner,
+                    username: context.actor
+                  });
+                  
+                  hasAdminAccess = orgMembership.data.role === 'admin';
+                  permissionSource = `org membership (${orgMembership.data.role})`;
+                  
+                  console.log(`Organization membership check: ${orgMembership.data.role}`);
+                  
+                } catch (orgError) {
+                  console.log(`Organization membership check failed: ${orgError.message}`);
+                  
+                  // Method 3: Try to make a test API call that requires admin access
+                  try {
+                    // Try to get repository topics (requires admin for private repos)
+                    const topics = await github.rest.repos.getAllTopics({
+                      owner: owner,
+                      repo: repo
+                    });
+                    
+                    hasAdminAccess = true; // If we can get topics, we likely have sufficient access
+                    permissionSource = 'inferred from API access';
+                    console.log('✅ Inferred admin access from successful API calls');
+                    
+                  } catch (topicsError) {
+                    console.log(`Topics check failed: ${topicsError.message}`);
+                    
+                    // If all methods fail, we'll proceed but warn the user
+                    console.log('⚠️ Could not determine permission level - proceeding with operation');
+                    console.log('If the wiki operation fails, ensure your token has Administration: Write permission');
+                    hasAdminAccess = true; // Assume true and let the actual operation fail if needed
+                    permissionSource = 'assumed (verification failed)';
+                  }
+                }
+              }
+              
+              console.log(`Final permission assessment: ${hasAdminAccess ? 'ADMIN' : 'NO ADMIN'} via ${permissionSource}`);
+              
+              if (!hasAdminAccess && permissionSource !== 'assumed (verification failed)') {
+                core.warning(`⚠️ Insufficient permissions detected: Admin access may be required to disable wiki. Current user: ${context.actor}`);
+                core.warning(`Permission source: ${permissionSource}`);
+                core.warning(`If this operation fails, ensure your FGPAT has 'Administration: Write' permission for the repository.`);
+                
+                // Don't fail here - let the actual operation attempt and fail if needed
+                console.log('Proceeding with operation - will fail at wiki update step if permissions insufficient');
+              } else {
+                console.log('✅ Permission check passed');
+              }
+              
+            } catch (error) {
+              console.error('Error during permission check:', error.message);
+              console.log('⚠️ Permission verification failed - proceeding with operation');
+              console.log('If the wiki operation fails, check that your FGPAT has the required permissions');
+            }
+
+      - name: Execute Operation - Disable Wiki
+        if: inputs.operation == 'disable-wiki'
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.CAMARA_TOKEN || secrets.GITHUB_TOKEN }}
+          script: |
+            const [owner, repo] = '${{ inputs.repository_full_name }}'.split('/');
+            
+            try {
+              // Get repository information to check if wiki is enabled
+              const repoInfo = await github.rest.repos.get({
+                owner: owner,
+                repo: repo
+              });
+              
+              if (!repoInfo.data.has_wiki) {
+                console.log('✅ Wiki is already disabled');
+                core.exportVariable('status', 'no-change');
+                return;
+              }
+              
+              console.log('Wiki is currently enabled, checking for content...');
+              
+              // Check if wiki has any content by trying to list wiki pages
+              let hasWikiContent = false;
+              try {
+                const wikiPages = await github.request('GET /repos/{owner}/{repo}/wiki', {
+                  owner: owner,
+                  repo: repo
+                });
+                // If we get here without error, wiki has content
+                hasWikiContent = true;
+                console.log('⚠️ Wiki has content - will not disable for safety');
+              } catch (wikiError) {
+                if (wikiError.status === 404) {
+                  console.log('✅ Wiki has no content - safe to disable');
+                  hasWikiContent = false;
+                } else {
+                  console.log('Error checking wiki content:', wikiError.message);
+                  // Assume it has content to be safe
+                  hasWikiContent = true;
+                }
+              }
+              
+              if (hasWikiContent) {
+                console.log('⚠️ Wiki contains content - skipping disable for safety');
+                core.exportVariable('status', 'wiki-has-content');
+                return;
+              }
+              
+              // Wiki is enabled but empty - safe to disable
+              if (${{ inputs.dry_run }}) {
+                console.log('🧪 DRY RUN: Would disable wiki (currently enabled but empty)');
+                core.exportVariable('status', 'would-disable-wiki');
+              } else {
+                try {
+                  await github.rest.repos.update({
+                    owner: owner,
+                    repo: repo,
+                    has_wiki: false
+                  });
+                  console.log('✅ Wiki disabled successfully');
+                  core.exportVariable('status', 'wiki-disabled');
+                } catch (updateError) {
+                  console.error('❌ Error disabling wiki:', updateError.message);
+                  
+                  // Provide specific error messages based on common issues
+                  if (updateError.status === 403) {
+                    core.setFailed(`❌ Permission denied: Insufficient permissions to disable wiki. You need admin access to repository ${owner}/${repo}. Please ensure your token has 'repo' scope and you are an admin of the repository.`);
+                  } else if (updateError.status === 404) {
+                    core.setFailed(`❌ Repository not found: ${owner}/${repo} may not exist or token lacks access.`);
+                  } else if (updateError.status === 422) {
+                    core.setFailed(`❌ Invalid request: The repository settings could not be updated. This may be due to organization policies or repository restrictions.`);
+                  } else {
+                    core.setFailed(`❌ Failed to disable wiki: ${updateError.message} (HTTP ${updateError.status})`);
+                  }
+                  throw updateError;
+                }
+              }
+              
+            } catch (error) {
+              console.error('❌ Error processing wiki operation:', error.message);
+              if (!error.message.includes('Permission denied') && !error.message.includes('Failed to disable wiki')) {
+                core.setFailed(`❌ Wiki operation failed: ${error.message}`);
+              }
+            }
+
+      - name: Execute Operation - Add Changelog CODEOWNERS
+        if: inputs.operation == 'add-changelog-codeowners'
+        run: |
+          echo "Processing repository: ${{ inputs.repository_name }}"
+          
+          CODEOWNERS_FILE="CODEOWNERS"
+          
+          # Define the lines to add
+          CHANGELOG_LINES="# The following line ensures that the release-management_reviewers team will automatically added as reviewers
+          # if a pull requests is changing the CHANGELOG.MD (aka \"release PR\") and that such PRs can only be merged with an approval from a team member.
+          /CHANGELOG.MD @camaraproject/release-management_reviewers"
+          
+          # Check if CODEOWNERS exists
+          if [ -f "$CODEOWNERS_FILE" ]; then
+            # Check if CHANGELOG.MD line already exists
+            if grep -q "^/CHANGELOG\.MD" "$CODEOWNERS_FILE"; then
+              echo "✅ CHANGELOG.MD CODEOWNERS rule already exists"
+              echo "status=no-change" >> $GITHUB_ENV
+            else
+              echo "Adding CHANGELOG.MD CODEOWNERS rule to existing file"
+              echo "" >> "$CODEOWNERS_FILE"
+              echo "$CHANGELOG_LINES" >> "$CODEOWNERS_FILE"
+              echo "status=modified" >> $GITHUB_ENV
+            fi
+          else
+            echo "Creating new CODEOWNERS file with CHANGELOG.MD rule"
+            echo "$CHANGELOG_LINES" > "$CODEOWNERS_FILE"
+            echo "status=created" >> $GITHUB_ENV
+          fi
+
+      - name: Check for changes
+        id: check-changes
+        run: |
+          if git diff --quiet && git diff --cached --quiet; then
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+          else
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+            echo "Changes detected:"
+            git status --porcelain
+          fi
+
+      - name: Commit and Push Changes
+        if: steps.check-changes.outputs.has_changes == 'true' && inputs.dry_run == false
+        run: |
+          git add .
+          git commit -m "chore: automated CAMARA project update - ${{ inputs.operation }}
+
+          Applied via project-admin workflow
+          Repository: ${{ inputs.repository_name }}
+          Operation: ${{ inputs.operation }}"
+          git push origin ${{ inputs.default_branch }}
+
+      - name: Create summary
+        run: |
+          echo "## Repository: ${{ inputs.repository_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Operation**: ${{ inputs.operation }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Status**: ${{ env.status }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Has Changes**: ${{ steps.check-changes.outputs.has_changes }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Dry Run**: ${{ inputs.dry_run }}" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "${{ inputs.dry_run }}" == "true" ]; then
+            echo "**Note**: This was a dry run - no changes were committed." >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ steps.check-changes.outputs.has_changes }}" == "true" ]; then
+            echo "**Note**: Changes have been committed and pushed." >> $GITHUB_STEP_SUMMARY
+          fi
+          
