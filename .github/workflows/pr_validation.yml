@@ -134,19 +134,11 @@ jobs:
     needs: validate-inputs
     runs-on: ubuntu-latest
     steps:
-      - name: Debug Git Context
-        run: |
-          echo "🔍 Debugging Git context..."
-          echo "Event name: ${{ github.event_name }}"
-          echo "Ref: ${{ github.ref }}"
-          echo "SHA: ${{ github.sha }}"
-          echo "Repository: ${{ github.repository }}"
-          echo "PR Head SHA: ${{ github.event.pull_request.head.sha || 'Not a PR' }}"
-          echo "PR Number: ${{ github.event.pull_request.number || 'Not a PR' }}"
-          
       - name: Checkout Code
         uses: actions/checkout@v4
-        
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          
       - name: Checkout linting config
         id: checkout-config
         uses: actions/checkout@v4
