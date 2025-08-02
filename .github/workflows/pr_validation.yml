@@ -13,12 +13,13 @@
 # CHANGELOG:
 # - 2025-08-01: Initial version for v0 version
 # - 2025-08-02: Added input validation, automatic ref detection, enhanced error handling,
-#               and existing-files-strategy parameter
+#               existing-files-strategy parameter, and single job design
 #
 # FEATURES:
 # - Automatically uses the same ref that was used to call the workflow
 # - Configurable strategy for handling existing configuration files
 # - Centralized configuration via environment variables
+# - Single job design for minimal PR status checks
 #
 # USAGE:
 # The action is invoked by Pull Request Validation Workflow Caller in CAMARA API repositories
@@ -58,13 +59,9 @@ on:
         default: "replace"
 
 jobs:
-  validate-inputs:
-    name: Validate Inputs
+  general:
+    name: MegaLinter
     runs-on: ubuntu-latest
-    outputs:
-      validated-ref: ${{ steps.determine-ref.outputs.ref }}
-      config-path: ${{ steps.validate-config.outputs.path }}
-      files-strategy: ${{ steps.validate-strategy.outputs.strategy }}
     steps:
       - name: Validate configurations input
         id: validate-config
@@ -129,11 +126,6 @@ jobs:
           echo "  - Tooling repository ref: ${{ steps.determine-ref.outputs.ref }}"
           echo "  - Existing files strategy: ${{ steps.validate-strategy.outputs.strategy }}"
 
-  general:
-    name: MegaLinter
-    needs: validate-inputs
-    runs-on: ubuntu-latest
-    steps:
       - name: Checkout Code
         uses: actions/checkout@v4
         with:
@@ -145,14 +137,14 @@ jobs:
         with:
           repository: camaraproject/tooling
           path: lint-config
-          ref: ${{ needs.validate-inputs.outputs.validated-ref }}
+          ref: ${{ steps.determine-ref.outputs.ref }}
           sparse-checkout: |
             linting/config/
           sparse-checkout-cone-mode: false
           
       - name: Verify configuration exists
         run: |
-          CONFIG_PATH="${{ needs.validate-inputs.outputs.config-path }}"
+          CONFIG_PATH="${{ steps.validate-config.outputs.path }}"
           FULL_PATH="${{ github.workspace }}/lint-config/linting/config/${CONFIG_PATH}"
           
           if [[ -n "$CONFIG_PATH" ]] && [[ ! -d "$FULL_PATH" ]]; then
@@ -185,7 +177,7 @@ jobs:
             printf '%s\n' "${EXISTING_ITEMS[@]}"
             echo ""
             
-            STRATEGY="${{ needs.validate-inputs.outputs.files-strategy }}"
+            STRATEGY="${{ steps.validate-strategy.outputs.strategy }}"
             case "$STRATEGY" in
               replace)
                 echo "These items will be replaced by the tooling configuration."
@@ -207,9 +199,9 @@ jobs:
           
       - name: Copy all configuration from tooling repository to workspace root
         run: |
-          CONFIG_PATH="${{ needs.validate-inputs.outputs.config-path }}"
+          CONFIG_PATH="${{ steps.validate-config.outputs.path }}"
           SOURCE_PATH="${{ github.workspace }}/lint-config/linting/config/${CONFIG_PATH}"
-          STRATEGY="${{ needs.validate-inputs.outputs.files-strategy }}"
+          STRATEGY="${{ steps.validate-strategy.outputs.strategy }}"
           
           # Determine the source directory
           if [[ -n "$CONFIG_PATH" ]]; then
@@ -308,50 +300,6 @@ jobs:
           path: |
             megalinter-reports
             mega-linter.log
-
-  # Optional: Summary job for better visibility
-  summary:
-    name: Validation Summary
-    needs: [validate-inputs, general]
-    runs-on: ubuntu-latest
-    if: always()
-    steps:
-      - name: Create summary
-        run: |
-          echo "## 📊 PR Validation Summary" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          
-          echo "### Configuration Used:" >> $GITHUB_STEP_SUMMARY
-          echo "- **Tooling Ref:** ${{ needs.validate-inputs.outputs.validated-ref }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Config Path:** ${{ needs.validate-inputs.outputs.config-path || '(root)' }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Files Strategy:** ${{ needs.validate-inputs.outputs.files-strategy }}" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          
-          echo "### ⚠️ Important Notes:" >> $GITHUB_STEP_SUMMARY
-          echo "- Configuration files and directories from the tooling repository have been copied to the workspace root" >> $GITHUB_STEP_SUMMARY
-          
-          STRATEGY="${{ needs.validate-inputs.outputs.files-strategy }}"
-          case "$STRATEGY" in
-            replace)
-              echo "- Existing configuration files/directories were replaced by tooling configuration" >> $GITHUB_STEP_SUMMARY
-              ;;
-            keep)
-              echo "- Existing configuration files/directories were preserved; only missing items were added" >> $GITHUB_STEP_SUMMARY
-              ;;
-            fail)
-              echo "- No existing configuration files/directories were allowed (strategy: fail)" >> $GITHUB_STEP_SUMMARY
-              ;;
-          esac
-          
-          echo "" >> $GITHUB_STEP_SUMMARY
-          
-          if [[ "${{ needs.general.result }}" == "success" ]]; then
-            echo "✅ **MegaLinter validation passed!**" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "❌ **MegaLinter validation failed**" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "Please check the MegaLinter reports artifact for details." >> $GITHUB_STEP_SUMMARY
-          fi
 
 # Commented out changelog job remains the same...
 #  changelog-changed-job:
