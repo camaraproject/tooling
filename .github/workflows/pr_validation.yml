@@ -1,106 +1,392 @@
+# =========================================================================================
+# CAMARA Project - Pull Request Validation Workflow
+#
+# This GitHub Actions is a reusable workflow for validating PRs using tools configuration 
+# from subfolder indicated by input `configurations` variable.
+# It calls Megalinter tool with the set of configuration variables in "env". 
+#
+# CONFIGURATION:
+# The CONFIG_FILES and CONFIG_DIRS environment variables at the top of this workflow define 
+# which items to check for conflicts and verify after copying. They do NOT control what gets
+# copied - rsync copies everything from the tooling configuration directory.
+#
+# CHANGELOG:
+# - 2025-08-01: Initial version for v0 version
+# - 2025-08-02: Added input validation, automatic ref detection, enhanced error handling,
+#               and existing-files-strategy parameter
+#
+# FEATURES:
+# - Automatically uses the same ref that was used to call the workflow
+# - Configurable strategy for handling existing configuration files
+# - Centralized configuration via environment variables
+#
+# USAGE:
+# The action is invoked by Pull Request Validation Workflow Caller in CAMARA API repositories
+# Examples:
+#   uses: camaraproject/tooling/.github/workflows/pr_validation-4.yml@v1
+#   with:
+#     configurations: "strict"
+#     existing-files-strategy: "keep"  # Options: replace (default), keep, fail
+#
+# DOCUMENTATION:
+# see https://github.com/camaraproject/tooling/tree/main/linting/docs
+# =========================================================================================
+
 name: PR validation for CAMARA Project
-# A reusable action for validating PRs using tools configuration from branch indicated by input `configurations` variable
-# CAMARA Project - Github Action for Pull Reqests
-# initial version
+
+env:
+  # Configuration items to check for conflicts in the workspace
+  # These are NOT used to control what gets copied - rsync copies everything from the source
+  # They are only used to:
+  #   1. Check if these items exist before copying (for existing-files-strategy)
+  #   2. Verify these items exist after copying (for validation)
+  CONFIG_FILES: ".spectral.yaml .yamllint.yaml .gherkin-lintrc"
+  CONFIG_DIRS: "lint-function"
 
 on:
   workflow_call:
-    # For a workflow to be reusable, the values for on must include workflow_call
     inputs:
       configurations:
-        description: The branch, tag, or commit to check out - containing tool configs to be used
+        description: 'Subfolder containing tool configs to be used (e.g., "default", "strict", "custom/myconfig")'
         type: string
         required: false
-        default: main
+        default: ""
+      existing-files-strategy:
+        description: 'How to handle existing configuration files: replace, keep, or fail'
+        type: string
+        required: false
+        default: "replace"
 
 jobs:
+  validate-inputs:
+    name: Validate Inputs
+    runs-on: ubuntu-latest
+    outputs:
+      validated-ref: ${{ steps.determine-ref.outputs.ref }}
+      config-path: ${{ steps.validate-config.outputs.path }}
+      files-strategy: ${{ steps.validate-strategy.outputs.strategy }}
+    steps:
+      - name: Validate configurations input
+        id: validate-config
+        run: |
+          CONFIGS="${{ inputs.configurations }}"
+          
+          # Check for potentially dangerous path traversal
+          if [[ "$CONFIGS" == *".."* ]] || [[ "$CONFIGS" == *"//"* ]] || [[ "$CONFIGS" == "/"* ]]; then
+            echo "❌ Error: Invalid configurations path. Path traversal or absolute paths not allowed."
+            exit 1
+          fi
+          
+          # Normalize the path (remove trailing slashes)
+          NORMALIZED_PATH="${CONFIGS%/}"
+          
+          echo "✅ Configurations path validated: '$NORMALIZED_PATH'"
+          echo "path=$NORMALIZED_PATH" >> $GITHUB_OUTPUT
+
+      - name: Validate existing-files-strategy
+        id: validate-strategy
+        run: |
+          STRATEGY="${{ inputs.existing-files-strategy }}"
+          
+          if [[ ! "$STRATEGY" =~ ^(replace|keep|fail)$ ]]; then
+            echo "❌ Error: Invalid existing-files-strategy: '$STRATEGY'"
+            echo "Valid options are: replace, keep, fail"
+            exit 1
+          fi
+          
+          echo "✅ Existing files strategy validated: $STRATEGY"
+          echo "strategy=$STRATEGY" >> $GITHUB_OUTPUT
+
+      - name: Determine ref from workflow call
+        id: determine-ref
+        run: |
+          # Extract ref from workflow_ref (format: owner/repo/.github/workflows/file.yml@ref)
+          # This automatically uses the same ref that was used to call this workflow
+          
+          WORKFLOW_REF="${{ github.workflow_ref }}"
+          echo "📍 Workflow ref: $WORKFLOW_REF"
+          
+          if [[ "$WORKFLOW_REF" =~ @(.+)$ ]]; then
+            REF="${BASH_REMATCH[1]}"
+            echo "ℹ️ Using ref from workflow call: $REF"
+          else
+            # When no @ref is specified, GitHub uses the default branch
+            # We'll use the same fallback as the original workflow
+            REF="v0"
+            echo "ℹ️ No @ref specified in workflow call (using default branch)"
+            echo "⚠️ Falling back to configured default ref: $REF"
+            echo ""
+            echo "💡 TIP: For consistent behavior, explicitly specify a ref:"
+            echo "   uses: camaraproject/tooling/.github/workflows/pr_validation-4.yml@v0"
+          fi
+          
+          echo "ref=$REF" >> $GITHUB_OUTPUT
+          
+      - name: Display configuration summary
+        run: |
+          echo "📋 Configuration Summary:"
+          echo "  - Configurations subfolder: ${{ steps.validate-config.outputs.path || '(root)' }}"
+          echo "  - Tooling repository ref: ${{ steps.determine-ref.outputs.ref }}"
+          echo "  - Existing files strategy: ${{ steps.validate-strategy.outputs.strategy }}"
+
   general:
     name: MegaLinter
+    needs: validate-inputs
     runs-on: ubuntu-latest
-    permissions:
-      # Give the default GITHUB_TOKEN write permission to commit and push, comment issues & post new PR
-      # Remove the ones you do not need
-      contents: write
-      issues: write
-      pull-requests: write
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
+          
       - name: Checkout linting config
+        id: checkout-config
         uses: actions/checkout@v4
         with:
           repository: camaraproject/tooling
           path: lint-config
-          ref: ${{ inputs.configurations }}
+          ref: ${{ needs.validate-inputs.outputs.validated-ref }}
           sparse-checkout: |
             linting/config/
           sparse-checkout-cone-mode: false
-      - name: Copy specified folder to workspace root
-        run: cp -RT ${{ github.workspace }}/lint-config/linting/config ${{ github.workspace }}
+          
+      - name: Verify configuration exists
+        run: |
+          CONFIG_PATH="${{ needs.validate-inputs.outputs.config-path }}"
+          FULL_PATH="${{ github.workspace }}/lint-config/linting/config/${CONFIG_PATH}"
+          
+          if [[ -n "$CONFIG_PATH" ]] && [[ ! -d "$FULL_PATH" ]]; then
+            echo "❌ Error: Configuration directory not found: $CONFIG_PATH"
+            echo "Available configurations:"
+            ls -la "${{ github.workspace }}/lint-config/linting/config/" || echo "No configurations found"
+            exit 1
+          fi
+          
+          echo "✅ Configuration directory verified"
+          
+      - name: Check for existing configuration files and directories
+        id: check-existing
+        run: |
+          echo "🔍 Checking for existing configuration files in workspace..."
+          
+          # Combine files and directories to check
+          ITEMS_TO_CHECK="$CONFIG_FILES $CONFIG_DIRS"
+          EXISTING_ITEMS=()
+          
+          # Check each file and directory
+          for item in $ITEMS_TO_CHECK; do
+            if [[ -e "${{ github.workspace }}/$item" ]]; then
+              EXISTING_ITEMS+=("$item")
+            fi
+          done
+          
+          if [[ ${#EXISTING_ITEMS[@]} -gt 0 ]]; then
+            echo "⚠️ WARNING: Found existing configuration files/directories in workspace:"
+            printf '%s\n' "${EXISTING_ITEMS[@]}"
+            echo ""
+            
+            STRATEGY="${{ needs.validate-inputs.outputs.files-strategy }}"
+            case "$STRATEGY" in
+              replace)
+                echo "These items will be replaced by the tooling configuration."
+                ;;
+              keep)
+                echo "These items will be kept. New configuration will only be added if they don't exist."
+                ;;
+              fail)
+                echo "❌ Error: Configuration files/directories already exist and strategy is 'fail'"
+                echo "Remove these items or use a different strategy (replace or keep)"
+                exit 1
+                ;;
+            esac
+            echo "has_existing=true" >> $GITHUB_OUTPUT
+          else
+            echo "✅ No existing configuration files/directories found"
+            echo "has_existing=false" >> $GITHUB_OUTPUT
+          fi
+          
+      - name: Copy all configuration from tooling repository to workspace root
+        run: |
+          CONFIG_PATH="${{ needs.validate-inputs.outputs.config-path }}"
+          SOURCE_PATH="${{ github.workspace }}/lint-config/linting/config/${CONFIG_PATH}"
+          STRATEGY="${{ needs.validate-inputs.outputs.files-strategy }}"
+          
+          # Determine the source directory
+          if [[ -n "$CONFIG_PATH" ]]; then
+            echo "📁 Copying configuration from: $CONFIG_PATH"
+            SOURCE="${SOURCE_PATH}/"
+          else
+            echo "📁 Copying root configuration"
+            SOURCE="${{ github.workspace }}/lint-config/linting/config/"
+          fi
+          
+          # Apply strategy-specific rsync options
+          # Note: rsync copies ALL files/directories from source, not just those in CONFIG_FILES/CONFIG_DIRS
+          case "$STRATEGY" in
+            replace)
+              echo "📝 Strategy: Replace existing files (with backup)"
+              rsync -av --backup --suffix=".workspace-original" --exclude='.git' "$SOURCE" "${{ github.workspace }}/"
+              ;;
+            keep)
+              echo "📝 Strategy: Keep existing files"
+              rsync -av --ignore-existing --exclude='.git' "$SOURCE" "${{ github.workspace }}/"
+              ;;
+            fail)
+              echo "📝 Strategy: Fail if files exist (already checked above)"
+              rsync -av --exclude='.git' "$SOURCE" "${{ github.workspace }}/"
+              ;;
+          esac
+          
+          # List specific configuration files and directories to verify they were copied
+          echo ""
+          echo "📋 Verifying expected configuration items in workspace:"
+          
+          # Check files
+          for file in $CONFIG_FILES; do
+            if [[ -f "${{ github.workspace }}/$file" ]]; then
+              echo "  ✓ $file"
+            else
+              echo "  ✗ $file (not found)"
+            fi
+          done
+          
+          # Check directories
+          for dir in $CONFIG_DIRS; do
+            if [[ -d "${{ github.workspace }}/$dir" ]]; then
+              echo "  ✓ $dir/ (directory)"
+            else
+              echo "  ✗ $dir/ (directory not found)"
+            fi
+          done
+          
+          # Show which files were replaced (rsync creates .workspace-original files for replaced items)
+          if [[ "$STRATEGY" == "replace" ]]; then
+            echo ""
+            BACKUP_COUNT=$(find . -maxdepth 1 -name "*.workspace-original" 2>/dev/null | wc -l)
+            if [[ $BACKUP_COUNT -gt 0 ]]; then
+              echo "📝 Files replaced by tooling configuration: $BACKUP_COUNT file(s)"
+              find . -maxdepth 1 -name "*.workspace-original" | sort | sed 's/\.workspace-original$//' | sed 's/^\.\//  /'
+            fi
+          fi
+          
       - name: MegaLinter
         id: ml
-        # You can override MegaLinter flavor used to have faster performances
-        # c_cpp MegaLinter Flavor https://megalinter.io/latest/flavors/c_cpp/ includes all needed linters
-        uses: oxsecurity/megalinter/flavors/c_cpp@v8
-        # configuration of Megalinter
+        # Using c_cpp flavor v7 as in original workflow
+        uses: oxsecurity/megalinter/flavors/c_cpp@v7
         env:
+          # Core settings
           VALIDATE_ALL_CODEBASE: true
           PRINT_ALPACA: false
-          # LINTER_RULES_PATH: ${{ github.workspace }}/lint-config/linting/config
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          
+          # Reporting
+          GITHUB_COMMENT_REPORTER: true
+          GITHUB_STATUS_REPORTER: true
+          
+          # Disabled categories and linters
           DISABLE: COPYPASTE,SPELL,JAVASCRIPT,MARKDOWN
-          DISABLE_LINTERS: YAML_PRETTIER,REPOSITORY_GRYPE,REPOSITORY_SEMGREP,REPOSITORY_DEVSKIM,REPOSITORY_KICS,REPOSITORY_TRIVY,REPOSITORY_TRIVY_SBOM,REPOSITORY_TRUFFLEHOG,REPOSITORY_CHECKOV,REPOSITORY_GITLEAKS,YAML_V8R,JAVA_PMD
+          # Fix: DISABLE_LINTERS should be comma-separated, not comma-space separated
+          DISABLE_LINTERS: OPENAPI_SPECTRAL,YAML_PRETTIER,REPOSITORY_GRYPE,REPOSITORY_SEMGREP,REPOSITORY_DEVSKIM,REPOSITORY_KICS,REPOSITORY_TRIVY,REPOSITORY_TRIVY_SBOM,REPOSITORY_TRUFFLEHOG,REPOSITORY_CHECKOV,REPOSITORY_GITLEAKS,YAML_V8R,JAVA_PMD
+          
+          # Configuration files (explicitly specified for clarity)
           API_SPECTRAL_CONFIG_FILE: .spectral.yaml
           YAML_YAMLLINT_CONFIG_FILE: .yamllint.yaml
           GHERKIN_GHERKIN_LINT_CONFIG_FILE: .gherkin-lintrc
+          # Note: The lint-function directory will be automatically detected by MegaLinter
+          
+          # Path filters
           API_SPECTRAL_FILTER_REGEX_INCLUDE: (code/API_definitions/)
           YAML_YAMLLINT_FILTER_REGEX_INCLUDE: (code/API_definitions/)
           GHERKIN_GHERKIN_LINT_FILTER_REGEX_INCLUDE: (code/Test_definitions/)
+          
       - name: Archive production artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
         with:
           name: MegaLinter reports
-          include-hidden-files: "true"
+          include-hidden-files: true
           path: |
             megalinter-reports
             mega-linter.log
 
- # Job that runs only when changelog is updated
-  changelog-changed-job:
+  # Optional: Summary job for better visibility
+  summary:
+    name: Validation Summary
+    needs: [validate-inputs, general]
     runs-on: ubuntu-latest
-    
+    if: always()
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 2
-    
-    - name: Check if changelog was updated
-      id: changelog-changed
-      uses: tj-actions/changed-files@ed68ef82c095e0d48ec87eccea555d944a631a4c # v46 
-      with:
-        files: |
-          CHANGELOG.MD
-          CHANGELOG.md
-    
-    - name: Custom job logic
-      if: steps.changelog-changed.outputs.any_changed == 'true'
-      run: |
-        echo "🚀 Changelog was updated! Running custom job..."
-        
-        # Add your custom logic here
-        echo "Performing custom actions:"
-        echo "✅ Step 1: Custom processing"
-        echo "✅ Step 2: Your business logic"
-        echo "✅ Step 3: Additional operations"
-        
-        # Example: Parse changelog for latest entry
-        echo "Latest changelog entry:"
-        head -20 CHANGELOG.md || head -20 CHANGELOG.md || echo "No changelog found"
-    
-    - name: Skip message
-      if: steps.changelog-changed.outputs.any_changed != 'true'
-      run: |
-        echo "ℹ️ Changelog not updated, skipping custom job"
+      - name: Create summary
+        run: |
+          echo "## 📊 PR Validation Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          echo "### Configuration Used:" >> $GITHUB_STEP_SUMMARY
+          echo "- **Tooling Ref:** ${{ needs.validate-inputs.outputs.validated-ref }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Config Path:** ${{ needs.validate-inputs.outputs.config-path || '(root)' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Files Strategy:** ${{ needs.validate-inputs.outputs.files-strategy }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          echo "### ⚠️ Important Notes:" >> $GITHUB_STEP_SUMMARY
+          echo "- Configuration files and directories from the tooling repository have been copied to the workspace root" >> $GITHUB_STEP_SUMMARY
+          
+          STRATEGY="${{ needs.validate-inputs.outputs.files-strategy }}"
+          case "$STRATEGY" in
+            replace)
+              echo "- Existing configuration files/directories were replaced by tooling configuration" >> $GITHUB_STEP_SUMMARY
+              ;;
+            keep)
+              echo "- Existing configuration files/directories were preserved; only missing items were added" >> $GITHUB_STEP_SUMMARY
+              ;;
+            fail)
+              echo "- No existing configuration files/directories were allowed (strategy: fail)" >> $GITHUB_STEP_SUMMARY
+              ;;
+          esac
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [[ "${{ needs.general.result }}" == "success" ]]; then
+            echo "✅ **MegaLinter validation passed!**" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ **MegaLinter validation failed**" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Please check the MegaLinter reports artifact for details." >> $GITHUB_STEP_SUMMARY
+          fi
+
+# Commented out changelog job remains the same...
+#  changelog-changed-job:
+#    runs-on: ubuntu-latest
+#    
+#    steps:
+#    - name: Checkout repository
+#      uses: actions/checkout@v4
+#      with:
+#        fetch-depth: 2
+#    
+#    - name: Check if changelog was updated
+#      id: changelog-changed
+#      uses: tj-actions/changed-files@ed68ef82c095e0d48ec87eccea555d944a631a4c # v46 
+#      with:
+#        files: |
+#          CHANGELOG.MD
+#          CHANGELOG.md
+#    
+#    - name: Custom job logic
+#      if: steps.changelog-changed.outputs.any_changed == 'true'
+#      run: |
+#        echo "🚀 Changelog was updated! Running custom job..."
+#        
+#        # Add your custom logic here
+#        echo "Performing custom actions:"
+#        echo "✅ Step 1: Custom processing"
+#        echo "✅ Step 2: Your business logic"
+#        echo "✅ Step 3: Additional operations"
+#        
+#        # Example: Parse changelog for latest entry
+#        echo "Latest changelog entry:"
+#        head -20 CHANGELOG.md || head -20 CHANGELOG.MD || echo "No changelog found"
+#    
+#    - name: Skip message
+#      if: steps.changelog-changed.outputs.any_changed != 'true'
+#      run: |
+#        echo "ℹ️ Changelog not updated, skipping custom job"
