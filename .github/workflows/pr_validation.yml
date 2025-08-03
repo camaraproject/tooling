@@ -12,22 +12,28 @@
 #
 # CHANGELOG:
 # - 2025-08-01: Initial version for v0 version
-# - 2025-08-02: Added input validation, automatic ref detection, enhanced error handling,
-#               existing-files-strategy parameter, and single job design
+# - 2025-08-02: Added input validation, enhanced error handling, existing-files-strategy 
+#               parameter, and tooling-ref input (due to GitHub Actions limitation - 
+#               cannot auto-detect @ref from uses: statement)
 #
 # FEATURES:
-# - Automatically uses the same ref that was used to call the workflow
 # - Configurable strategy for handling existing configuration files
 # - Centralized configuration via environment variables
-# - Single job design for minimal PR status checks
+# - Optional tooling-ref parameter (GitHub Actions doesn't expose the @ref from uses:)
 #
 # USAGE:
 # The action is invoked by Pull Request Validation Workflow Caller in CAMARA API repositories
 # Examples:
-#   uses: camaraproject/tooling/.github/workflows/pr_validation-4.yml@v1
+#   # Using default v0 ref for tooling
+#   uses: camaraproject/tooling/.github/workflows/pr_validation.yml@v0
 #   with:
 #     configurations: "strict"
-#     existing-files-strategy: "keep"  # Options: replace (default), keep, fail
+#
+#   # Using a specific tooling ref (when testing new versions)
+#   uses: camaraproject/tooling/.github/workflows/pr_validation.yml@test-branch
+#   with:
+#     configurations: "strict"
+#     tooling-ref: test-branch  # Must match the @ref above for consistency
 #
 # DOCUMENTATION:
 # see https://github.com/camaraproject/tooling/tree/main/linting/docs
@@ -57,6 +63,11 @@ on:
         type: string
         required: false
         default: "replace"
+      tooling-ref:
+        description: 'Ref to use for tooling checkout (defaults to v0). Should match the @ref in uses: for consistency'
+        type: string
+        required: false
+        default: ""
 
 jobs:
   general:
@@ -94,36 +105,45 @@ jobs:
           echo "✅ Existing files strategy validated: $STRATEGY"
           echo "strategy=$STRATEGY" >> $GITHUB_OUTPUT
 
-      - name: Determine ref from workflow call
+      - name: Determine ref for tooling checkout
         id: determine-ref
         run: |
-          # Extract ref from workflow_ref (format: owner/repo/.github/workflows/file.yml@ref)
-          # This automatically uses the same ref that was used to call this workflow
-          
-          WORKFLOW_REF="${{ github.workflow_ref }}"
-          echo "📍 Workflow ref: $WORKFLOW_REF"
-          
-          if [[ "$WORKFLOW_REF" =~ @(.+)$ ]]; then
-            REF="${BASH_REMATCH[1]}"
-            echo "ℹ️ Using ref from workflow call: $REF"
+          # Use provided ref or default to v0
+          if [[ -n "${{ inputs.tooling-ref }}" ]]; then
+            REF="${{ inputs.tooling-ref }}"
+            echo "ℹ️ Using provided tooling-ref: $REF"
           else
-            # When no @ref is specified, GitHub uses the default branch
-            # We'll use the same fallback as the original workflow
             REF="v0"
-            echo "ℹ️ No @ref specified in workflow call (using default branch)"
-            echo "⚠️ Falling back to configured default ref: $REF"
-            echo ""
-            echo "💡 TIP: For consistent behavior, explicitly specify a ref:"
-            echo "   uses: camaraproject/tooling/.github/workflows/pr_validation-4.yml@v0"
+            echo "ℹ️ No tooling-ref specified, using default: $REF"
           fi
           
           echo "ref=$REF" >> $GITHUB_OUTPUT
+          
+      - name: Validate tooling ref exists
+        run: |
+          REF="${{ steps.determine-ref.outputs.ref }}"
+          echo "🔍 Validating that ref '$REF' exists in camaraproject/tooling..."
+          
+          # Use GitHub API to check if the ref exists
+          # This works for branches, tags, and commit SHAs
+          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            "https://api.github.com/repos/camaraproject/tooling/commits/${REF}")
+          
+          if [[ "$RESPONSE" == "200" ]]; then
+            echo "✅ Ref '$REF' exists in camaraproject/tooling"
+          else
+            echo "❌ Error: Ref '$REF' does not exist in camaraproject/tooling"
+            echo "Please check that the ref is correct."
+            exit 1
+          fi
           
       - name: Display configuration summary
         run: |
           echo "📋 Configuration Summary:"
           echo "  - Configurations subfolder: ${{ steps.validate-config.outputs.path || '(root)' }}"
-          echo "  - Tooling repository ref: ${{ steps.determine-ref.outputs.ref }}"
+          echo "  - Tooling checkout ref: ${{ steps.determine-ref.outputs.ref }}"
           echo "  - Existing files strategy: ${{ steps.validate-strategy.outputs.strategy }}"
 
       - name: Checkout Code
