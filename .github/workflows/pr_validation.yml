@@ -69,9 +69,10 @@ jobs:
           API_SPECTRAL_CONFIG_FILE: .spectral.yaml
           YAML_YAMLLINT_CONFIG_FILE: .yamllint.yaml
           GHERKIN_GHERKIN_LINT_CONFIG_FILE: .gherkin-lintrc
-          API_SPECTRAL_FILTER_REGEX_INCLUDE: (code/API_definitions/)
-          YAML_YAMLLINT_FILTER_REGEX_INCLUDE: (code/API_definitions/)
-          GHERKIN_GHERKIN_LINT_FILTER_REGEX_INCLUDE: (code/Test_definitions/)
+          # include occurences of /code/ in all subfolders
+          API_SPECTRAL_FILTER_REGEX_INCLUDE: (.*/code/API_definitions/)
+          YAML_YAMLLINT_FILTER_REGEX_INCLUDE: (.*/code/API_definitions/)
+          GHERKIN_GHERKIN_LINT_FILTER_REGEX_INCLUDE: (.*/code/Test_definitions/)
       - name: Archive production artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
