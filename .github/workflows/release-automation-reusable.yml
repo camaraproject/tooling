@@ -706,6 +706,14 @@ jobs:
       error_message: ${{ steps.create.outputs.error_message }}
       apis_json: ${{ steps.create.outputs.apis_json }}
     steps:
+      - name: Generate App Token
+        id: app-token
+        if: vars.RELEASE_APP_ID != ''
+        uses: actions/create-github-app-token@29824e69f54612133e76f7eaac726eef6c875baf # v2.2.1
+        with:
+          app-id: ${{ vars.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
       - name: Checkout tooling
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
         with:
@@ -724,7 +732,7 @@ jobs:
         with:
           release_tag: ${{ needs.derive-state.outputs.release_tag }}
           base_branch: main
-          github_token: ${{ github.token }}
+          github_token: ${{ steps.app-token.outputs.token || github.token }}
 
       - name: Log Result
         if: always()
@@ -752,10 +760,19 @@ jobs:
       error_message: ${{ steps.discard.outputs.error_message }}
       renamed_review_branch: ${{ steps.cleanup.outputs.renamed_review_branch }}
     steps:
+      - name: Generate App Token
+        id: app-token
+        if: vars.RELEASE_APP_ID != ''
+        uses: actions/create-github-app-token@29824e69f54612133e76f7eaac726eef6c875baf # v2.2.1
+        with:
+          app-id: ${{ vars.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
       - name: Discard Snapshot
         id: discard
         uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7
         with:
+          github-token: ${{ steps.app-token.outputs.token || github.token }}
           script: |
             const snapshotBranch = '${{ needs.derive-state.outputs.snapshot_branch }}';
             const prNumber = '${{ needs.derive-state.outputs.release_pr_number }}';
@@ -803,6 +820,7 @@ jobs:
         if: steps.discard.outputs.success == 'true'
         uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7
         with:
+          github-token: ${{ steps.app-token.outputs.token || github.token }}
           script: |
             const reviewBranch = '${{ needs.derive-state.outputs.release_review_branch }}';
             if (!reviewBranch) return;
@@ -852,10 +870,19 @@ jobs:
       error_message: ${{ steps.delete.outputs.error_message }}
       renamed_review_branch: ${{ steps.cleanup.outputs.renamed_review_branch }}
     steps:
+      - name: Generate App Token
+        id: app-token
+        if: vars.RELEASE_APP_ID != ''
+        uses: actions/create-github-app-token@29824e69f54612133e76f7eaac726eef6c875baf # v2.2.1
+        with:
+          app-id: ${{ vars.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
       - name: Delete Draft Release
         id: delete
         uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7
         with:
+          github-token: ${{ steps.app-token.outputs.token || github.token }}
           script: |
             const releaseTag = '${{ needs.derive-state.outputs.release_tag }}';
             const snapshotBranch = '${{ needs.derive-state.outputs.snapshot_branch }}';
@@ -924,6 +951,7 @@ jobs:
         if: steps.delete.outputs.success == 'true'
         uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7
         with:
+          github-token: ${{ steps.app-token.outputs.token || github.token }}
           script: |
             const reviewBranch = '${{ needs.derive-state.outputs.release_review_branch }}';
             if (!reviewBranch) return;
@@ -1039,10 +1067,18 @@ jobs:
       - name: Install dependencies
         run: pip install pyyaml pystache requests
 
+      - name: Generate App Token
+        id: app-token
+        if: vars.RELEASE_APP_ID != ''
+        uses: actions/create-github-app-token@29824e69f54612133e76f7eaac726eef6c875baf # v2.2.1
+        with:
+          app-id: ${{ vars.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
       - name: Execute Publish Flow
         id: publish
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token || secrets.GITHUB_TOKEN }}
           OWNER: ${{ github.repository_owner }}
           REPO: ${{ github.event.repository.name }}
           RELEASE_TAG: ${{ needs.derive-state.outputs.release_tag }}
