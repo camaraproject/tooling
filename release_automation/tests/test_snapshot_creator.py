@@ -38,9 +38,6 @@ def mock_github_client():
     client.list_branches.return_value = [
         Mock(name="main", sha="abc1234567890abcdef1234567890abcdef12345678")
     ]
-    client.get_authenticated_user.return_value = {
-        "id": 12345, "login": "test-bot[bot]", "type": "Bot"
-    }
     return client
 
 

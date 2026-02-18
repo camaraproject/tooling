@@ -112,6 +112,8 @@ class SnapshotCreator:
         transformer: MechanicalTransformer,
         metadata_generator: MetadataGenerator,
         state_manager: ReleaseStateManager,
+        bot_name: str = "github-actions[bot]",
+        bot_email: str = "41898282+github-actions[bot]@users.noreply.github.com",
     ):
         """
         Initialize snapshot creator with dependencies.
@@ -122,17 +124,16 @@ class SnapshotCreator:
             transformer: MechanicalTransformer for placeholder replacements
             metadata_generator: MetadataGenerator for release-metadata.yaml
             state_manager: ReleaseStateManager for state validation
+            bot_name: Git committer name for snapshot commits
+            bot_email: Git committer email for snapshot commits
         """
         self.gh = github_client
         self.version_calc = version_calculator
         self.transformer = transformer
         self.metadata_gen = metadata_generator
         self.state_manager = state_manager
-
-        # Derive bot identity from the authenticated token
-        user_info = github_client.get_authenticated_user()
-        self.bot_name = user_info["login"]
-        self.bot_email = f"{user_info['id']}+{user_info['login']}@users.noreply.github.com"
+        self.bot_name = bot_name
+        self.bot_email = bot_email
 
     def create_snapshot(
         self,

@@ -25,6 +25,14 @@ inputs:
   github_token:
     description: 'GitHub token with repo and PR write permissions'
     required: true
+  bot_name:
+    description: 'Git committer name for snapshot commits'
+    required: false
+    default: 'github-actions[bot]'
+  bot_email:
+    description: 'Git committer email for snapshot commits'
+    required: false
+    default: '41898282+github-actions[bot]@users.noreply.github.com'
 
 outputs:
   success:
@@ -74,6 +82,8 @@ runs:
         DRY_RUN: ${{ inputs.dry_run }}
         REPO: ${{ github.repository }}
         SCRIPTS_PATH: ${{ github.action_path }}/../../release_automation/scripts
+        BOT_NAME: ${{ inputs.bot_name }}
+        BOT_EMAIL: ${{ inputs.bot_email }}
       run: |
         import os
         import sys
@@ -142,6 +152,8 @@ runs:
                 transformer=transformer,
                 metadata_generator=metadata_gen,
                 state_manager=state_manager,
+                bot_name=os.environ.get('BOT_NAME', 'github-actions[bot]'),
+                bot_email=os.environ.get('BOT_EMAIL', '41898282+github-actions[bot]@users.noreply.github.com'),
             )
         except Exception as e:
             print(f"::error::Failed to initialize components: {e}")
