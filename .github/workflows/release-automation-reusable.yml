@@ -726,6 +726,23 @@ jobs:
             release_automation/config
             shared-actions/create-snapshot
 
+      - name: Resolve Bot Identity
+        id: bot-identity
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token || github.token }}
+        run: |
+          if [ -n "${{ vars.RELEASE_APP_SLUG }}" ] && [ -n "${{ steps.app-token.outputs.token }}" ]; then
+            BOT_LOGIN="${{ vars.RELEASE_APP_SLUG }}[bot]"
+          else
+            BOT_LOGIN="github-actions[bot]"
+          fi
+          BOT_INFO=$(gh api "/users/$BOT_LOGIN" --jq '{id: .id, login: .login}')
+          BOT_NAME=$(echo "$BOT_INFO" | jq -r '.login')
+          BOT_ID=$(echo "$BOT_INFO" | jq -r '.id')
+          echo "Committing as: $BOT_NAME <${BOT_ID}+${BOT_NAME}@users.noreply.github.com>"
+          echo "bot_name=$BOT_NAME" >> $GITHUB_OUTPUT
+          echo "bot_email=${BOT_ID}+${BOT_NAME}@users.noreply.github.com" >> $GITHUB_OUTPUT
+
       - name: Create Snapshot
         id: create
         uses: ./_tooling/shared-actions/create-snapshot
@@ -733,6 +750,8 @@ jobs:
           release_tag: ${{ needs.derive-state.outputs.release_tag }}
           base_branch: main
           github_token: ${{ steps.app-token.outputs.token || github.token }}
+          bot_name: ${{ steps.bot-identity.outputs.bot_name }}
+          bot_email: ${{ steps.bot-identity.outputs.bot_email }}
 
       - name: Log Result
         if: always()
@@ -1438,12 +1457,12 @@ jobs:
             exit 0
           }
 
-          # Derive git user from token identity
-          TOKEN_INFO=$(gh api user --jq '{login: .login, id: .id}')
-          TOKEN_USER=$(echo "$TOKEN_INFO" | jq -r '.login')
-          TOKEN_ID=$(echo "$TOKEN_INFO" | jq -r '.id')
-          git config user.name "$TOKEN_USER"
-          git config user.email "${TOKEN_ID}+${TOKEN_USER}@users.noreply.github.com"
+          # Derive git user from github-actions bot (sync PR uses GITHUB_TOKEN)
+          BOT_INFO=$(gh api "/users/github-actions[bot]" --jq '{id: .id, login: .login}')
+          BOT_NAME=$(echo "$BOT_INFO" | jq -r '.login')
+          BOT_ID=$(echo "$BOT_INFO" | jq -r '.id')
+          git config user.name "$BOT_NAME"
+          git config user.email "${BOT_ID}+${BOT_NAME}@users.noreply.github.com"
           git commit -m "chore: post-release sync for ${RELEASE_TAG}"
           git push origin "$SYNC_BRANCH"
 

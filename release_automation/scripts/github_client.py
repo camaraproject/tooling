@@ -90,14 +90,20 @@ class GitHubClient:
         except subprocess.CalledProcessError as e:
             raise GitHubClientError(f"gh command failed: {e.stderr}")
 
-    def get_authenticated_user(self) -> Dict[str, Any]:
+    def get_user(self, login: str) -> Dict[str, Any]:
         """
-        Get the authenticated user for the current token.
+        Look up a GitHub user by login name.
+
+        Works with any token type (App installation, GITHUB_TOKEN, PAT)
+        because it uses the public /users/ endpoint.
+
+        Args:
+            login: GitHub user login (e.g., "camara-release-automation[bot]")
 
         Returns:
             Dict with 'id' (int), 'login' (str), and 'type' (str)
         """
-        output = self._run_gh(["api", "/user", "--jq", "{id: .id, login: .login, type: .type}"])
+        output = self._run_gh(["api", f"/users/{login}", "--jq", "{id: .id, login: .login, type: .type}"])
         return json.loads(output.strip())
 
     def tag_exists(self, tag: str) -> bool:
