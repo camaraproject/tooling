@@ -90,6 +90,16 @@ class GitHubClient:
         except subprocess.CalledProcessError as e:
             raise GitHubClientError(f"gh command failed: {e.stderr}")
 
+    def get_authenticated_user(self) -> Dict[str, Any]:
+        """
+        Get the authenticated user for the current token.
+
+        Returns:
+            Dict with 'id' (int), 'login' (str), and 'type' (str)
+        """
+        output = self._run_gh(["api", "/user", "--jq", "{id: .id, login: .login, type: .type}"])
+        return json.loads(output.strip())
+
     def tag_exists(self, tag: str) -> bool:
         """
         Check if a tag exists in the repository.
