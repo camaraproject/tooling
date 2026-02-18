@@ -104,8 +104,6 @@ class SnapshotCreator:
     SNAPSHOT_BRANCH_PREFIX = "release-snapshot"
     RELEASE_REVIEW_BRANCH_PREFIX = "release-review"
     SHORT_SHA_LENGTH = 7
-    BOT_NAME = "camara-release-automation[bot]"
-    BOT_EMAIL = "2865881+camara-release-automation[bot]@users.noreply.github.com"
 
     def __init__(
         self,
@@ -130,6 +128,11 @@ class SnapshotCreator:
         self.transformer = transformer
         self.metadata_gen = metadata_generator
         self.state_manager = state_manager
+
+        # Derive bot identity from the authenticated token
+        user_info = github_client.get_authenticated_user()
+        self.bot_name = user_info["login"]
+        self.bot_email = f"{user_info['id']}+{user_info['login']}@users.noreply.github.com"
 
     def create_snapshot(
         self,
@@ -201,7 +204,7 @@ class SnapshotCreator:
             )
 
             git_ops.clone(branch=config.base_branch)
-            git_ops.configure_user(self.BOT_NAME, self.BOT_EMAIL)
+            git_ops.configure_user(self.bot_name, self.bot_email)
 
             # Step 7: Create snapshot branch
             git_ops.create_branch(snapshot_branch)

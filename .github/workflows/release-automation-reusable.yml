@@ -1438,8 +1438,12 @@ jobs:
             exit 0
           }
 
-          git config user.name "camara-release-automation[bot]"
-          git config user.email "2865881+camara-release-automation[bot]@users.noreply.github.com"
+          # Derive git user from token identity
+          TOKEN_INFO=$(gh api user --jq '{login: .login, id: .id}')
+          TOKEN_USER=$(echo "$TOKEN_INFO" | jq -r '.login')
+          TOKEN_ID=$(echo "$TOKEN_INFO" | jq -r '.id')
+          git config user.name "$TOKEN_USER"
+          git config user.email "${TOKEN_ID}+${TOKEN_USER}@users.noreply.github.com"
           git commit -m "chore: post-release sync for ${RELEASE_TAG}"
           git push origin "$SYNC_BRANCH"
 
