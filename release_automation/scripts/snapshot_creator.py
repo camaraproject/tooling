@@ -104,8 +104,8 @@ class SnapshotCreator:
     SNAPSHOT_BRANCH_PREFIX = "release-snapshot"
     RELEASE_REVIEW_BRANCH_PREFIX = "release-review"
     SHORT_SHA_LENGTH = 7
-    BOT_NAME = "CAMARA Release Bot"
-    BOT_EMAIL = "noreply@camaraproject.org"
+    BOT_NAME = "camara-release-automation[bot]"
+    BOT_EMAIL = "2865881+camara-release-automation[bot]@users.noreply.github.com"
 
     def __init__(
         self,
