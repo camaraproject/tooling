@@ -28,6 +28,10 @@ inputs:
   run_id:
     description: "Workflow run ID for marker uniqueness (preserves comment history across runs)"
     required: true
+  github_token:
+    description: "GitHub token for API authentication (defaults to github.token)"
+    required: false
+    default: ""
 
 outputs:
   comment_id:
@@ -153,6 +157,7 @@ runs:
         RENDERED_CONTENT: ${{ steps.render.outputs.content }}
         MARKER: ${{ steps.render.outputs.marker }}
       with:
+        github-token: ${{ inputs.github_token || github.token }}
         script: |
           const issueNumber = parseInt(process.env.ISSUE_NUMBER);
           const existingCommentId = process.env.EXISTING_COMMENT_ID;
