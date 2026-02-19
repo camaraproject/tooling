@@ -114,15 +114,23 @@ jobs:
             }
 
             // Create separate check status (visible in PR checks list)
-            await github.rest.repos.createCommitStatus({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              sha: context.sha,
-              state: valid ? 'success' : 'failure',
-              context: '--> Validate: release-plan.yaml',
-              description: description,
-              target_url: runUrl
-            });
+            try {
+              await github.rest.repos.createCommitStatus({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                sha: context.sha,
+                state: valid ? 'success' : 'failure',
+                context: '--> Validate: release-plan.yaml',
+                description: description,
+                target_url: runUrl
+              });
+            } catch (error) {
+              if (error.status === 403) {
+                core.warning('Cannot post commit status — insufficient permissions (common for fork PRs). Validation result: ' + description);
+              } else {
+                throw error;
+              }
+            }
 
             if (!valid) {
               // Output errors as annotations
