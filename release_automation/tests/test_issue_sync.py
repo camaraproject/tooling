@@ -59,13 +59,13 @@ class TestFindWorkflowOwnedIssue:
     """Tests for find_workflow_owned_issue method."""
 
     def test_finds_issue_with_marker_and_tag(self):
-        """Test finding an issue with workflow marker and release tag."""
+        """Test finding an issue with workflow marker and release tag marker in body."""
         gh = MagicMock()
         gh.search_issues.return_value = [
             {
                 "number": 1,
                 "title": "Release r4.1 (RC) — Fall26",
-                "body": f"Some content\n{WORKFLOW_MARKER}\nMore content",
+                "body": f"Some content\n{WORKFLOW_MARKER}\n<!-- release-automation:release-tag:r4.1 -->\nMore content",
                 "labels": [{"name": "release-issue"}]
             }
         ]
@@ -95,13 +95,13 @@ class TestFindWorkflowOwnedIssue:
         assert result is None
 
     def test_ignores_issue_with_wrong_tag(self):
-        """Test that issues with different release tag are ignored."""
+        """Test that issues with different release tag marker are ignored."""
         gh = MagicMock()
         gh.search_issues.return_value = [
             {
                 "number": 1,
-                "title": "Release r4.0 (RC)",  # Different tag
-                "body": f"{WORKFLOW_MARKER}",
+                "title": "Release r4.0 (RC)",
+                "body": f"{WORKFLOW_MARKER}\n<!-- release-automation:release-tag:r4.0 -->",
                 "labels": [{"name": "release-issue"}]
             }
         ]
@@ -128,13 +128,13 @@ class TestFindWorkflowOwnedIssue:
             {
                 "number": 1,
                 "title": "Release r4.0",
-                "body": f"{WORKFLOW_MARKER}",
+                "body": f"{WORKFLOW_MARKER}\n<!-- release-automation:release-tag:r4.0 -->",
                 "labels": []
             },
             {
                 "number": 2,
                 "title": "Release r4.1 (RC)",
-                "body": f"{WORKFLOW_MARKER}",
+                "body": f"{WORKFLOW_MARKER}\n<!-- release-automation:release-tag:r4.1 -->",
                 "labels": []
             },
             {
@@ -208,7 +208,7 @@ class TestSyncReleaseIssue:
             {
                 "number": 1,
                 "title": "Release r4.1 (RC)",
-                "body": f"{WORKFLOW_MARKER}",
+                "body": f"{WORKFLOW_MARKER}\n<!-- release-automation:release-tag:r4.1 -->",
                 "labels": [{"name": "release-state:planned"}]
             }
         ]
@@ -235,7 +235,7 @@ class TestSyncReleaseIssue:
             {
                 "number": 1,
                 "title": "Release r4.1 (RC)",
-                "body": f"{WORKFLOW_MARKER}\n<!-- BEGIN:STATE -->old<!-- END:STATE -->",
+                "body": f"{WORKFLOW_MARKER}\n<!-- release-automation:release-tag:r4.1 -->\n<!-- BEGIN:STATE -->old<!-- END:STATE -->",
                 "labels": [{"name": "release-state:planned"}]  # Old label
             }
         ]
