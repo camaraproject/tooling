@@ -41,7 +41,7 @@ class ReleasePlanValidator:
     """Validator for CAMARA release-plan.yaml files."""
 
     # Allowed meta-release values (update as new meta-releases are added)
-    ALLOWED_META_RELEASES = ['Fall25', 'Spring26', 'Fall26', 'Sync26', 'Signal26', 'Signal27']
+    ALLOWED_META_RELEASES = ['Fall25', 'Spring26', 'Fall26', 'Sync26', 'Signal27']
 
     def __init__(self, release_plan_file: Path, schema_file: Optional[Path] = None,
                  check_files: bool = False):
