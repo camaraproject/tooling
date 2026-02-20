@@ -64,7 +64,7 @@ class TestFindWorkflowOwnedIssue:
         gh.search_issues.return_value = [
             {
                 "number": 1,
-                "title": "Release r4.1 (RC) — Fall26",
+                "title": "Release r4.1 (RC) — Sync26",
                 "body": f"Some content\n{WORKFLOW_MARKER}\n<!-- release-automation:release-tag:r4.1 -->\nMore content",
                 "labels": [{"name": "release-issue"}]
             }
@@ -176,14 +176,14 @@ class TestSyncReleaseIssue:
             "repository": {
                 "target_release_tag": "r4.1",
                 "target_release_type": "pre-release-rc",
-                "meta_release": "Fall26"
+                "meta_release": "Sync26"
             }
         }
 
         state_manager.derive_state.return_value = ReleaseState.PLANNED
         gh.search_issues.return_value = []
         gh.create_issue.return_value = {"number": 1, "title": "Release r4.1 (RC)"}
-        issue_manager.generate_title.return_value = "Release r4.1 (RC) — Fall26"
+        issue_manager.generate_title.return_value = "Release r4.1 (RC) — Sync26"
         issue_manager.generate_issue_body_template.return_value = f"## Release\n{WORKFLOW_MARKER}"
 
         result = manager.sync_release_issue(release_plan, trigger_pr=123)
