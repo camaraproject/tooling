@@ -172,10 +172,10 @@ jobs:
         if: steps.changes.outputs.release_plan_any_changed != 'true' || steps.validate.outputs.valid == 'true'
         uses: actions/checkout@v6
         with:
-          repository: rartych/tooling
+          repository: camaraproject/tooling
           path: lint-config
           # using configurations from v0 floating tag
-          ref: extend_spectral_owasp
+          ref: v0
           sparse-checkout: |
             linting/config/
           sparse-checkout-cone-mode: false
