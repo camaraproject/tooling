@@ -175,7 +175,7 @@ jobs:
           repository: rartych/tooling
           path: lint-config
           # using configurations from v0 floating tag
-          ref: v0
+          ref: extend_spectral_owasp
           sparse-checkout: |
             linting/config/
           sparse-checkout-cone-mode: false
