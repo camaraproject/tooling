@@ -5,7 +5,8 @@
 # - 05.02.2026: Initial version
 # - 09.02.2026: Target version (owasp:api4 original severity restored)
 
-extends: ["@stoplight/spectral-owasp-ruleset"]
+# extends: ["@stoplight/spectral-owasp-ruleset"]
+extends: ["https://unpkg.com/@stoplight/spectral-owasp-ruleset/dist/ruleset.mjs"]
 rules:
 # excluded rules:
   owasp:api2:2023-auth-insecure-schemes : off
