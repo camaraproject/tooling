@@ -1,3 +1,8 @@
+# CAMARA Project - main Spectral linting rulesetfile for use with Megalinter
+# https://docs.stoplight.io/docs/spectral/83527ef2dd8c0-extending-rulesets
+# Changelog:
+# - 27.02.2026: Initial version
+
 extends:
   - ./.spectral.yaml
   - ./.spectral-owasp.yaml
