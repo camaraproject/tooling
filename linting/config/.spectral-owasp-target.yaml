@@ -3,7 +3,7 @@
 # https://apistylebook.stoplight.io/docs/owasp-top-10-2023
 # Changelog:
 # - 05.02.2026: Initial version
-# - 09.02.2026: Target version (owasp:api4 original severity restored)
+# - 27.02.2026: Target version (owasp:api4 original severity restored)
 
 # extends: ["@stoplight/spectral-owasp-ruleset"]
 extends: ["https://unpkg.com/@stoplight/spectral-owasp-ruleset/dist/ruleset.mjs"]
