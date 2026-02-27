@@ -2,7 +2,7 @@
 # https://github.com/camaraproject/Commonalities/blob/main/documentation/Linting-rules.md
 # https://apistylebook.stoplight.io/docs/owasp-top-10-2023
 # Changelog:
-# - 05.02.2026: Initial version
+# - 27.02.2026: Initial version
 
 # extends: ["@stoplight/spectral-owasp-ruleset"]
 extends: ["https://unpkg.com/@stoplight/spectral-owasp-ruleset/dist/ruleset.mjs"]
