@@ -109,13 +109,18 @@ tooling/
 │   └── api_review_validator_v0_6.py
 ├── shared-actions/
 │   └── validate-release-plan/   # Composite GitHub Action (stub)
-└── validation/
-    ├── docs/
-    ├── schemas/                 # JSON/YAML schemas
-    │   ├── release-plan-schema.yaml
-    │   └── release-metadata-schema.yaml
-    └── scripts/
-        └── validate-release-plan.py
+├── validation/
+│   ├── docs/
+│   ├── schemas/                 # JSON/YAML schemas
+│   │   ├── release-plan-schema.yaml
+│   │   └── release-metadata-schema.yaml
+│   └── scripts/
+│       └── validate-release-plan.py
+└── workspace-config/            # Shared root-level config files for API repos
+    ├── .editorconfig
+    ├── .gitattributes
+    ├── .gitignore-template
+    └── README.md
 ```
 
 ## Release Information
