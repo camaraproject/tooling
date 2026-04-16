@@ -1,12 +1,11 @@
 <!-- release-automation:workflow-owned -->
 <!-- release-automation:release-tag:{{release_tag}} -->
 
-**Scope Issue:** _Link to the Scope Issue tracking your target release — fill in after issue creation._
-
 ### Preparing the release content
 
 Before issuing `/create-snapshot`, verify on `main`:
 
+- [ ] Scope Issue: _edit the issue description and link to the Scope Issue for the target release here_
 - [ ] `release-plan.yaml` content matches intent (check API names, versions, statuses, release type)
 - [ ] Commonalities and ICM dependency versions are current
 - [ ] CI checks are green (Spectral linting, PR validation)
