@@ -145,12 +145,17 @@ tooling/
 │   ├── update-issue-section/
 │   ├── update-readme-release-info/
 │   └── validate-release-plan/
-└── validation/
-    ├── schemas/                 # JSON/YAML schemas
-    │   ├── release-plan-schema.yaml
-    │   └── release-metadata-schema.yaml
-    └── scripts/
-        └── validate-release-plan.py
+├── validation/
+│   ├── schemas/                 # JSON/YAML schemas
+│   │   ├── release-plan-schema.yaml
+│   │   └── release-metadata-schema.yaml
+│   └── scripts/
+│       └── validate-release-plan.py
+└── workspace-config/            # Shared root-level config files for API repos
+    ├── .editorconfig
+    ├── .gitattributes
+    ├── .gitignore-template
+    └── README.md
 ```
 
 ## Release Information
