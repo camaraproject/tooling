@@ -542,9 +542,9 @@ rules:
   owasp:api2:2023-read-restricted: warn
 
   # --- API3: Broken Object Property Level Authorization ---
-  owasp:api3:2023-constrained-additionalProperties: warn   # OAS 3.0 only
+  owasp:api3:2023-constrained-additionalProperties: off    # MUTED for r4.x — see Commonalities#615
   owasp:api3:2023-constrained-unevaluatedProperties: warn  # OAS 3.1 only (no-op for 3.0.3)
-  owasp:api3:2023-no-additionalProperties: warn            # OAS 3.0 only
+  owasp:api3:2023-no-additionalProperties: off             # MUTED for r4.x — see Commonalities#615
   owasp:api3:2023-no-unevaluatedProperties: warn           # OAS 3.1 only (no-op for 3.0.3)
 
   # --- API4: Unrestricted Resource Consumption ---
