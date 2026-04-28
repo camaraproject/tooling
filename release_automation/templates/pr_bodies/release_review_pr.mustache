@@ -1,8 +1,10 @@
-## Release {{release_tag}} ({{short_type}})
+## Release Review: {{release_tag}} {{short_type}}
 
-Codeowners update and review this PR. After codeowner and release management approval, merge into the release snapshot to create a draft release.
+This PR finalizes the reviewable release content for the active snapshot.
 
-### APIs in this release
+Edit and review this PR before merging it into the release snapshot. After Codeowner and Release Management approval, merging this PR creates the draft release.
+
+### Release contents
 
 | API | Version | Status |
 |-----|---------|--------|
@@ -12,16 +14,19 @@ Codeowners update and review this PR. After codeowner and release management app
 
 {{#commonalities_release}}**Dependencies:** Commonalities {{commonalities_release}}{{#identity_consent_management_release}}, ICM {{identity_consent_management_release}}{{/identity_consent_management_release}}{{/commonalities_release}}
 
-### Codeowner Review
+### Codeowner Actions
 
-**Update this PR:**
-- [ ] All relevant changes copied into Added / Changed / Fixed / Removed (per API as needed)
+#### 1. Update release notes
 
-**Confirm readiness:**
+- [ ] CHANGELOG updated: copy all API-consumer-relevant changes into the appropriate Added / Changed / Fixed / Removed sections for each API as needed.
+      Do not copy administrative, tooling-only, or internal maintenance changes unless they affect API consumers.
+
+#### 2. Confirm API release readiness
+
 - [ ] API version numbers match the intent declared in `release-plan.yaml`
 {{#is_alpha}}
-- [ ] API definitions are consistent with the declared API version
-- [ ] API documentation (`info.description`) is up to date with the API definition
+- [ ] API definitions are consistent with the declared API versions
+- [ ] API documentation (`info.description`) is up to date with the API definitions
 {{/is_alpha}}
 {{#is_rc}}
 - [ ] API definitions comply with declared Commonalities version
@@ -43,11 +48,11 @@ Codeowners update and review this PR. After codeowner and release management app
 - [ ] API Description is up to date for the API(s)
 {{/is_stable_public}}
 
-### Release Management Review
+### Release Management Actions
 
 - [ ] CHANGELOG follows the release documentation rules
 - [ ] Breaking changes are documented and version updates follow SemVer rules
-- [ ] All mandatory release assets for the APIs are present per the API status and confirmed
+- [ ] Mandatory release assets are present for each API according to its status
 
 <details>
 <summary><b>Required release assets per API status</b></summary>
@@ -67,15 +72,18 @@ M = Mandatory, O = Optional — [Full documentation](https://github.com/camarapr
 
 </details>
 
-**Verify snapshot content (during automation introduction phase only):**
+### Temporary checks during automation introduction
+
+These checks are only needed while the automation is being introduced.
+
 - [ ] `release-metadata.yaml` content is correct
-- [ ] API version numbers and applicable extensions were generated correctly (server URLs, references, version fields)
-- [ ] README update looks correct (release tag, versions, latest vs pre-release)
+- [ ] API version numbers and applicable extensions were generated correctly, including server URLs, references, and version fields
+- [ ] README update looks correct, including release tag, versions, latest vs pre-release handling
 
 ### Valid actions
 
-- **Merge this PR** when both codeowner and release management approvals are given — creates a draft release
-- **`/discard-snapshot`** in the {{#release_issue_url}}[Release Issue]({{release_issue_url}}){{/release_issue_url}}{{^release_issue_url}}Release Issue{{/release_issue_url}} to discard, return to `planned`, and update content on `main`
+- **Merge this PR** when all Codeowner Actions and Release Management Actions are complete and the required approvals are present — creates the draft release
+- Use **`/discard-snapshot <reason>`** in the {{#release_issue_url}}[Release Issue]({{release_issue_url}}){{/release_issue_url}}{{^release_issue_url}}Release Issue{{/release_issue_url}} to discard this snapshot, return to `planned`, and update content on `main`
 
 ---
 Snapshot: [`{{snapshot_id}}`]({{snapshot_branch_url}})
