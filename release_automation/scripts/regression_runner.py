@@ -285,6 +285,31 @@ def get_release_issue_state(repo: str, issue_number: int) -> str | None:
     return read_state_label(data.get("labels", []))
 
 
+def get_issue_title(repo: str, issue_number: int) -> str:
+    """Return the title of *issue_number* in *repo*.
+
+    Used by ``find_recent_caller_run`` to disambiguate same-named workflow
+    runs triggered by unrelated ``issue_comment`` events. For ``issue_comment``
+    events, GitHub sets the run's ``display_title`` to the title of the issue
+    or PR where the comment was posted, so this title is the discriminator
+    between the canary's slash command on the Release Issue and a stray
+    comment on a Release Review PR.
+    """
+    data = gh(
+        [
+            "api", f"repos/{repo}/issues/{issue_number}",
+            "--jq", "{title: .title}",
+        ],
+        parse_json=True,
+    )
+    title = data.get("title")
+    if not isinstance(title, str) or not title:
+        raise InfrastructureError(
+            f"{repo}#{issue_number}: could not read issue title"
+        )
+    return title
+
+
 def snapshot_id_from_branch(branch_name: str) -> str:
     """Extract snapshot id from a release-snapshot/ or release-review/ branch name.
 
@@ -544,13 +569,24 @@ def find_recent_caller_run(
     *,
     workflow_file: str,
     since: datetime,
+    expected_display_title: str,
     attempts: int = 15,
     interval: float = 2.0,
 ) -> dict[str, Any]:
     """Poll `gh run list` for an issue_comment-triggered run newer than *since*.
 
-    Returns the run dict (with databaseId, createdAt, url, status, conclusion)
-    once one is observed. Raises InfrastructureError on timeout.
+    Filters candidates by ``displayTitle == expected_display_title`` to
+    disambiguate from unrelated ``issue_comment`` runs that fire on the same
+    workflow concurrently — e.g. a validation-bot result comment on the
+    Release Review PR creates a same-named run that immediately skips via
+    the workflow's ``if:`` filter, and without the title check the runner
+    can pick that skipped run instead of the slash command's run. For
+    ``issue_comment`` events GitHub sets ``display_title`` to the issue/PR
+    title where the comment was posted, so this filter pinpoints runs
+    triggered by comments on the Release Issue.
+
+    Returns the run dict (with databaseId, createdAt, url, status, conclusion,
+    displayTitle) once one is observed. Raises InfrastructureError on timeout.
     """
     for _ in range(attempts):
         time.sleep(interval)
@@ -560,7 +596,7 @@ def find_recent_caller_run(
                 "--repo", repo,
                 "--workflow", workflow_file,
                 "--event", "issue_comment",
-                "--json", "databaseId,createdAt,status,conclusion,url",
+                "--json", "databaseId,createdAt,displayTitle,status,conclusion,url",
                 "--limit", "10",
             ],
             parse_json=True,
@@ -571,8 +607,11 @@ def find_recent_caller_run(
                 created = _iso_to_dt(run["createdAt"])
             except (KeyError, ValueError):
                 continue
-            if created >= since:
-                candidates.append(run)
+            if created < since:
+                continue
+            if run.get("displayTitle") != expected_display_title:
+                continue
+            candidates.append(run)
         if candidates:
             # Newest first — take the one with the latest createdAt.
             candidates.sort(key=lambda r: r["createdAt"], reverse=True)
@@ -583,7 +622,8 @@ def find_recent_caller_run(
             )
             return run
     raise InfrastructureError(
-        f"{repo}: no {workflow_file} issue_comment run appeared within "
+        f"{repo}: no {workflow_file} issue_comment run with "
+        f"displayTitle={expected_display_title!r} appeared within "
         f"{attempts * interval:.0f}s since {since.isoformat()}"
     )
 
@@ -678,12 +718,19 @@ def _fire_command_phase(
     body = _build_command_body(command, purpose)
     marker = datetime.now(timezone.utc).replace(microsecond=0)
     try:
+        # Fetch the issue title before posting so find_recent_caller_run
+        # can disambiguate the slash-command run from unrelated
+        # issue_comment runs on the same workflow (e.g. validation-bot
+        # comments on the Release Review PR). For issue_comment events,
+        # GitHub sets the run's display_title to the issue/PR title.
+        issue_title = get_issue_title(repo, issue_number)
         post_issue_comment(repo, issue_number, body)
         logger.info("posted %s on %s#%s; polling for caller run", command, repo, issue_number)
         run = find_recent_caller_run(
             repo,
             workflow_file=_RA_CALLER_WORKFLOW,
             since=marker,
+            expected_display_title=issue_title,
         )
     except InfrastructureError as exc:
         report.detail = f"could not fire {command}: {exc}"

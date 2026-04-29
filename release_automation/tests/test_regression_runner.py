@@ -26,6 +26,7 @@ from release_automation.scripts.regression_runner import (
     fetch_last_bot_comment,
     find_recent_caller_run,
     find_release_issue,
+    get_issue_title,
     get_release_issue_state,
     load_expected_comment_titles,
     phase_fire_create_snapshot,
@@ -232,6 +233,36 @@ class TestGetReleaseIssueState:
 
 
 # ---------------------------------------------------------------------------
+# get_issue_title
+# ---------------------------------------------------------------------------
+
+
+class TestGetIssueTitle:
+    def test_returns_title(self):
+        with patch(
+            "release_automation.scripts.regression_runner.gh",
+            return_value={"title": "Release for r1.2"},
+        ):
+            assert get_issue_title("o/r", 90) == "Release for r1.2"
+
+    def test_raises_when_title_missing(self):
+        with patch(
+            "release_automation.scripts.regression_runner.gh",
+            return_value={},
+        ):
+            with pytest.raises(InfrastructureError, match="could not read"):
+                get_issue_title("o/r", 90)
+
+    def test_raises_when_title_empty(self):
+        with patch(
+            "release_automation.scripts.regression_runner.gh",
+            return_value={"title": ""},
+        ):
+            with pytest.raises(InfrastructureError, match="could not read"):
+                get_issue_title("o/r", 90)
+
+
+# ---------------------------------------------------------------------------
 # find_recent_caller_run — event filter + newest-after-marker selection
 # ---------------------------------------------------------------------------
 
@@ -243,6 +274,7 @@ class TestFindRecentCallerRun:
             {
                 "databaseId": 1,
                 "createdAt": "2026-04-22T09:59:00Z",
+                "displayTitle": "Release for r1.2",
                 "status": "completed",
                 "conclusion": "success",
                 "url": "https://x/1",
@@ -250,6 +282,7 @@ class TestFindRecentCallerRun:
             {
                 "databaseId": 2,
                 "createdAt": "2026-04-22T10:01:00Z",
+                "displayTitle": "Release for r1.2",
                 "status": "in_progress",
                 "conclusion": None,
                 "url": "https://x/2",
@@ -257,6 +290,7 @@ class TestFindRecentCallerRun:
             {
                 "databaseId": 3,
                 "createdAt": "2026-04-22T10:02:00Z",
+                "displayTitle": "Release for r1.2",
                 "status": "queued",
                 "conclusion": None,
                 "url": "https://x/3",
@@ -270,10 +304,11 @@ class TestFindRecentCallerRun:
                 "o/r",
                 workflow_file="release-automation.yml",
                 since=marker,
+                expected_display_title="Release for r1.2",
                 attempts=1,
                 interval=0.0,
             )
-        # Newest (after marker) is run 3.
+        # Newest (after marker, matching title) is run 3.
         assert run["databaseId"] == 3
 
     def test_ignores_runs_before_marker(self):
@@ -282,6 +317,7 @@ class TestFindRecentCallerRun:
             {
                 "databaseId": 1,
                 "createdAt": "2026-04-22T09:00:00Z",
+                "displayTitle": "Release for r1.2",
                 "status": "completed",
                 "conclusion": "success",
                 "url": "https://x/1",
@@ -291,11 +327,12 @@ class TestFindRecentCallerRun:
             "release_automation.scripts.regression_runner.gh",
             return_value=runs,
         ):
-            with pytest.raises(InfrastructureError, match="no .* run appeared"):
+            with pytest.raises(InfrastructureError, match="no .* run .* appeared"):
                 find_recent_caller_run(
                     "o/r",
                     workflow_file="release-automation.yml",
                     since=marker,
+                    expected_display_title="Release for r1.2",
                     attempts=1,
                     interval=0.0,
                 )
@@ -306,6 +343,7 @@ class TestFindRecentCallerRun:
             {
                 "databaseId": 1,
                 "createdAt": "not-a-timestamp",
+                "displayTitle": "Release for r1.2",
                 "status": "queued",
                 "conclusion": None,
                 "url": "https://x/1",
@@ -313,6 +351,7 @@ class TestFindRecentCallerRun:
             {
                 "databaseId": 2,
                 "createdAt": "2026-04-22T10:05:00Z",
+                "displayTitle": "Release for r1.2",
                 "status": "queued",
                 "conclusion": None,
                 "url": "https://x/2",
@@ -326,10 +365,83 @@ class TestFindRecentCallerRun:
                 "o/r",
                 workflow_file="release-automation.yml",
                 since=marker,
+                expected_display_title="Release for r1.2",
                 attempts=1,
                 interval=0.0,
             )
         assert run["databaseId"] == 2
+
+    def test_rejects_non_matching_display_title(self):
+        # Session-87 repro: a stray issue_comment on a different issue/PR
+        # creates a same-named workflow run within the time window. Without
+        # the displayTitle filter, the runner would pick the wrong (newer)
+        # run; with the filter it must pick the matching-title run instead.
+        marker = datetime(2026, 4, 22, 10, 0, 0, tzinfo=timezone.utc)
+        runs = [
+            # The slash-command run on the Release Issue.
+            {
+                "databaseId": 1001,
+                "createdAt": "2026-04-22T10:00:30Z",
+                "displayTitle": "Release for r1.2",
+                "status": "queued",
+                "conclusion": None,
+                "url": "https://x/1001",
+            },
+            # A skipped run from an unrelated comment on the Release
+            # Review PR — newer than the slash-command run, same workflow.
+            {
+                "databaseId": 1002,
+                "createdAt": "2026-04-22T10:00:45Z",
+                "displayTitle": "[wip] Release for r1.2",
+                "status": "completed",
+                "conclusion": "skipped",
+                "url": "https://x/1002",
+            },
+        ]
+        with patch(
+            "release_automation.scripts.regression_runner.gh",
+            return_value=runs,
+        ):
+            run = find_recent_caller_run(
+                "o/r",
+                workflow_file="release-automation.yml",
+                since=marker,
+                expected_display_title="Release for r1.2",
+                attempts=1,
+                interval=0.0,
+            )
+        assert run["databaseId"] == 1001
+
+    def test_raises_when_only_non_matching_titles(self):
+        # Only candidates with non-matching displayTitle exist; the runner
+        # must time out rather than pick one as a fallback.
+        marker = datetime(2026, 4, 22, 10, 0, 0, tzinfo=timezone.utc)
+        runs = [
+            {
+                "databaseId": 1,
+                "createdAt": "2026-04-22T10:01:00Z",
+                "displayTitle": "[wip] Release for r1.2",
+                "status": "completed",
+                "conclusion": "skipped",
+                "url": "https://x/1",
+            },
+        ]
+        with patch(
+            "release_automation.scripts.regression_runner.gh",
+            return_value=runs,
+        ):
+            with pytest.raises(
+                InfrastructureError,
+                match="displayTitle='Release for r1.2'",
+            ):
+                find_recent_caller_run(
+                    "o/r",
+                    workflow_file="release-automation.yml",
+                    since=marker,
+                    expected_display_title="Release for r1.2",
+                    attempts=1,
+                    interval=0.0,
+                )
 
 
 # ---------------------------------------------------------------------------
@@ -946,11 +1058,13 @@ class TestPhaseFireCreateSnapshotPolished:
         caller_run = {
             "databaseId": 999,
             "createdAt": "2026-04-23T05:00:10Z",
+            "displayTitle": "Release for r1.2",
             "status": "completed",
             "conclusion": "success",
             "url": "https://x/run/999",
         }
         responses = [
+            ("{title: .title}", {"title": "Release for r1.2"}),  # get_issue_title
             ("issue comment", ""),  # post_issue_comment
             ("run list", [caller_run]),  # find_recent_caller_run
             ("run view", {"status": "completed", "conclusion": "success"}),  # poll_run
@@ -991,11 +1105,13 @@ class TestPhaseFireCreateSnapshotPolished:
         caller_run = {
             "databaseId": 999,
             "createdAt": "2026-04-23T05:00:10Z",
+            "displayTitle": "Release for r1.2",
             "status": "completed",
             "conclusion": "success",
             "url": "https://x/run/999",
         }
         responses = [
+            ("{title: .title}", {"title": "Release for r1.2"}),
             ("issue comment", ""),
             ("run list", [caller_run]),
             ("run view", {"status": "completed", "conclusion": "success"}),
@@ -1028,11 +1144,13 @@ class TestPhaseFireCreateSnapshotPolished:
         caller_run = {
             "databaseId": 999,
             "createdAt": "2026-04-23T05:00:10Z",
+            "displayTitle": "Release for r1.2",
             "status": "completed",
             "conclusion": "failure",
             "url": "https://x/run/999",
         }
         responses = [
+            ("{title: .title}", {"title": "Release for r1.2"}),
             ("issue comment", ""),
             ("run list", [caller_run]),
             ("run view", {"status": "completed", "conclusion": "failure"}),
@@ -1062,11 +1180,13 @@ class TestPhaseFireCreateSnapshotPolished:
         caller_run = {
             "databaseId": 999,
             "createdAt": "2026-04-23T05:00:10Z",
+            "displayTitle": "Release for r1.2",
             "status": "completed",
             "conclusion": "success",
             "url": "https://x/run/999",
         }
         responses = [
+            ("{title: .title}", {"title": "Release for r1.2"}),
             ("issue comment", ""),
             ("run list", [caller_run]),
             ("run view", {"status": "completed", "conclusion": "success"}),
