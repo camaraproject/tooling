@@ -4,7 +4,7 @@ A Release PR is the pull request opened by `/create-snapshot` for review of gene
 
 ## What you see
 
-The Release PR shows the same check entries, annotations, and workflow summary as a normal pull request. For the layout of each surface, see [Where to see validation results](where-to-see-results.md).
+The Release PR shows the same check entries, annotations, and workflow summary as a normal pull request. For where validation results are shown on a Release PR, see [Where to see validation results](where-to-see-results.md).
 
 ## What this check means
 
@@ -28,7 +28,7 @@ The fix path is the same as for any other validation problem at release time:
 
 ## What to open next
 
-- For the surfaces and their limits: [Where to see validation results](where-to-see-results.md).
+- For the places where results appear and their limits: [Where to see validation results](where-to-see-results.md).
 - For the snapshot creation step itself: [Validation during snapshot creation](release-snapshots.md).
 - For the full release process flow: [Release process: lifecycle](https://github.com/camaraproject/ReleaseManagement/blob/main/documentation/release-process/lifecycle.md).
 

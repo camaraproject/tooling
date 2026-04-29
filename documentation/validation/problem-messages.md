@@ -22,7 +22,7 @@ The same problem in the workflow summary appears as a row in a table:
 |---|---|---|---|
 | S-002 | code/API_definitions/sample-service.yaml | 130 | There must be no request body for Get and DELETE |
 
-The two surfaces present the same information in different ways. Across both, every problem carries:
+Both views show the same information in different ways. Across both, every problem carries:
 
 - a **severity** — `error`, `warning`, or `hint`
 - a **rule code** in square brackets, for example `[S-002]`
@@ -34,7 +34,7 @@ Annotations also include a short title shown above the message.
 
 ## Severity
 
-Severity is a property of every problem, but the way it is shown depends on the surface:
+Severity is a property of every problem, but the way it is shown depends on where you see it:
 
 - In annotations, severity is shown by icon and colour.
 - In the workflow summary, problems are grouped under severity headings.

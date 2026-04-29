@@ -1,6 +1,6 @@
 # Where to see validation results
 
-CAMARA Validation reports its results in several places in GitHub. Each place has a different purpose and a different level of detail. This page describes the surfaces. For what to do about a result, see the task pages linked at the end.
+CAMARA Validation reports its results in several places in GitHub. Each place has a different purpose and a different level of detail. This page describes those places. For what to do about a result, see the task pages linked at the end.
 
 > The workflow summary is the full report. Annotations are useful but partial.
 

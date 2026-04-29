@@ -6,7 +6,7 @@ CAMARA Validation runs on pull requests to `main` in onboarded API repositories.
 
 When you open or update a pull request, CAMARA Validation appears in the checks list, with annotations attached to the changed lines. The complete validation report is the workflow summary linked from the check.
 
-For the layout of each surface and the differences between same-repository and fork pull requests, see [Where to see validation results](where-to-see-results.md). For the format of each problem message, see [Validation problem messages](problem-messages.md).
+For where validation results are shown and the differences between same-repository and fork pull requests, see [Where to see validation results](where-to-see-results.md). For the format of each problem message, see [Validation problem messages](problem-messages.md).
 
 ## What you do
 

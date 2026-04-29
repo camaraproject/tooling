@@ -9,7 +9,7 @@ After you post `/create-snapshot`, the Release Issue receives a bot reply.
 - If validation finds errors, the bot reply says the snapshot failed, includes a one-line summary of the validation result (counts of blocking problems, errors, warnings, and hints), and links to the workflow run. The Release Issue stays in **PLANNED**.
 - If validation passes, the Release Issue advances to **SNAPSHOT ACTIVE** and a Release PR is opened.
 
-For the layout of the failure reply and other surfaces, see [Where to see validation results](where-to-see-results.md).
+For the layout of the failure reply and the other places where validation results appear, see [Where to see validation results](where-to-see-results.md).
 
 ## What you do
 
