@@ -6,7 +6,7 @@ If an API definition uses external `$ref`s — for example to share schemas like
 
 ## What they are
 
-A bundled API definition is a generated, standalone copy of a source API definition with its external `$ref`s expanded inline. It is a **preview** of the API as it would appear to a reader; it is not edited and not committed.
+A bundled API definition is a generated, standalone copy of a source API definition with its external `$ref`s **resolved into local references**: schemas referenced from outside the file are copied into the document's `components` section, and the original `$ref`s are rewritten to point at the local copies. It is a **preview** of the API as it would appear to a reader; it is not edited and not committed.
 
 When the workflow produces bundles, you can find the artifact in the **Artifacts** section on the workflow run page:
 
