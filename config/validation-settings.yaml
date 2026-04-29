@@ -28,6 +28,8 @@ repositories:
     stage: enabled  # 2026-04-29
   ConsentManagement:
     stage: enabled  # 2026-04-29
+  CustomerInsights:
+    stage: enabled  # 2026-04-30 (pre-staged; effective when CustomerInsights#70 merges)
   DedicatedNetworks:
     stage: enabled  # 2026-04-29
   DeviceIdentifier:
