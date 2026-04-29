@@ -44,7 +44,7 @@ This repository provides:
 
 The repository ships two consumption lines:
 
-* **v1-rc** — unified validation framework (linting, validation, release automation) in release candidate phase for volunteer repositories
+* **v1-rc** — unified validation framework (linting, validation, release automation) in release candidate phase for volunteer repositories (to get onboarded, update your `release-plan.yaml` file with a planned next release (`target_release_type: pre-release-alpha` or `pre-release-rc`). If not yet onboarded you will receive a PR with the caller workflows at latest on the next working day.)
 * **v0** — legacy linting only, kept for repositories not yet onboarded to v1-rc
 
 ### v1-rc — CAMARA Validation and Release Automation V1
