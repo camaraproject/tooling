@@ -28,7 +28,7 @@ Both views show the same information in different ways. Across both, every probl
 - a **rule code** in square brackets, for example `[S-002]`
 - a **source file and line**, when a single line applies
 - a one-sentence **message** describing the problem
-- sometimes a **hint** with a suggested fix or a link
+- sometimes a **suggested fix or link**, shown after a `Hint:` label in the annotation
 
 Annotations also include a short title shown above the message.
 
@@ -45,6 +45,8 @@ Severity is a property of every problem, but the way it is shown depends on wher
 | **error** | Should be fixed before the pull request is merged. The release process will not pass while errors remain. |
 | **warning** | The check still passes, but the problem will need attention before a stable release. Plan to fix it. |
 | **hint** | Informational. May indicate a future requirement, an item to verify, or a benign pattern. Read the message before acting. |
+
+Note: the severity `hint` is unrelated to the `Hint:` label that may appear inside a problem message. The label introduces the suggested-fix line described above; the severity says how seriously to take the problem.
 
 Errors should not be left on `main` intentionally. During the pilot, GitHub may not technically block every pull request merge on validation errors, but errors will block `/create-snapshot` and the release process.
 
