@@ -23,10 +23,9 @@ Edit and review this PR before merging it into the release snapshot. After Codeo
 
 #### 2. Confirm API release readiness
 
-- [ ] API version numbers match the intent declared in `release-plan.yaml`
+- [ ] API version(s) used in all files match `release-plan.yaml`
 {{#is_alpha}}
-- [ ] API definitions are consistent with the declared API versions
-- [ ] API documentation (`info.description`) is up to date with the API definitions
+- [ ] API documentation (`info.description`) is up to date with the API definition
 {{/is_alpha}}
 {{#is_rc}}
 - [ ] API definitions comply with declared Commonalities version
@@ -72,15 +71,9 @@ M = Mandatory, O = Optional — [Full documentation](https://github.com/camarapr
 
 </details>
 
-### Temporary checks during automation introduction
+_During the automation introduction phase, please also verify the snapshot content: that `release-metadata.yaml` is correct, that the generated API version numbers and server URLs (and other version fields and references) are right, and that the README update reflects the release tag and version handling._
 
-These checks are only needed while the automation is being introduced.
-
-- [ ] `release-metadata.yaml` content is correct
-- [ ] API version numbers and applicable extensions were generated correctly, including server URLs, references, and version fields
-- [ ] README update looks correct, including release tag, versions, latest vs pre-release handling
-
-### Valid actions
+### Valid next actions for codeowners
 
 - **Merge this PR** when all Codeowner Actions and Release Management Actions are complete and the required approvals are present — creates the draft release
 - Use **`/discard-snapshot <reason>`** in the {{#release_issue_url}}[Release Issue]({{release_issue_url}}){{/release_issue_url}}{{^release_issue_url}}Release Issue{{/release_issue_url}} to discard this snapshot, return to `planned`, and update content on `main`
