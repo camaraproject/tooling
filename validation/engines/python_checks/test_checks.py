@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from validation.context import ValidationContext
 
@@ -121,23 +121,42 @@ def check_test_files_exist(
 #   "Feature: CAMARA QoD API, v1.0.0"                               → "v1.0.0"
 _FEATURE_VERSION_RE = re.compile(r"\s(v?wip|v\S+?)(?:\s+-\s|\s*$)")
 
+# Match a Gherkin Feature line, allowing the leading whitespace that some
+# files use. Comment lines (``#``), tag lines (``@…``), and blank lines
+# preceding the Feature line are valid Gherkin and are skipped during the
+# scan.
+_FEATURE_LINE_RE = re.compile(r"^\s*Feature\s*:")
 
-def _extract_feature_version(file_path: Path) -> Optional[str]:
-    """Read the first line and extract the version segment.
+# Cap the Feature-line scan to bound work on pathological inputs. Real-world
+# preambles (comment + tag + blanks) are at most a handful of lines.
+_FEATURE_LINE_SCAN_CAP = 50
 
-    Returns the version string (e.g. ``"vwip"``, ``"v2.2.0-alpha.5"``)
-    or ``None`` if no version could be parsed from the Feature line.
+
+def _extract_feature_version(
+    file_path: Path,
+) -> Tuple[Optional[str], Optional[int]]:
+    """Locate the Feature line and extract the version segment.
+
+    Scans the first ``_FEATURE_LINE_SCAN_CAP`` lines for a line beginning
+    with ``Feature:`` (skipping preceding comment, tag, and blank lines —
+    all valid Gherkin) and applies the version regex to that line.
+
+    Returns ``(version, line_number)`` when a Feature line is found and
+    the version regex matches; ``(None, line_number)`` when the Feature
+    line is found but carries no recognizable version token; and
+    ``(None, None)`` when no Feature line is present in the scan window.
     """
     try:
         with open(file_path, encoding="utf-8") as fh:
-            first_line = fh.readline().rstrip()
+            for lineno, line in enumerate(fh, start=1):
+                if lineno > _FEATURE_LINE_SCAN_CAP:
+                    break
+                if _FEATURE_LINE_RE.match(line):
+                    m = _FEATURE_VERSION_RE.search(line.rstrip())
+                    return (m.group(1) if m else None), lineno
     except (OSError, UnicodeDecodeError):
-        return None
-
-    m = _FEATURE_VERSION_RE.search(first_line)
-    if m:
-        return m.group(1)
-    return None
+        pass
+    return None, None
 
 
 def check_test_file_version(
@@ -196,25 +215,42 @@ def check_test_file_version(
 
     findings: List[dict] = []
     for test_file in matching:
-        actual_version = _extract_feature_version(test_file)
+        actual_version, feature_lineno = _extract_feature_version(test_file)
+
+        if feature_lineno is None:
+            # No Feature line found in the scan window — emitted under
+            # P-024 so its severity cannot be masked by P-007's
+            # conditional_level.
+            findings.append(
+                make_finding(
+                    engine_rule="check-test-file-feature-line-untransformable",
+                    level="error",
+                    message=(
+                        f"Test file '{test_file.name}' has no 'Feature:' "
+                        f"line in the first {_FEATURE_LINE_SCAN_CAP} lines "
+                        f"(expected '{expected_segment}')"
+                    ),
+                    path=f"{_TEST_DIR}/{test_file.name}",
+                    line=1,
+                    api_name=api.api_name,
+                )
+            )
+            continue
 
         if actual_version is None:
-            # No wip/vwip/v* token on the Feature line — T1b has nothing to
-            # replace and a release cut would carry the literal text into
-            # the snapshot. Emitted under a distinct rule ID (P-024) so its
-            # severity cannot be masked by P-007's conditional_level.
+            # Feature line found but no recognizable version token. Same
+            # P-024 rule, distinct message — points at the actual line.
             findings.append(
                 make_finding(
                     engine_rule="check-test-file-feature-line-untransformable",
                     level="error",
                     message=(
                         f"Test file '{test_file.name}' Feature line has no "
-                        f"'wip', 'vwip', or 'v{{version}}' token — nothing "
-                        f"for snapshot transformation to replace "
+                        f"'wip', 'vwip', or 'v{{version}}' token "
                         f"(expected '{expected_segment}')"
                     ),
                     path=f"{_TEST_DIR}/{test_file.name}",
-                    line=1,
+                    line=feature_lineno,
                     api_name=api.api_name,
                 )
             )
@@ -233,7 +269,7 @@ def check_test_file_version(
                         f"(on {context.branch_type} branch)"
                     ),
                     path=f"{_TEST_DIR}/{test_file.name}",
-                    line=1,
+                    line=feature_lineno,
                     api_name=api.api_name,
                 )
             )
