@@ -33,15 +33,15 @@ class TestRenderTemplate:
         assert "| DeviceLocation | `v2.0.0` | rc |" in result
         assert "### Codeowner Actions" in result
         assert "### Release Management Actions" in result
-        assert "### Temporary checks during automation introduction" in result
+        assert "During the automation introduction phase" in result
         assert "#### 1. Update release notes" in result
         assert "#### 2. Confirm API release readiness" in result
         assert "CHANGELOG updated: copy all API-consumer-relevant changes" in result
         assert "declared Commonalities version" in result
         assert "Commonalities r3.4" in result
         assert "Mandatory release assets are present for each API according to its status" in result
-        assert "README update looks correct" in result
-        assert "### Valid actions" in result
+        assert "README update reflects the release tag" in result
+        assert "### Valid next actions for codeowners" in result
         assert "Snapshot: [`r4.1-abc1234`]" in result
         assert "<details>" in result
         assert "Required release assets per API status" in result
@@ -62,8 +62,8 @@ class TestRenderTemplate:
 
         assert "## Release Review: r3.2 alpha" in result
         assert "| NumberVerification | `v0.3.0-alpha.1` | alpha |" in result
-        assert "API definitions are consistent with the declared API versions" in result
-        assert "API documentation (`info.description`) is up to date" in result
+        assert "API version(s) used in all files match" in result
+        assert "API documentation (`info.description`) is up to date with the API definition" in result
         assert "CHANGELOG updated: copy all API-consumer-relevant changes" in result
         # Alpha should NOT have rc/public-specific items
         assert "Enhanced test cases" not in result
