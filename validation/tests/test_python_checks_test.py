@@ -312,6 +312,124 @@ class TestCheckTestFileVersion:
             "check-test-file-feature-line-untransformable"
         )
 
+    # --- preamble lines before Feature line (comment / tag / blank) ---
+
+    def test_comment_line_before_feature_passes(self, tmp_path: Path):
+        """Line 1 is a Gherkin comment; Feature line is on line 2."""
+        test_dir = _make_test_dir(tmp_path)
+        (test_dir / "qod.feature").write_text(
+            "# qod-createSession\n"
+            "Feature: CAMARA QoD API, vwip - Operation createSession\n"
+            "  Background: setup\n"
+        )
+        ctx = _make_context("qod", branch_type="main")
+        assert check_test_file_version(tmp_path, ctx) == []
+
+    def test_top_level_tag_before_feature_passes(self, tmp_path: Path):
+        """Line 1 is a feature-level Gherkin tag; Feature line is on line 2."""
+        test_dir = _make_test_dir(tmp_path)
+        (test_dir / "qod.feature").write_text(
+            "@QoD_API\n"
+            "Feature: CAMARA QoD API, vwip - Operation createSession\n"
+            "  Background: setup\n"
+        )
+        ctx = _make_context("qod", branch_type="main")
+        assert check_test_file_version(tmp_path, ctx) == []
+
+    def test_indented_tag_before_feature_passes(self, tmp_path: Path):
+        """Indented tag on line 1; Feature line is on line 2."""
+        test_dir = _make_test_dir(tmp_path)
+        (test_dir / "qod.feature").write_text(
+            "  @QoD_API\n"
+            "Feature: CAMARA QoD API, vwip - Operation createSession\n"
+            "  Background: setup\n"
+        )
+        ctx = _make_context("qod", branch_type="main")
+        assert check_test_file_version(tmp_path, ctx) == []
+
+    def test_blank_lines_and_multiple_preamble_lines_pass(
+        self, tmp_path: Path
+    ):
+        """Comment + blank + tag preamble before Feature — all skipped."""
+        test_dir = _make_test_dir(tmp_path)
+        (test_dir / "qod.feature").write_text(
+            "# qod-createSession\n"
+            "\n"
+            "@QoD_API\n"
+            "Feature: CAMARA QoD API, vwip - Operation createSession\n"
+            "  Background: setup\n"
+        )
+        ctx = _make_context("qod", branch_type="main")
+        assert check_test_file_version(tmp_path, ctx) == []
+
+    def test_finding_reports_actual_feature_line_number(
+        self, tmp_path: Path
+    ):
+        """Mismatched version on line 2 — finding reports line=2."""
+        test_dir = _make_test_dir(tmp_path)
+        (test_dir / "qod.feature").write_text(
+            "# qod-createSession\n"
+            "Feature: CAMARA QoD API, v1 - Operation createSession\n"
+        )
+        ctx = _make_context("qod", version="1.0.0", branch_type="main")
+        findings = check_test_file_version(tmp_path, ctx)
+        assert len(findings) == 1
+        assert findings[0]["engine_rule"] == "check-test-file-version"
+        assert findings[0]["line"] == 2
+
+    def test_p024_when_no_feature_line_in_file(self, tmp_path: Path):
+        """File contains only comments and tags, no Feature: line."""
+        test_dir = _make_test_dir(tmp_path)
+        (test_dir / "qod.feature").write_text(
+            "# qod-createSession\n"
+            "@QoD_API\n"
+        )
+        ctx = _make_context("qod", branch_type="main")
+        findings = check_test_file_version(tmp_path, ctx)
+        assert len(findings) == 1
+        assert findings[0]["engine_rule"] == (
+            "check-test-file-feature-line-untransformable"
+        )
+        assert findings[0]["level"] == "error"
+        assert findings[0]["line"] == 1
+        assert "no 'Feature:' line" in findings[0]["message"]
+
+    def test_p024_when_feature_line_has_no_version_token(
+        self, tmp_path: Path
+    ):
+        """Feature line on line 2 with no version token → P-024 at line=2."""
+        test_dir = _make_test_dir(tmp_path)
+        (test_dir / "qod.feature").write_text(
+            "# qod-createSession\n"
+            "Feature: QoD API tests\n"
+        )
+        ctx = _make_context("qod", branch_type="main")
+        findings = check_test_file_version(tmp_path, ctx)
+        assert len(findings) == 1
+        assert findings[0]["engine_rule"] == (
+            "check-test-file-feature-line-untransformable"
+        )
+        assert findings[0]["line"] == 2
+        assert "has no 'wip', 'vwip'" in findings[0]["message"]
+
+    def test_feature_line_beyond_scan_cap_treated_as_missing(
+        self, tmp_path: Path
+    ):
+        """Feature line beyond the 50-line cap → 'no Feature line' variant."""
+        test_dir = _make_test_dir(tmp_path)
+        preamble = "\n" * 60
+        (test_dir / "qod.feature").write_text(
+            preamble
+            + "Feature: CAMARA QoD API, vwip - Operation createSession\n"
+        )
+        ctx = _make_context("qod", branch_type="main")
+        findings = check_test_file_version(tmp_path, ctx)
+        assert len(findings) == 1
+        assert findings[0]["engine_rule"] == (
+            "check-test-file-feature-line-untransformable"
+        )
+        assert "no 'Feature:' line" in findings[0]["message"]
+
     def test_no_test_dir(self, tmp_path: Path):
         ctx = _make_context("qod")
         assert check_test_file_version(tmp_path, ctx) == []

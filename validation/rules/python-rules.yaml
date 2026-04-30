@@ -326,14 +326,17 @@
     default: error
 
 # P-024: check-test-file-feature-line-untransformable
-# Fires when the Feature line of a test file has no `wip`, `vwip`, or
-# `v{version}` token — nothing for snapshot transformation T1b to
-# replace, so a release cut would carry the literal text into the
-# snapshot. Always error: distinct from P-007 (which covers the
-# "present but mismatched" case under conditional_level hint/warn).
-# P-007 and P-024 are mutually exclusive per the check's code path
-# (`continue` after the None branch prevents both from firing on the
-# same file).
+# Fires under either of two conditions in a `.feature` file:
+#   1. No `Feature:` line is present in the first 50 lines.
+#   2. The `Feature:` line is present but carries no `wip`, `vwip`, or
+#      `v{version}` token to indicate the API version.
+# Comment lines, feature-level tags, and blank lines preceding `Feature:`
+# are valid Gherkin and are skipped during the scan. The check emits a
+# distinct message per condition. Always error: distinct from P-007
+# (which covers the "version present but mismatched" case under
+# conditional_level hint/warn). P-007 and P-024 are mutually exclusive
+# per the check's code path (`continue` after each P-024 branch prevents
+# both from firing on the same file).
 - id: P-024
   engine: python
   engine_rule: check-test-file-feature-line-untransformable
