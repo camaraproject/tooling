@@ -62,8 +62,21 @@ jobs:
       # Note: release_tag is NOT output here - it comes from derive-state job
       # which reads from authoritative sources (release-plan.yaml or release-metadata.yaml)
     steps:
+      - name: Fork Guard - Check Issues Enabled
+        id: fork-guard
+        env:
+          HAS_ISSUES: ${{ github.event.repository.has_issues }}
+        run: |
+          if [ "$HAS_ISSUES" = "true" ]; then
+            echo "issues_enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "issues_enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::warning title=Issues disabled — Release Automation skipped::To use Release Automation here, enable Issues in repository Settings → General → Features. To stop Release Automation from running on this fork, disable the Release Automation workflow."
+          fi
+
       - name: Detect Trigger Type
         id: detect
+        if: steps.fork-guard.outputs.issues_enabled == 'true'
         uses: actions/github-script@v9
         with:
           script: |
