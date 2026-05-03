@@ -229,7 +229,7 @@ class TestAnnotationContent:
         )
         msg = payload.annotations[0]["message"]
         assert "Bad" in msg
-        assert "Hint: Use kebab-case" in msg
+        assert "Suggestion: Use kebab-case" in msg
 
 
 # ---------------------------------------------------------------------------

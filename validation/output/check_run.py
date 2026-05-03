@@ -97,7 +97,7 @@ def _build_annotation(finding: dict) -> dict:
     message = f"[{rule_label}] {full_message}"
     hint = finding.get("hint")
     if hint:
-        message = f"{message}\n\nHint: {hint}"
+        message = f"{message}\n\nSuggestion: {hint}"
 
     return {
         "path": path,

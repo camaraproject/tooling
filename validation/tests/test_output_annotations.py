@@ -163,12 +163,12 @@ class TestBuildCommand:
     def test_hint_appended(self):
         f = _make_finding(message="Bad path", hint="Use kebab-case")
         cmd = _build_command(f)
-        assert "Bad path | Hint%3A Use kebab-case" in cmd
+        assert "Bad path | Suggestion%3A Use kebab-case" in cmd
 
     def test_no_hint(self):
         f = _make_finding(message="Bad path")
         cmd = _build_command(f)
-        assert "Hint" not in cmd
+        assert "Suggestion" not in cmd
 
 
 # ---------------------------------------------------------------------------

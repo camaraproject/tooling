@@ -73,7 +73,12 @@ class TestWriteDiagnostics:
         out = tmp_path / "output"
         paths = write_diagnostics(_make_result(), _make_context(), out)
         names = {p.name for p in paths}
-        assert names == {"findings.json", "context.json", "summary.json"}
+        assert names == {
+            "findings.json",
+            "context.json",
+            "summary.json",
+            "findings.tsv",
+        }
 
     def test_findings_json_content(self, tmp_path: Path):
         findings = [_make_finding(level="error"), _make_finding(level="warn")]
@@ -123,7 +128,7 @@ class TestWriteDiagnostics:
         out = tmp_path / "output"
         paths = write_diagnostics(_make_result(), _make_context(), out)
         assert not (out / "engine-reports.json").exists()
-        assert len(paths) == 3
+        assert len(paths) == 4
 
     def test_empty_findings(self, tmp_path: Path):
         out = tmp_path / "output"
@@ -143,3 +148,122 @@ class TestWriteDiagnostics:
         paths = write_diagnostics(_make_result(), _make_context(), out)
         assert all(isinstance(p, Path) for p in paths)
         assert all(p.exists() for p in paths)
+
+
+class TestFindingsTsv:
+    def test_header_row(self, tmp_path: Path):
+        out = tmp_path / "output"
+        write_diagnostics(_make_result(), _make_context(), out)
+        text = (out / "findings.tsv").read_text(encoding="utf-8")
+        first_line = text.splitlines()[0]
+        assert first_line == "rule\tfile\tline\tlevel\tmessage\thint"
+
+    def test_row_per_finding(self, tmp_path: Path):
+        findings = [
+            _make_finding(level="error"),
+            _make_finding(level="warn"),
+            _make_finding(level="hint"),
+        ]
+        out = tmp_path / "output"
+        write_diagnostics(_make_result(findings), _make_context(), out)
+        text = (out / "findings.tsv").read_text(encoding="utf-8")
+        # Header + 3 rows + trailing newline → 4 non-empty lines
+        rows = [line for line in text.splitlines() if line.strip()]
+        assert len(rows) == 4
+
+    def test_field_values_present(self, tmp_path: Path):
+        findings = [
+            {
+                "engine": "spectral",
+                "engine_rule": "camara-x",
+                "rule_id": "S-042",
+                "level": "error",
+                "message": "Bad path",
+                "path": "spec.yaml",
+                "line": 47,
+                "api_name": None,
+                "blocks": True,
+                "hint": "Use kebab-case",
+            }
+        ]
+        out = tmp_path / "output"
+        write_diagnostics(_make_result(findings), _make_context(), out)
+        text = (out / "findings.tsv").read_text(encoding="utf-8")
+        # Row carries each column value, tab-separated
+        assert "S-042\tspec.yaml\t47\terror\tBad path\tUse kebab-case" in text
+
+    def test_tab_in_field_sanitized(self, tmp_path: Path):
+        findings = [
+            {
+                "engine": "spectral",
+                "engine_rule": "camara-x",
+                "rule_id": "S-001",
+                "level": "warn",
+                "message": "left\tright",
+                "path": "a.yaml",
+                "line": 10,
+                "api_name": None,
+                "blocks": False,
+            }
+        ]
+        out = tmp_path / "output"
+        write_diagnostics(_make_result(findings), _make_context(), out)
+        text = (out / "findings.tsv").read_text(encoding="utf-8")
+        # Tab inside the message must be flattened to a single space —
+        # the row must still split into exactly 6 columns on `\t`.
+        data_row = text.splitlines()[1]
+        assert data_row.count("\t") == 5
+        assert "left right" in data_row
+
+    def test_newline_in_field_sanitized(self, tmp_path: Path):
+        findings = [
+            {
+                "engine": "spectral",
+                "engine_rule": "camara-x",
+                "rule_id": "S-001",
+                "level": "warn",
+                "message": "first\nsecond",
+                "path": "a.yaml",
+                "line": 10,
+                "api_name": None,
+                "blocks": False,
+            }
+        ]
+        out = tmp_path / "output"
+        write_diagnostics(_make_result(findings), _make_context(), out)
+        text = (out / "findings.tsv").read_text(encoding="utf-8")
+        # Newline inside message must not break the row — header + 1 data row.
+        rows = [line for line in text.splitlines() if line.strip()]
+        assert len(rows) == 2
+        assert "first second" in rows[1]
+
+    def test_empty_findings(self, tmp_path: Path):
+        out = tmp_path / "output"
+        write_diagnostics(_make_result([]), _make_context(), out)
+        text = (out / "findings.tsv").read_text(encoding="utf-8")
+        # Header only.
+        rows = [line for line in text.splitlines() if line.strip()]
+        assert len(rows) == 1
+        assert rows[0] == "rule\tfile\tline\tlevel\tmessage\thint"
+
+    def test_missing_optional_fields(self, tmp_path: Path):
+        # Finding without `hint` field — TSV row writes empty string.
+        findings = [
+            {
+                "engine": "spectral",
+                "engine_rule": "camara-x",
+                "level": "warn",
+                "message": "msg",
+                "path": "a.yaml",
+                "line": 10,
+                "api_name": None,
+                "blocks": False,
+            }
+        ]
+        out = tmp_path / "output"
+        write_diagnostics(_make_result(findings), _make_context(), out)
+        text = (out / "findings.tsv").read_text(encoding="utf-8")
+        data_row = text.splitlines()[1]
+        # 5 tabs → 6 columns, last column (hint) is empty.
+        assert data_row.count("\t") == 5
+        assert data_row.endswith("msg\t")

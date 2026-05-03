@@ -16,11 +16,12 @@ code/API_definitions/sample-service.yaml  line 130
 [S-002] There must be no request body for Get and DELETE
 ```
 
-The same problem in the workflow summary appears as a row in a table:
+The same problem in the workflow summary appears as a bullet under a rule block. All hits of the same rule share one block, with one bold subject line and one bullet per occurrence. When the rule supplies a suggested fix, it is shown once at the end as a `Suggestion:` blockquote:
 
-| Rule | Path | Line | Message |
-|---|---|---|---|
-| S-002 | code/API_definitions/sample-service.yaml | 130 | There must be no request body for Get and DELETE |
+```markdown
+**[S-002] Request body present on GET / DELETE — 1 hit**
+- code/API_definitions/sample-service.yaml:130 — [S-002] There must be no request body for Get and DELETE
+```
 
 Both views show the same information in different ways. Across both, every problem carries:
 
@@ -28,7 +29,7 @@ Both views show the same information in different ways. Across both, every probl
 - a **rule code** in square brackets, for example `[S-002]`
 - a **source file and line**, when a single line applies
 - a one-sentence **message** describing the problem
-- sometimes a **suggested fix or link**, shown after a `Hint:` label in the annotation
+- sometimes a **suggested fix or link**, shown after a `Suggestion:` label
 
 Annotations also include a short title shown above the message.
 
@@ -46,7 +47,7 @@ Severity is a property of every problem, but the way it is shown depends on wher
 | **warning** | The check still passes, but the problem will need attention before a stable release. Plan to fix it. |
 | **hint** | Informational. May indicate a future requirement, an item to verify, or a benign pattern. Read the message before acting. |
 
-Note: the severity `hint` is unrelated to the `Hint:` label that may appear inside a problem message. The label introduces the suggested-fix line described above; the severity says how seriously to take the problem.
+Note: the severity `hint` is the rendered category for informational findings. The suggested-fix line described above is introduced by the separate `Suggestion:` label, which never appears as a severity. The underlying rule-metadata field that supplies the suggested-fix text is still named `hint` internally for backward compatibility, but it is no longer rendered with a `Hint:` prefix.
 
 Errors should not be left on `main` intentionally. During the pilot, GitHub may not technically block every pull request merge on validation errors, but errors will block `/create-snapshot` and the release process.
 

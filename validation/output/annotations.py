@@ -98,7 +98,7 @@ def _build_command(finding: dict) -> str:
     message = f"[{rule_label}] {full_message}"
     hint = finding.get("hint")
     if hint:
-        message = f"{message} | Hint: {hint}"
+        message = f"{message} | Suggestion: {hint}"
 
     # Build parameter string
     params = f"file={path},line={line}"
