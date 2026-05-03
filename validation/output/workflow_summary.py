@@ -1,7 +1,8 @@
 """Workflow summary generation for ``$GITHUB_STEP_SUMMARY``.
 
 Produces a Markdown string with header, engine summary table, findings
-tables grouped by severity level, and footer.
+sections grouped by severity (rule-grouped bullets within each), an
+optional artifact footnote, and footer.
 Implements 900 KB truncation with priority ordering (errors are never
 truncated).
 
@@ -23,7 +24,9 @@ from .formatting import (
     REPO_LEVEL_LABEL,
     count_findings,
     count_findings_by_engine,
+    format_finding_location,
     format_rule_label,
+    resolve_annotation_title,
     sort_findings_by_priority,
 )
 
@@ -41,6 +44,8 @@ _RESULT_LABEL = {
     "error": "ERROR",
     "advisory": "ADVISORY",
 }
+
+_DIAGNOSTICS_ARTIFACT = "validation-diagnostics"
 
 # ---------------------------------------------------------------------------
 # Result type
@@ -146,31 +151,80 @@ def _render_engine_summary_table(
     return "\n".join(lines)
 
 
-def _render_findings_table(
+def _group_by_rule(findings: List[dict]) -> "Dict[str, List[dict]]":
+    """Group findings by ``rule_id`` (or engine_rule fallback).
+
+    Returns a dict in first-seen order — under the upstream
+    ``sort_findings_by_priority`` ordering this naturally clusters
+    each rule's hits together when one rule dominates a file.
+    """
+    groups: "Dict[str, List[dict]]" = {}
+    for f in findings:
+        rid = format_rule_label(f)
+        groups.setdefault(rid, []).append(f)
+    return groups
+
+
+def _render_rule_block(rule_id: str, findings: List[dict]) -> str:
+    """Render one rule's block: bold subject line, bullets, suggestion.
+
+    Spacing is intentional: no blank lines inside the block, so the
+    bullet list stays tight in the GitHub-flavoured Markdown renderer.
+    """
+    subject = resolve_annotation_title(findings[0])
+    n = len(findings)
+    plural = "hits" if n != 1 else "hit"
+
+    out: List[str] = [f"**[{rule_id}] {subject} — {n} {plural}**"]
+    for f in findings:
+        location = format_finding_location(f)
+        message = (f.get("message", "") or "").replace("\n", " ")
+        out.append(f"- {location} — [{rule_id}] {message}")
+
+    suggestion = (findings[0].get("suggestion") or "").strip()
+    if suggestion:
+        suggestion_lines = suggestion.splitlines() or [suggestion]
+        out.append(f"> Suggestion: {suggestion_lines[0]}")
+        for cont in suggestion_lines[1:]:
+            out.append(f"> {cont}")
+
+    return "\n".join(out)
+
+
+def _render_findings_section(
     findings: List[dict],
     level_label: str,
 ) -> str:
-    """Render a findings table for a single severity level.
+    """Render a findings section for a single severity level.
 
     Returns an empty string if there are no findings at this level.
     """
     if not findings:
         return ""
 
-    lines = [
-        f"\n### {level_label}\n",
-        "| Rule | File | Line | Message | Hint |",
-        "|------|------|------|---------|------|",
+    blocks = [
+        _render_rule_block(rid, group)
+        for rid, group in _group_by_rule(findings).items()
     ]
-    for f in findings:
-        rule = format_rule_label(f)
-        path = f.get("path", "")
-        line = f.get("line", 0)
-        message = f.get("message", "").replace("|", "\\|")
-        hint = (f.get("hint") or "").replace("|", "\\|")
-        lines.append(f"| {rule} | {path} | {line} | {message} | {hint} |")
-    lines.append("")
-    return "\n".join(lines)
+    return (
+        f"\n### {level_label} ({len(findings)})\n\n"
+        + "\n\n".join(blocks)
+        + "\n"
+    )
+
+
+def _render_artifact_footnote() -> str:
+    """Render the artifact-pointer footnote.
+
+    Tells the reader where to find the full TSV / JSON findings —
+    handy for spreadsheet review or pasting many rows at once.
+    """
+    return (
+        f"\n> Full findings are also available as `findings.tsv` and "
+        f"`findings.json` in the workflow's `{_DIAGNOSTICS_ARTIFACT}` "
+        f"artifact — useful for spreadsheet review or pasting many "
+        f"rows at once.\n"
+    )
 
 
 def _render_footer(
@@ -218,6 +272,7 @@ def generate_workflow_summary(
     context: ValidationContext,
     engine_statuses: Optional[Dict[str, str]] = None,
     commit_sha: str = "",
+    diagnostics_written: bool = False,
 ) -> SummaryResult:
     """Generate the full workflow summary Markdown.
 
@@ -230,6 +285,11 @@ def generate_workflow_summary(
         context: Unified validation context.
         engine_statuses: Optional mapping of engine name to status string.
         commit_sha: Full commit SHA (first 7 chars shown in footer).
+        diagnostics_written: When ``True`` the rendered summary includes
+            a footnote pointing at the diagnostics artifact.  The
+            orchestrator sets this when it calls
+            :func:`validation.output.diagnostics.write_diagnostics`
+            in the same run.
 
     Returns:
         :class:`SummaryResult` with the complete Markdown and truncation info.
@@ -245,10 +305,14 @@ def generate_workflow_summary(
     # Fixed sections (always rendered)
     header = _render_header(post_filter_result.result, context, findings)
     engine_summary = _render_engine_summary_table(findings, engine_statuses)
+    artifact_footnote = (
+        _render_artifact_footnote() if diagnostics_written else ""
+    )
     footer = _render_footer(context, commit_sha)
 
     fixed_size = sum(
-        _byte_size(s) for s in (header, engine_summary, footer)
+        _byte_size(s)
+        for s in (header, engine_summary, artifact_footnote, footer)
     )
 
     # Budget for findings sections
@@ -257,16 +321,18 @@ def generate_workflow_summary(
     truncation_note = ""
 
     # Errors section — never truncated
-    errors_section = _render_findings_table(errors, "Errors")
+    errors_section = _render_findings_section(errors, "Errors")
     budget -= _byte_size(errors_section)
 
     # Warnings section — truncated if over budget
-    warnings_section = _render_findings_table(warnings, "Warnings")
+    warnings_section = _render_findings_section(warnings, "Warnings")
     if budget - _byte_size(warnings_section) < 0 and warnings:
         # Find how many warnings fit
         shown = _fit_count(warnings, "Warnings", budget)
         if shown > 0:
-            warnings_section = _render_findings_table(warnings[:shown], "Warnings")
+            warnings_section = _render_findings_section(
+                warnings[:shown], "Warnings"
+            )
             warnings_section += _truncation_notice(
                 shown, len(warnings), "Warnings"
             )
@@ -277,11 +343,11 @@ def generate_workflow_summary(
     budget -= _byte_size(warnings_section)
 
     # Hints section — truncated if over budget
-    hints_section = _render_findings_table(hints, "Hints")
+    hints_section = _render_findings_section(hints, "Hints")
     if budget - _byte_size(hints_section) < 0 and hints:
         shown = _fit_count(hints, "Hints", budget)
         if shown > 0:
-            hints_section = _render_findings_table(hints[:shown], "Hints")
+            hints_section = _render_findings_section(hints[:shown], "Hints")
             hints_section += _truncation_notice(shown, len(hints), "Hints")
         else:
             hints_section = _truncation_notice(0, len(hints), "Hints")
@@ -298,6 +364,7 @@ def generate_workflow_summary(
         + errors_section
         + warnings_section
         + hints_section
+        + artifact_footnote
         + footer
     )
 
@@ -321,7 +388,7 @@ def _fit_count(
         return 0
 
     # Quick check: does the full section fit?
-    full = _render_findings_table(findings, level_label)
+    full = _render_findings_section(findings, level_label)
     if _byte_size(full) <= budget:
         return len(findings)
 
@@ -329,7 +396,7 @@ def _fit_count(
     lo, hi = 0, len(findings)
     while lo < hi:
         mid = (lo + hi + 1) // 2
-        section = _render_findings_table(findings[:mid], level_label)
+        section = _render_findings_section(findings[:mid], level_label)
         notice = _truncation_notice(mid, len(findings), level_label)
         if _byte_size(section) + _byte_size(notice) <= budget:
             lo = mid

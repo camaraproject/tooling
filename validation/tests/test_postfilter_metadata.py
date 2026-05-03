@@ -42,7 +42,7 @@ def _full_rule_dict(**overrides: object) -> dict:
         "engine": "spectral",
         "engine_rule": "camara-test-rule",
         "message_override": "Overridden message.",
-        "hint": "Fix this issue.",
+        "suggestion": "Fix this issue.",
         "conditional_level": {"default": "warn"},
     }
     base.update(overrides)
@@ -68,7 +68,7 @@ class TestParseRuleMetadata:
         assert rule.engine == "spectral"
         assert rule.engine_rule == "camara-test-rule"
         assert rule.message_override is None
-        assert rule.hint is None
+        assert rule.suggestion is None
         assert rule.applicability == {}
         assert rule.conditional_level is None
 
@@ -78,7 +78,7 @@ class TestParseRuleMetadata:
         assert rule.id == "S-001"
         assert rule.name == "test-rule"
         assert rule.message_override == "Overridden message."
-        assert rule.hint == "Fix this issue."
+        assert rule.suggestion == "Fix this issue."
         assert rule.conditional_level is not None
         assert rule.conditional_level.default == "warn"
         assert rule.conditional_level.overrides == ()
@@ -97,7 +97,7 @@ class TestParseRuleMetadata:
         raw = _minimal_rule_dict()
         rule = parse_rule_metadata(raw)
         assert rule.message_override is None
-        assert rule.hint is None
+        assert rule.suggestion is None
         assert rule.suppress_schema_paths == ()
 
     def test_suppress_schema_paths_parsed(self):
@@ -145,18 +145,18 @@ class TestParseRuleMetadata:
         rule = parse_rule_metadata(raw)
         assert rule.message_override == "Better message."
 
-    def test_explicit_hint(self):
-        raw = _minimal_rule_dict(hint="Do this instead.")
+    def test_explicit_suggestion(self):
+        raw = _minimal_rule_dict(suggestion="Do this instead.")
         rule = parse_rule_metadata(raw)
-        assert rule.hint == "Do this instead."
+        assert rule.suggestion == "Do this instead."
 
-    def test_both_message_override_and_hint(self):
+    def test_both_message_override_and_suggestion(self):
         raw = _minimal_rule_dict(
-            message_override="Overridden.", hint="Fix guidance."
+            message_override="Overridden.", suggestion="Fix guidance."
         )
         rule = parse_rule_metadata(raw)
         assert rule.message_override == "Overridden."
-        assert rule.hint == "Fix guidance."
+        assert rule.suggestion == "Fix guidance."
 
     def test_with_applicability(self):
         raw = _minimal_rule_dict(

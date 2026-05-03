@@ -419,11 +419,14 @@ def write_outputs(
     )
 
     # --- Workflow summary ---
+    # ``diagnostics_written=True`` because ``write_diagnostics`` is
+    # invoked unconditionally below in this same run.
     summary_result = generate_workflow_summary(
         post_filter_result,
         context,
         engine_statuses=engine_statuses,
         commit_sha=commit_sha,
+        diagnostics_written=True,
     )
     (output_dir / "summary.md").write_text(summary_result.markdown)
     if summary_result.truncated:

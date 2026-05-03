@@ -127,7 +127,7 @@
   engine: spectral
   engine_rule: camara-response-403
   short_title: "Operation must document a 403 response"
-  hint: "All operations must document a 403 Forbidden response (CAMARA Design Guide section 3.2)."
+  suggestion: "All operations must document a 403 Forbidden response (CAMARA Design Guide section 3.2)."
 
 - id: S-025
   engine: spectral
@@ -262,7 +262,7 @@
   engine: spectral
   engine_rule: oas3-unused-component
   short_title: "Component may be unused"
-  hint: "Spectral does not follow discriminator mappings — verify the schema is truly unused."
+  suggestion: "Spectral does not follow discriminator mappings — verify the schema is truly unused."
   conditional_level:
     default: hint
 
@@ -357,7 +357,7 @@
   engine: spectral
   engine_rule: "owasp:api1:2023-no-numeric-ids"
   short_title: "Use non-numeric resource IDs"
-  hint: "Use non-numeric (e.g. string) resource identifiers to prevent enumeration attacks."
+  suggestion: "Use non-numeric (e.g. string) resource identifiers to prevent enumeration attacks."
 
 - id: S-301
   engine: spectral
@@ -393,7 +393,7 @@
   engine: spectral
   engine_rule: "owasp:api8:2023-define-error-responses-401"
   short_title: "Operation must document a 401 response"
-  hint: "All secured operations must document a 401 Unauthorized response (CAMARA Design Guide section 3.2)."
+  suggestion: "All secured operations must document a 401 Unauthorized response (CAMARA Design Guide section 3.2)."
 
 - id: S-308
   engine: spectral
@@ -404,31 +404,31 @@
   engine: spectral
   engine_rule: "owasp:api4:2023-array-limit"
   short_title: "Array must declare maxItems"
-  hint: "Add maxItems to constrain array size (CAMARA Design Guide section 2.2)."
+  suggestion: "Add maxItems to constrain array size (CAMARA Design Guide section 2.2)."
 
 - id: S-310
   engine: spectral
   engine_rule: "owasp:api4:2023-integer-format"
   short_title: "Integer must declare int32 or int64 format"
-  hint: "Add format: int32 or int64 to integer properties (CAMARA Design Guide section 2.2)."
+  suggestion: "Add format: int32 or int64 to integer properties (CAMARA Design Guide section 2.2)."
 
 - id: S-311
   engine: spectral
   engine_rule: "owasp:api4:2023-integer-limit-legacy"
   short_title: "Integer must declare minimum and maximum"
-  hint: "Add minimum and maximum to integer properties (CAMARA Design Guide section 2.2)."
+  suggestion: "Add minimum and maximum to integer properties (CAMARA Design Guide section 2.2)."
 
 - id: S-312
   engine: spectral
   engine_rule: "owasp:api4:2023-string-limit"
   short_title: "String must declare maxLength, enum, or const"
-  hint: "Add maxLength, enum, or const to string properties (CAMARA Design Guide section 2.2)."
+  suggestion: "Add maxLength, enum, or const to string properties (CAMARA Design Guide section 2.2)."
 
 - id: S-313
   engine: spectral
   engine_rule: "owasp:api4:2023-string-restricted"
   short_title: "String has no format/pattern/enum"
-  hint: "Acceptable if free-form field or implementation-dependent — no fix needed."
+  suggestion: "Acceptable if free-form field or implementation-dependent — no fix needed."
   conditional_level:
     default: hint
   # Known-unactionable locations in the Commonalities common library.
@@ -485,7 +485,7 @@
   engine: spectral
   engine_rule: "owasp:api8:2023-define-error-validation"
   short_title: "Operation must document a 400/422 response"
-  hint: "Document 400 or 422 error responses for input validation (CAMARA Design Guide section 3.2)."
+  suggestion: "Document 400 or 422 error responses for input validation (CAMARA Design Guide section 3.2)."
 
 - id: S-319
   engine: spectral

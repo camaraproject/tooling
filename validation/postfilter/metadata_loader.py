@@ -74,8 +74,9 @@ class RuleMetadata:
         engine_rule: Native rule identifier within the engine.
         message_override: Replaces the engine's finding message.  ``None``
             means keep the engine message.
-        hint: Additional fix guidance shown alongside the message.  ``None``
-            means no extra hint.
+        suggestion: Additional fix guidance shown alongside the message
+            (rendered under a ``Suggestion:`` label).  ``None`` means
+            no extra guidance.
         applicability: Condition dict — omitted fields are unconstrained.
         conditional_level: Severity specification, or ``None`` to preserve
             engine-reported severity (identity mapping).
@@ -90,7 +91,7 @@ class RuleMetadata:
     engine: str
     engine_rule: str
     message_override: Optional[str]
-    hint: Optional[str]
+    suggestion: Optional[str]
     applicability: dict
     conditional_level: Optional[ConditionalLevel]
     short_title: Optional[str] = None
@@ -164,7 +165,7 @@ def parse_rule_metadata(raw: dict) -> RuleMetadata:
         engine=raw["engine"],
         engine_rule=raw["engine_rule"],
         message_override=raw.get("message_override"),
-        hint=raw.get("hint"),
+        suggestion=raw.get("suggestion"),
         applicability=raw.get("applicability", {}),
         conditional_level=conditional_level,
         short_title=raw.get("short_title"),

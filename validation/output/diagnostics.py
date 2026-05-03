@@ -1,9 +1,9 @@
 """Diagnostic artifact writing.
 
 Writes the full (untruncated) findings list, validation context, summary
-metadata, and optional engine reports to JSON files in a specified
-directory.  The workflow step uploads this directory via
-``actions/upload-artifact``.
+metadata, a tab-separated ``findings.tsv`` for spreadsheet review, and
+optional engine reports to a specified directory.  The workflow step
+uploads this directory via ``actions/upload-artifact``.
 
 Design doc references:
   - Section 9.5: diagnostic artifacts (always available regardless of token)
@@ -19,7 +19,10 @@ from typing import Any, Dict, List, Optional
 from validation.context import ValidationContext
 from validation.postfilter.engine import PostFilterResult
 
-from .formatting import count_findings
+from .formatting import count_findings, format_rule_label
+
+# TSV columns (header row + per-finding rows).
+_TSV_COLUMNS = ("rule", "file", "line", "level", "message", "suggestion")
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +41,7 @@ def write_diagnostics(
       - ``findings.json`` — full findings list (no truncation)
       - ``context.json`` — serialised validation context
       - ``summary.json`` — result, summary string, and aggregate counts
+      - ``findings.tsv`` — full findings as tab-separated rows
       - ``engine-reports.json`` — raw engine reports (only when provided)
 
     Args:
@@ -89,6 +93,11 @@ def write_diagnostics(
     )
     written.append(summary_path)
 
+    # findings.tsv
+    tsv_path = output_dir / "findings.tsv"
+    _write_findings_tsv(post_filter_result.findings, tsv_path)
+    written.append(tsv_path)
+
     # engine-reports.json (optional)
     if engine_reports is not None:
         reports_path = output_dir / "engine-reports.json"
@@ -100,3 +109,35 @@ def write_diagnostics(
 
     logger.info("Wrote %d diagnostic files to %s", len(written), output_dir)
     return written
+
+
+def _sanitize_tsv_field(value: Any) -> str:
+    """Return *value* with tab and newline characters replaced by spaces.
+
+    TSV has no quoting convention, so tabs and newlines in field values
+    must be flattened to keep the row alignment intact.
+    """
+    text = "" if value is None else str(value)
+    return text.replace("\t", " ").replace("\r\n", " ").replace("\n", " ").replace("\r", " ")
+
+
+def _write_findings_tsv(findings: List[dict], path: Path) -> None:
+    """Write the full findings list as a tab-separated table.
+
+    Header row matches :data:`_TSV_COLUMNS`.  Rule code uses
+    :func:`format_rule_label` (same as the workflow summary and
+    annotation surfaces).  Other fields come straight from each
+    finding dict; tabs and newlines inside fields are sanitized.
+    """
+    lines = ["\t".join(_TSV_COLUMNS)]
+    for f in findings:
+        row = (
+            format_rule_label(f),
+            f.get("path", "") or "",
+            f.get("line", 0),
+            f.get("level", "") or "",
+            f.get("message", "") or "",
+            f.get("suggestion", "") or "",
+        )
+        lines.append("\t".join(_sanitize_tsv_field(v) for v in row))
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")

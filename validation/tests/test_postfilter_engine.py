@@ -111,7 +111,7 @@ def _minimal_rule(
     engine: str = "spectral",
     engine_rule: str = "some-rule",
     message_override: str | None = None,
-    hint: str | None = None,
+    suggestion: str | None = None,
     default_level: str = "warn",
     applicability: dict | None = None,
     overrides: list[dict] | None = None,
@@ -126,8 +126,8 @@ def _minimal_rule(
     }
     if message_override is not None:
         rule["message_override"] = message_override
-    if hint is not None:
-        rule["hint"] = hint
+    if suggestion is not None:
+        rule["suggestion"] = suggestion
     if applicability:
         rule["applicability"] = applicability
     if overrides:
@@ -241,7 +241,7 @@ class TestRunPostFilter:
         f = result.findings[0]
         assert f["level"] == "warn"
         assert f["message"] == "Use kebab-case"
-        assert "hint" not in f
+        assert "suggestion" not in f
         assert f["blocks"] is False
         assert "rule_id" not in f  # unmapped → no rule_id
 
@@ -253,12 +253,12 @@ class TestRunPostFilter:
         assert result.findings[0]["blocks"] is True
 
     def test_mapped_rule_enrichment(self, tmp_path: Path):
-        """Mapped rules get rule_id, optional hint, and resolved level."""
+        """Mapped rules get rule_id, optional suggestion, and resolved level."""
         _write_rules(tmp_path, [
             _minimal_rule(
                 id="S-001",
                 engine_rule="some-rule",
-                hint="Do this instead.",
+                suggestion="Do this instead.",
                 default_level="error",
             )
         ])
@@ -270,7 +270,7 @@ class TestRunPostFilter:
         f = result.findings[0]
         assert f["rule_id"] == "S-001"
         assert f["message"] == "Original msg"  # engine message preserved
-        assert f["hint"] == "Do this instead."
+        assert f["suggestion"] == "Do this instead."
         assert f["level"] == "error"  # remapped from warn to error by metadata
         assert f["blocks"] is True
         # No short_title in metadata → not added to finding
@@ -497,7 +497,7 @@ class TestRunPostFilter:
                 id="P-001",
                 engine="python",
                 engine_rule="check-info-version-format",
-                hint="Use wip on main.",
+                suggestion="Use wip on main.",
                 default_level="error",
             )
         ], filename="python-rules.yaml")
@@ -515,7 +515,7 @@ class TestRunPostFilter:
         f = result.findings[0]
         assert f["rule_id"] == "P-001"
         assert f["level"] == "error"  # remapped by metadata
-        assert f["hint"] == "Use wip on main."
+        assert f["suggestion"] == "Use wip on main."
 
     def test_per_api_conditional_level(self, tmp_path: Path):
         """Different APIs get different levels based on their context."""
@@ -565,13 +565,13 @@ class TestRunPostFilter:
         # Per-API conditions with None api_context are unconstrained → applicable
         assert len(result.findings) == 1
 
-    def test_passthrough_preserves_existing_hint(self, tmp_path: Path):
-        """If a finding already has a hint, pass-through preserves it."""
+    def test_passthrough_preserves_existing_suggestion(self, tmp_path: Path):
+        """If a finding already has a suggestion, pass-through preserves it."""
         ctx = _make_context()
         finding = _make_finding()
-        finding["hint"] = "Pre-existing hint"
+        finding["suggestion"] = "Pre-existing suggestion"
         result = run_post_filter([finding], ctx, tmp_path)
-        assert result.findings[0]["hint"] == "Pre-existing hint"
+        assert result.findings[0]["suggestion"] == "Pre-existing suggestion"
 
     def test_result_summary_content(self, tmp_path: Path):
         """Summary string contains useful information."""
@@ -599,26 +599,26 @@ class TestRunPostFilter:
         assert f["rule_id"] == "S-018"
         assert f["level"] == "warn"  # engine level preserved
         assert f["message"] == "Engine message"
-        assert "hint" not in f  # no hint in metadata → no hint in output
+        assert "suggestion" not in f  # no suggestion in metadata → no suggestion in output
         assert f["blocks"] is False  # warn doesn't block in standard
 
-    def test_identity_entry_with_explicit_hint(self, tmp_path: Path):
-        """Identity entry with explicit hint uses the hint, not message."""
+    def test_identity_entry_with_explicit_suggestion(self, tmp_path: Path):
+        """Identity entry with explicit suggestion populates the suggestion field."""
         _write_rules(tmp_path, [{
             "id": "S-018",
             "engine": "spectral",
             "engine_rule": "some-rule",
-            "hint": "Custom guidance.",
+            "suggestion": "Custom guidance.",
         }])
         ctx = _make_context()
         findings = [_make_finding(message="Engine message")]
         result = run_post_filter(findings, ctx, tmp_path)
 
-        assert result.findings[0]["hint"] == "Custom guidance."
+        assert result.findings[0]["suggestion"] == "Custom guidance."
         assert result.findings[0]["rule_id"] == "S-018"
 
-    def test_mapped_rule_without_hint_preserves_message(self, tmp_path: Path):
-        """Rule without hint/message_override preserves engine message."""
+    def test_mapped_rule_without_suggestion_preserves_message(self, tmp_path: Path):
+        """Rule without suggestion/message_override preserves engine message."""
         _write_rules(tmp_path, [{
             "id": "S-001",
             "engine": "spectral",
@@ -633,7 +633,7 @@ class TestRunPostFilter:
         assert f["rule_id"] == "S-001"
         assert f["level"] == "error"  # from conditional_level
         assert f["message"] == "Engine says fix this"  # preserved
-        assert "hint" not in f  # no hint in metadata → no hint in output
+        assert "suggestion" not in f  # no suggestion in metadata → no suggestion in output
 
     def test_message_override_replaces_message(self, tmp_path: Path):
         """message_override replaces the engine message entirely."""
@@ -651,16 +651,16 @@ class TestRunPostFilter:
         f = result.findings[0]
         assert f["rule_id"] == "S-001"
         assert f["message"] == "Better description."
-        assert "hint" not in f
+        assert "suggestion" not in f
 
-    def test_message_override_with_hint(self, tmp_path: Path):
-        """Both message_override and hint can be set together."""
+    def test_message_override_with_suggestion(self, tmp_path: Path):
+        """Both message_override and suggestion can be set together."""
         _write_rules(tmp_path, [{
             "id": "S-001",
             "engine": "spectral",
             "engine_rule": "some-rule",
             "message_override": "Better description.",
-            "hint": "Fix by doing X.",
+            "suggestion": "Fix by doing X.",
             "conditional_level": {"default": "error"},
         }])
         ctx = _make_context()
@@ -669,7 +669,7 @@ class TestRunPostFilter:
 
         f = result.findings[0]
         assert f["message"] == "Better description."
-        assert f["hint"] == "Fix by doing X."
+        assert f["suggestion"] == "Fix by doing X."
 
 
 # ---------------------------------------------------------------------------
@@ -690,7 +690,7 @@ def _rule_with_suppress(
         engine=engine,
         engine_rule=engine_rule,
         message_override=None,
-        hint=None,
+        suggestion=None,
         applicability={},
         conditional_level=None,
         suppress_schema_paths=tuple(paths),

@@ -23,7 +23,7 @@ def _make_finding(
     line: int = 10,
     column: int | None = None,
     message: str = "Something is wrong",
-    hint: str | None = None,
+    suggestion: str | None = None,
     rule_id: str | None = None,
     engine_rule: str = "some-rule",
     api_name: str | None = "quality-on-demand",
@@ -44,8 +44,8 @@ def _make_finding(
         f["column"] = column
     if rule_id is not None:
         f["rule_id"] = rule_id
-    if hint is not None:
-        f["hint"] = hint
+    if suggestion is not None:
+        f["suggestion"] = suggestion
     if short_title is not None:
         f["short_title"] = short_title
     return f
@@ -160,15 +160,15 @@ class TestBuildCommand:
         cmd = _build_command(f)
         assert "[camara-path-casing] Bad path" in cmd
 
-    def test_hint_appended(self):
-        f = _make_finding(message="Bad path", hint="Use kebab-case")
+    def test_suggestion_appended(self):
+        f = _make_finding(message="Bad path", suggestion="Use kebab-case")
         cmd = _build_command(f)
-        assert "Bad path | Hint%3A Use kebab-case" in cmd
+        assert "Bad path | Suggestion%3A Use kebab-case" in cmd
 
-    def test_no_hint(self):
+    def test_no_suggestion(self):
         f = _make_finding(message="Bad path")
         cmd = _build_command(f)
-        assert "Hint" not in cmd
+        assert "Suggestion" not in cmd
 
 
 # ---------------------------------------------------------------------------

@@ -77,7 +77,7 @@ def _make_rule(
         engine="spectral",
         engine_rule="test-rule",
         message_override=None,
-        hint="Fix it.",
+        suggestion="Fix it.",
         applicability={},
         conditional_level=ConditionalLevel(
             default=default,

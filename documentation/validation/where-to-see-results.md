@@ -16,7 +16,7 @@ The check entry is named:
 CAMARA Validation / validation / Validate (pull_request)
 ```
 
-Click **Details** on the entry, then open the **Summary** tab on the run page. The workflow summary lists every problem in a table, grouped by check kind, with rule code, source file, line, message, and optional hint.
+Click **Details** on the entry, then open the **Summary** tab on the run page. The workflow summary lists every problem grouped by severity, with one block per rule: a bold subject line, one bullet per occurrence (`path:line — [rule-code] message`), and a single `Suggestion:` blockquote at the end carrying the suggested fix. The same findings are also written as `findings.tsv` and `findings.json` to the `validation-diagnostics` artifact attached to the workflow run, useful for spreadsheet review or pasting many rows at once.
 
 ![Single row from the workflow summary table showing rule S-002, the source file path, line 130, and the message "There must be no request body for Get and DELETE"](images/workflow-summary-row.png)
 

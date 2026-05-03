@@ -52,7 +52,7 @@ def _make_finding(
     blocks: bool = False,
     rule_id: str | None = None,
     engine_rule: str = "some-rule",
-    hint: str | None = None,
+    suggestion: str | None = None,
 ) -> dict:
     f: dict = {
         "engine": "spectral",
@@ -66,8 +66,8 @@ def _make_finding(
     }
     if rule_id is not None:
         f["rule_id"] = rule_id
-    if hint is not None:
-        f["hint"] = hint
+    if suggestion is not None:
+        f["suggestion"] = suggestion
     return f
 
 
@@ -196,28 +196,31 @@ class TestEngineSummaryTable:
 
 
 # ---------------------------------------------------------------------------
-# Findings tables
+# Findings sections (rule-grouped bullets)
 # ---------------------------------------------------------------------------
 
 
-class TestFindingsTables:
-    def test_errors_section(self):
+class TestFindingsSection:
+    def test_errors_section_with_count(self):
         findings = [_make_finding(level="error", rule_id="S-001")]
         sr = generate_workflow_summary(_make_result(findings), _make_context())
-        assert "### Errors" in sr.markdown
-        assert "S-001" in sr.markdown
+        assert "### Errors (1)" in sr.markdown
+        assert "[S-001]" in sr.markdown
 
-    def test_warnings_section(self):
-        findings = [_make_finding(level="warn")]
+    def test_warnings_section_with_count(self):
+        findings = [
+            _make_finding(level="warn", rule_id="S-001"),
+            _make_finding(level="warn", rule_id="S-002", line=20),
+        ]
         sr = generate_workflow_summary(_make_result(findings), _make_context())
-        assert "### Warnings" in sr.markdown
+        assert "### Warnings (2)" in sr.markdown
 
-    def test_hints_section(self):
+    def test_hints_section_with_count(self):
         findings = [_make_finding(level="hint")]
         sr = generate_workflow_summary(_make_result(findings), _make_context())
-        assert "### Hints" in sr.markdown
+        assert "### Hints (1)" in sr.markdown
 
-    def test_table_columns(self):
+    def test_bullet_shape(self):
         findings = [
             _make_finding(
                 level="error",
@@ -225,21 +228,199 @@ class TestFindingsTables:
                 path="spec.yaml",
                 line=47,
                 message="Bad path",
-                hint="Use kebab-case",
+                suggestion="Use kebab-case",
             )
         ]
         sr = generate_workflow_summary(_make_result(findings), _make_context())
-        assert "| Rule | File | Line | Message | Hint |" in sr.markdown
-        assert "S-042" in sr.markdown
-        assert "spec.yaml" in sr.markdown
-        assert "47" in sr.markdown
-        assert "Bad path" in sr.markdown
-        assert "Use kebab-case" in sr.markdown
+        # Bold subject line: "**[<RULE>] <subject> — <N> hit(s)**"
+        assert "**[S-042]" in sr.markdown
+        assert "— 1 hit**" in sr.markdown
+        # Bullet: "- <path>:<line> — [<RULE>] <message>"
+        assert "- spec.yaml:47 — [S-042] Bad path" in sr.markdown
+        # Suggestion blockquote
+        assert "> Suggestion: Use kebab-case" in sr.markdown
 
-    def test_pipe_in_message_escaped(self):
-        findings = [_make_finding(message="a|b")]
+    def test_subject_line_uses_short_title_when_present(self):
+        f = _make_finding(
+            level="error",
+            rule_id="S-042",
+            message="some long verbose message text",
+        )
+        f["short_title"] = "Bad path casing"
+        sr = generate_workflow_summary(_make_result([f]), _make_context())
+        assert "**[S-042] Bad path casing — 1 hit**" in sr.markdown
+
+    def test_subject_line_falls_back_to_message(self):
+        # No short_title → falls back to the finding message
+        findings = [
+            _make_finding(
+                level="error",
+                rule_id="S-042",
+                message="Bad path casing",
+            )
+        ]
         sr = generate_workflow_summary(_make_result(findings), _make_context())
-        assert "a\\|b" in sr.markdown
+        assert "**[S-042] Bad path casing — 1 hit**" in sr.markdown
+
+    def test_multiple_hits_one_rule_block(self):
+        findings = [
+            _make_finding(
+                level="error",
+                rule_id="S-307",
+                path="a.yaml",
+                line=10,
+                message="Missing 401",
+                suggestion="Add 401",
+            ),
+            _make_finding(
+                level="error",
+                rule_id="S-307",
+                path="a.yaml",
+                line=20,
+                message="Missing 401",
+                suggestion="Add 401",
+            ),
+            _make_finding(
+                level="error",
+                rule_id="S-307",
+                path="b.yaml",
+                line=30,
+                message="Missing 401",
+                suggestion="Add 401",
+            ),
+        ]
+        sr = generate_workflow_summary(_make_result(findings), _make_context())
+        # One subject line with the plural count
+        assert sr.markdown.count("**[S-307]") == 1
+        assert "— 3 hits**" in sr.markdown
+        # Three bullets
+        assert "- a.yaml:10 — [S-307] Missing 401" in sr.markdown
+        assert "- a.yaml:20 — [S-307] Missing 401" in sr.markdown
+        assert "- b.yaml:30 — [S-307] Missing 401" in sr.markdown
+        # Suggestion blockquote rendered exactly once for the rule
+        assert sr.markdown.count("> Suggestion: Add 401") == 1
+
+    def test_multiple_rules_separate_blocks(self):
+        findings = [
+            _make_finding(
+                level="error", rule_id="S-001", path="a.yaml", line=10,
+                message="msg-a", suggestion="hint-a",
+            ),
+            _make_finding(
+                level="error", rule_id="S-002", path="b.yaml", line=20,
+                message="msg-b", suggestion="hint-b",
+            ),
+        ]
+        sr = generate_workflow_summary(_make_result(findings), _make_context())
+        assert "**[S-001]" in sr.markdown
+        assert "**[S-002]" in sr.markdown
+        assert "> Suggestion: hint-a" in sr.markdown
+        assert "> Suggestion: hint-b" in sr.markdown
+
+    def test_no_blank_lines_inside_rule_block(self):
+        # Subject line, bullets, and suggestion blockquote run together
+        # (no blank lines) so the bullet list stays tight in GFM.
+        findings = [
+            _make_finding(
+                level="error", rule_id="S-001", path="a.yaml", line=10,
+                message="msg", suggestion="hint",
+            ),
+            _make_finding(
+                level="error", rule_id="S-001", path="a.yaml", line=20,
+                message="msg", suggestion="hint",
+            ),
+        ]
+        sr = generate_workflow_summary(_make_result(findings), _make_context())
+        # Locate the rule block and its constituent lines.
+        idx_subject = sr.markdown.index("**[S-001]")
+        idx_first_bullet = sr.markdown.index("- a.yaml:10")
+        idx_last_bullet = sr.markdown.index("- a.yaml:20")
+        idx_suggestion = sr.markdown.index("> Suggestion: hint")
+        # No blank line between subject and first bullet
+        between_subject_and_bullet = sr.markdown[idx_subject:idx_first_bullet]
+        assert "\n\n" not in between_subject_and_bullet
+        # No blank line between bullets
+        between_bullets = sr.markdown[idx_first_bullet:idx_last_bullet]
+        assert "\n\n" not in between_bullets
+        # No blank line between last bullet and suggestion
+        between_bullet_and_suggestion = sr.markdown[idx_last_bullet:idx_suggestion]
+        assert "\n\n" not in between_bullet_and_suggestion
+
+    def test_blank_line_between_rule_blocks(self):
+        findings = [
+            _make_finding(
+                level="error", rule_id="S-001", path="a.yaml", line=10,
+                message="msg-a",
+            ),
+            _make_finding(
+                level="error", rule_id="S-002", path="b.yaml", line=20,
+                message="msg-b",
+            ),
+        ]
+        sr = generate_workflow_summary(_make_result(findings), _make_context())
+        # The two rule blocks must have a blank line between them.
+        # Locate the end of block-1 (its last bullet) and the start of
+        # block-2 (its subject line) and assert exactly one blank line.
+        idx_end_block_1 = sr.markdown.index("- a.yaml:10")
+        idx_start_block_2 = sr.markdown.index("**[S-002]")
+        between = sr.markdown[idx_end_block_1:idx_start_block_2]
+        assert "\n\n" in between
+
+    def test_singular_hit(self):
+        findings = [_make_finding(level="error", rule_id="S-001")]
+        sr = generate_workflow_summary(_make_result(findings), _make_context())
+        assert "— 1 hit**" in sr.markdown
+        assert "— 1 hits**" not in sr.markdown
+
+    def test_plural_hits(self):
+        findings = [
+            _make_finding(level="error", rule_id="S-001", line=10),
+            _make_finding(level="error", rule_id="S-001", line=20),
+        ]
+        sr = generate_workflow_summary(_make_result(findings), _make_context())
+        assert "— 2 hits**" in sr.markdown
+
+    def test_no_suggestion_when_hint_empty(self):
+        findings = [
+            _make_finding(
+                level="error", rule_id="S-001", message="msg", suggestion=None,
+            )
+        ]
+        sr = generate_workflow_summary(_make_result(findings), _make_context())
+        assert "Suggestion:" not in sr.markdown
+
+    def test_multi_line_hint_blockquote_contiguous(self):
+        findings = [
+            _make_finding(
+                level="error", rule_id="S-001",
+                suggestion="first line\nsecond line\nthird line",
+            )
+        ]
+        sr = generate_workflow_summary(_make_result(findings), _make_context())
+        assert "> Suggestion: first line" in sr.markdown
+        assert "> second line" in sr.markdown
+        assert "> third line" in sr.markdown
+
+    def test_newline_in_message_flattened(self):
+        findings = [
+            _make_finding(
+                level="error", rule_id="S-001", path="a.yaml", line=10,
+                message="line one\nline two",
+            )
+        ]
+        sr = generate_workflow_summary(_make_result(findings), _make_context())
+        assert "- a.yaml:10 — [S-001] line one line two" in sr.markdown
+
+    def test_pipe_in_message_not_escaped(self):
+        # No table → no pipe escaping needed.
+        findings = [
+            _make_finding(
+                level="error", rule_id="S-001", path="a.yaml", line=10,
+                message="left|right",
+            )
+        ]
+        sr = generate_workflow_summary(_make_result(findings), _make_context())
+        assert "- a.yaml:10 — [S-001] left|right" in sr.markdown
 
     def test_absent_levels_not_rendered(self):
         findings = [_make_finding(level="warn")]
@@ -303,8 +484,17 @@ class TestTruncation:
             for i in range(50)
         ]
         sr = generate_workflow_summary(_make_result(errors), _make_context())
-        # All 50 errors should appear
-        assert sr.markdown.count("| some-rule |") == 50
+        # All 50 errors should appear — every finding renders one bullet.
+        # Subject line carries the count.
+        assert "— 50 hits**" in sr.markdown
+        # Each finding renders one bullet; since findings share a path
+        # they all appear under one rule block with 50 bullets.
+        bullet_count = sum(
+            1
+            for line in sr.markdown.splitlines()
+            if line.startswith("- ") and "[some-rule]" in line
+        )
+        assert bullet_count == 50
 
     def test_hints_truncated_first(self):
         # Generate content that exceeds the budget.
@@ -352,6 +542,26 @@ class TestTruncation:
         assert "### Errors" in sr.markdown
         assert "### Warnings" in sr.markdown
         assert "### Hints" in sr.markdown
+
+
+# ---------------------------------------------------------------------------
+# Artifact footnote
+# ---------------------------------------------------------------------------
+
+
+class TestArtifactFootnote:
+    def test_footnote_present_when_diagnostics_written(self):
+        sr = generate_workflow_summary(
+            _make_result(), _make_context(), diagnostics_written=True,
+        )
+        assert "validation-diagnostics" in sr.markdown
+        assert "findings.tsv" in sr.markdown
+        assert "findings.json" in sr.markdown
+
+    def test_footnote_absent_by_default(self):
+        sr = generate_workflow_summary(_make_result(), _make_context())
+        assert "validation-diagnostics" not in sr.markdown
+        assert "findings.tsv" not in sr.markdown
 
 
 # ---------------------------------------------------------------------------

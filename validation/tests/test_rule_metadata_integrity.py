@@ -297,18 +297,19 @@ class TestMetadataQuality:
         ]
         assert not missing, f"Python rules without conditional_level: {missing}"
 
-    def test_hints_are_exception_not_norm(self, all_rules):
-        """Hints and message overrides are rare — engine messages are primary.
+    def test_suggestions_are_exception_not_norm(self, all_rules):
+        """Suggestions and message overrides are rare — engine messages are primary.
 
         Engine messages are the primary fix guidance (design doc 8.4.1).
-        Explicit hints and message overrides should only exist when the
-        engine message is insufficient.  Update counts when adding in WS07.
+        Explicit suggestions and message overrides should only exist when
+        the engine message is insufficient.  Update counts when adding new
+        explicit suggestions.
         """
-        with_hints = [r.id for r in all_rules if r.hint is not None]
+        with_suggestions = [r.id for r in all_rules if r.suggestion is not None]
         with_overrides = [r.id for r in all_rules if r.message_override is not None]
-        assert len(with_hints) == 16, (
-            f"Expected 16 explicit hints (update test if adding hints): "
-            f"{with_hints}"
+        assert len(with_suggestions) == 16, (
+            f"Expected 16 explicit suggestions (update test if adding "
+            f"suggestions): {with_suggestions}"
         )
         assert len(with_overrides) == 0, (
             f"Expected 0 message overrides (update test if adding overrides): "
@@ -330,8 +331,8 @@ class TestMetadataQuality:
         assert len(overrides) == 1
         assert overrides[0].condition == {"target_api_status": ["draft"]}
         assert overrides[0].level == "hint"
-        assert rule.hint is not None
-        assert "draft" in rule.hint.lower()
+        assert rule.suggestion is not None
+        assert "draft" in rule.suggestion.lower()
 
     def test_p015_conditional_on_api_pattern(self, rule_index):
         """P-015 stays error on explicit-subscription, warn on implicit.
@@ -349,8 +350,8 @@ class TestMetadataQuality:
             "api_pattern": ["implicit-subscription"],
         }
         assert overrides[0].level == "warn"
-        assert rule.hint is not None
-        assert "Commonalities#608" in rule.hint
+        assert rule.suggestion is not None
+        assert "Commonalities#608" in rule.suggestion
 
 
 # ---------------------------------------------------------------------------
