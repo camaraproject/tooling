@@ -28,7 +28,7 @@
       - condition:
           target_api_status: [draft]
         level: hint
-  hint: >-
+  suggestion: >-
     Spec file not yet present. For draft entries this is acceptable;
     add the spec file before advancing target_api_status to alpha.
 
@@ -77,7 +77,7 @@
           target_api_maturity: [initial]
           target_release_type: [pre-release-rc, public-release]
         level: warn
-  hint: >-
+  suggestion: >-
     Test files are optional for alpha releases but expected before the
     first release candidate. On stable (>=1.x) APIs they are required
     at rc and public release; on initial (0.x) APIs they are strongly
@@ -192,7 +192,7 @@
       - condition:
           api_pattern: [implicit-subscription]
         level: warn
-  hint: >-
+  suggestion: >-
     Define a named event type schema (e.g. ApiEventType) that constrains
     the CloudEvent `type` value via allOf, rather than inlining the enum
     directly in CloudEvent.properties.type.enum. See the implicit-events
@@ -260,7 +260,7 @@
     is_release_review_pr: false
   conditional_level:
     default: warn
-  hint: >-
+  suggestion: >-
     Replace the local CloudEvent schema with
     `$ref: './CAMARA_event_common.yaml#/components/schemas/CloudEvent'`,
     or an allOf combining the $ref with an API-specific ApiEventType
@@ -285,7 +285,7 @@
       - condition:
           trigger_types: [release-automation]
         level: error
-  hint: >-
+  suggestion: >-
     `code/common/` is managed by the sync mechanism. If your PR diff
     includes manual edits to `code/common/`, revert them. If your branch
     is missing files that should be present, merge `main` into your
@@ -306,7 +306,7 @@
     release_plan_changed: true
   conditional_level:
     default: error
-  hint: >-
+  suggestion: >-
     Split this PR: keep release-plan.yaml changes in a dedicated PR,
     and move the other listed files to a separate PR.
 

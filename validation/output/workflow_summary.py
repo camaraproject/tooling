@@ -181,11 +181,11 @@ def _render_rule_block(rule_id: str, findings: List[dict]) -> str:
         message = (f.get("message", "") or "").replace("\n", " ")
         out.append(f"- {location} — [{rule_id}] {message}")
 
-    hint = (findings[0].get("hint") or "").strip()
-    if hint:
-        hint_lines = hint.splitlines() or [hint]
-        out.append(f"> Suggestion: {hint_lines[0]}")
-        for cont in hint_lines[1:]:
+    suggestion = (findings[0].get("suggestion") or "").strip()
+    if suggestion:
+        suggestion_lines = suggestion.splitlines() or [suggestion]
+        out.append(f"> Suggestion: {suggestion_lines[0]}")
+        for cont in suggestion_lines[1:]:
             out.append(f"> {cont}")
 
     return "\n".join(out)

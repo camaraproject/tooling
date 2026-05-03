@@ -242,11 +242,11 @@ class TestNormalizeFinding:
         assert finding["line"] == 11
         assert "column" not in finding
 
-    def test_rule_id_and_hint_not_set(self):
-        """Adapter does not assign rule_id or hint — post-filter does."""
+    def test_rule_id_and_suggestion_not_set(self):
+        """Adapter does not assign rule_id or suggestion — post-filter does."""
         finding = normalize_finding(SAMPLE_SPECTRAL_FINDING)
         assert "rule_id" not in finding
-        assert "hint" not in finding
+        assert "suggestion" not in finding
 
     def test_schema_path_dot_joined(self):
         """Spectral's JSONPath array is dot-joined into finding['schema_path']."""

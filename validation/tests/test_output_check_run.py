@@ -47,7 +47,7 @@ def _make_finding(
     message: str = "Something is wrong",
     rule_id: str | None = None,
     engine_rule: str = "some-rule",
-    hint: str | None = None,
+    suggestion: str | None = None,
     short_title: str | None = None,
 ) -> dict:
     f: dict = {
@@ -62,8 +62,8 @@ def _make_finding(
     }
     if rule_id is not None:
         f["rule_id"] = rule_id
-    if hint is not None:
-        f["hint"] = hint
+    if suggestion is not None:
+        f["suggestion"] = suggestion
     if short_title is not None:
         f["short_title"] = short_title
     return f
@@ -222,8 +222,8 @@ class TestAnnotationContent:
         )
         assert "Bad pattern" in payload.annotations[0]["message"]
 
-    def test_hint_appended_to_message(self):
-        findings = [_make_finding(message="Bad", hint="Use kebab-case")]
+    def test_suggestion_appended_to_message(self):
+        findings = [_make_finding(message="Bad", suggestion="Use kebab-case")]
         payload = generate_check_run_payload(
             _make_result(findings), _make_context(),
         )

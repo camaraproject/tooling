@@ -47,8 +47,6 @@ Severity is a property of every problem, but the way it is shown depends on wher
 | **warning** | The check still passes, but the problem will need attention before a stable release. Plan to fix it. |
 | **hint** | Informational. May indicate a future requirement, an item to verify, or a benign pattern. Read the message before acting. |
 
-Note: the severity `hint` is the rendered category for informational findings. The suggested-fix line described above is introduced by the separate `Suggestion:` label, which never appears as a severity. The underlying rule-metadata field that supplies the suggested-fix text is still named `hint` internally for backward compatibility, but it is no longer rendered with a `Hint:` prefix.
-
 Errors should not be left on `main` intentionally. During the pilot, GitHub may not technically block every pull request merge on validation errors, but errors will block `/create-snapshot` and the release process.
 
 A few rules adjust severity by context. For example, missing test files are a hint on alpha releases but an error on stable releases. The FAQ entry for those rules explains when this happens.

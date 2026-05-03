@@ -36,7 +36,7 @@ class PostFilterResult:
     """Result of post-filter processing.
 
     Attributes:
-        findings: Processed findings with resolved level, optional hint, blocks.
+        findings: Processed findings with resolved level, optional suggestion, blocks.
         result: Overall verdict — ``"pass"``, ``"fail"``, or ``"error"``.
         summary: Human-readable one-line summary.
     """
@@ -109,9 +109,9 @@ def _enrich_finding(
     When *resolved_level* is ``None`` (identity-only entry without
     ``conditional_level``), the engine's original level is preserved.
     When *message_override* is set, the finding's message is replaced.
-    When *hint* is set, it is added to the finding as additional guidance.
-    When neither is set, the engine's original message is preserved and
-    no hint is added.
+    When *suggestion* is set, it is added to the finding as additional
+    guidance.  When neither is set, the engine's original message is
+    preserved and no suggestion is added.
     """
     enriched = dict(finding)
     enriched["rule_id"] = rule.id
@@ -119,15 +119,15 @@ def _enrich_finding(
         enriched["level"] = resolved_level
     if rule.message_override is not None:
         enriched["message"] = rule.message_override
-    if rule.hint is not None:
-        enriched["hint"] = rule.hint
+    if rule.suggestion is not None:
+        enriched["suggestion"] = rule.suggestion
     if rule.short_title is not None:
         enriched["short_title"] = rule.short_title
     return enriched
 
 
 def _passthrough_finding(finding: dict) -> dict:
-    """Create a pass-through copy: keep engine level, no hint added."""
+    """Create a pass-through copy: keep engine level, no suggestion added."""
     return dict(finding)
 
 
@@ -210,10 +210,10 @@ def run_post_filter(
     2. Look up ``(engine, engine_rule)`` in the metadata index.
     3. **Mapped rule**: evaluate applicability (remove if not applicable),
        resolve conditional level (remove if ``"muted"``), enrich with
-       ``rule_id``, optional ``message_override``/``hint``, and
+       ``rule_id``, optional ``message_override``/``suggestion``, and
        adjusted ``level``.
     4. **Unmapped rule** (pass-through): keep engine severity and
-       message, no hint added.
+       message, no suggestion added.
     5. Apply profile blocking to all surviving findings.
     6. Compute overall result.
 

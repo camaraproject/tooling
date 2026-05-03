@@ -52,7 +52,7 @@ def _make_finding(
     blocks: bool = False,
     rule_id: str | None = None,
     engine_rule: str = "some-rule",
-    hint: str | None = None,
+    suggestion: str | None = None,
 ) -> dict:
     f: dict = {
         "engine": "spectral",
@@ -66,8 +66,8 @@ def _make_finding(
     }
     if rule_id is not None:
         f["rule_id"] = rule_id
-    if hint is not None:
-        f["hint"] = hint
+    if suggestion is not None:
+        f["suggestion"] = suggestion
     return f
 
 
@@ -228,7 +228,7 @@ class TestFindingsSection:
                 path="spec.yaml",
                 line=47,
                 message="Bad path",
-                hint="Use kebab-case",
+                suggestion="Use kebab-case",
             )
         ]
         sr = generate_workflow_summary(_make_result(findings), _make_context())
@@ -270,7 +270,7 @@ class TestFindingsSection:
                 path="a.yaml",
                 line=10,
                 message="Missing 401",
-                hint="Add 401",
+                suggestion="Add 401",
             ),
             _make_finding(
                 level="error",
@@ -278,7 +278,7 @@ class TestFindingsSection:
                 path="a.yaml",
                 line=20,
                 message="Missing 401",
-                hint="Add 401",
+                suggestion="Add 401",
             ),
             _make_finding(
                 level="error",
@@ -286,7 +286,7 @@ class TestFindingsSection:
                 path="b.yaml",
                 line=30,
                 message="Missing 401",
-                hint="Add 401",
+                suggestion="Add 401",
             ),
         ]
         sr = generate_workflow_summary(_make_result(findings), _make_context())
@@ -304,11 +304,11 @@ class TestFindingsSection:
         findings = [
             _make_finding(
                 level="error", rule_id="S-001", path="a.yaml", line=10,
-                message="msg-a", hint="hint-a",
+                message="msg-a", suggestion="hint-a",
             ),
             _make_finding(
                 level="error", rule_id="S-002", path="b.yaml", line=20,
-                message="msg-b", hint="hint-b",
+                message="msg-b", suggestion="hint-b",
             ),
         ]
         sr = generate_workflow_summary(_make_result(findings), _make_context())
@@ -323,11 +323,11 @@ class TestFindingsSection:
         findings = [
             _make_finding(
                 level="error", rule_id="S-001", path="a.yaml", line=10,
-                message="msg", hint="hint",
+                message="msg", suggestion="hint",
             ),
             _make_finding(
                 level="error", rule_id="S-001", path="a.yaml", line=20,
-                message="msg", hint="hint",
+                message="msg", suggestion="hint",
             ),
         ]
         sr = generate_workflow_summary(_make_result(findings), _make_context())
@@ -383,7 +383,7 @@ class TestFindingsSection:
     def test_no_suggestion_when_hint_empty(self):
         findings = [
             _make_finding(
-                level="error", rule_id="S-001", message="msg", hint=None,
+                level="error", rule_id="S-001", message="msg", suggestion=None,
             )
         ]
         sr = generate_workflow_summary(_make_result(findings), _make_context())
@@ -393,7 +393,7 @@ class TestFindingsSection:
         findings = [
             _make_finding(
                 level="error", rule_id="S-001",
-                hint="first line\nsecond line\nthird line",
+                suggestion="first line\nsecond line\nthird line",
             )
         ]
         sr = generate_workflow_summary(_make_result(findings), _make_context())

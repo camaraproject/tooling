@@ -156,7 +156,7 @@ class TestFindingsTsv:
         write_diagnostics(_make_result(), _make_context(), out)
         text = (out / "findings.tsv").read_text(encoding="utf-8")
         first_line = text.splitlines()[0]
-        assert first_line == "rule\tfile\tline\tlevel\tmessage\thint"
+        assert first_line == "rule\tfile\tline\tlevel\tmessage\tsuggestion"
 
     def test_row_per_finding(self, tmp_path: Path):
         findings = [
@@ -183,7 +183,7 @@ class TestFindingsTsv:
                 "line": 47,
                 "api_name": None,
                 "blocks": True,
-                "hint": "Use kebab-case",
+                "suggestion": "Use kebab-case",
             }
         ]
         out = tmp_path / "output"
@@ -244,10 +244,10 @@ class TestFindingsTsv:
         # Header only.
         rows = [line for line in text.splitlines() if line.strip()]
         assert len(rows) == 1
-        assert rows[0] == "rule\tfile\tline\tlevel\tmessage\thint"
+        assert rows[0] == "rule\tfile\tline\tlevel\tmessage\tsuggestion"
 
     def test_missing_optional_fields(self, tmp_path: Path):
-        # Finding without `hint` field — TSV row writes empty string.
+        # Finding without `suggestion` field — TSV row writes empty string.
         findings = [
             {
                 "engine": "spectral",
@@ -264,6 +264,6 @@ class TestFindingsTsv:
         write_diagnostics(_make_result(findings), _make_context(), out)
         text = (out / "findings.tsv").read_text(encoding="utf-8")
         data_row = text.splitlines()[1]
-        # 5 tabs → 6 columns, last column (hint) is empty.
+        # 5 tabs → 6 columns, last column (suggestion) is empty.
         assert data_row.count("\t") == 5
         assert data_row.endswith("msg\t")

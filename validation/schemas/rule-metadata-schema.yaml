@@ -61,12 +61,13 @@ properties:
       engine message is misleading or unhelpful.  Optional — when
       omitted, the engine message is preserved.
 
-  hint:
+  suggestion:
     type: string
     description: >
-      Additional fix guidance rendered alongside the finding message.
-      Optional — only set when there is "how to fix" guidance beyond
-      what the message already says.
+      Additional fix guidance rendered alongside the finding message
+      (under a `Suggestion:` label in annotations and the workflow
+      summary).  Optional — only set when there is "how to fix"
+      guidance beyond what the message already says.
 
   applicability:
     type: object

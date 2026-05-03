@@ -95,9 +95,9 @@ def _build_annotation(finding: dict) -> dict:
     title = resolve_annotation_title(finding)
     full_message = finding.get("message", "")
     message = f"[{rule_label}] {full_message}"
-    hint = finding.get("hint")
-    if hint:
-        message = f"{message}\n\nSuggestion: {hint}"
+    suggestion = finding.get("suggestion")
+    if suggestion:
+        message = f"{message}\n\nSuggestion: {suggestion}"
 
     return {
         "path": path,

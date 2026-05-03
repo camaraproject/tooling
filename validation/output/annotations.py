@@ -96,9 +96,9 @@ def _build_command(finding: dict) -> str:
     title = resolve_annotation_title(finding)
     full_message = finding.get("message", "")
     message = f"[{rule_label}] {full_message}"
-    hint = finding.get("hint")
-    if hint:
-        message = f"{message} | Suggestion: {hint}"
+    suggestion = finding.get("suggestion")
+    if suggestion:
+        message = f"{message} | Suggestion: {suggestion}"
 
     # Build parameter string
     params = f"file={path},line={line}"
