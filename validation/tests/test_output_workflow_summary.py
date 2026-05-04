@@ -428,6 +428,103 @@ class TestFindingsSection:
         assert "### Errors" not in sr.markdown
         assert "### Hints" not in sr.markdown
 
+    def test_message_regex_quantifier_escaped(self):
+        # S-008-shape: regex pattern with `*` quantifiers must not flip
+        # the trailing prose to italic.  Checks the bullet body — the
+        # subject line uses ``short_title`` from rule metadata and is
+        # author-controlled, deliberately not escaped.
+        f = _make_finding(
+            level="error", rule_id="S-008", path="a.yaml", line=10,
+            message="/foo is not kebab-case: ^/([a-z0-9]+(-[a-z0-9]+)*)?$",
+        )
+        f["short_title"] = "Path segments must be kebab-case"
+        sr = generate_workflow_summary(_make_result([f]), _make_context())
+        bullet = next(
+            ln for ln in sr.markdown.splitlines() if ln.startswith("- a.yaml:10")
+        )
+        # Both `*` quantifiers and the bracket pair are escaped in the
+        # bullet body, so GFM does not flip the trailing prose to italic.
+        assert r"+)\*)?$" in bullet
+        assert r"\[a-z0-9\]" in bullet
+        assert "+)*)?$" not in bullet
+
+    def test_message_tilde_pair_escaped(self):
+        # S-003-shape: RFC 6901 `~1` sequence pair would otherwise render
+        # as strikethrough.  Decode is intentionally NOT applied — only
+        # escape — so the encoded form stays visible but stops striking
+        # through the rest of the bullet.  Subject line uses
+        # ``short_title`` (author-controlled, not escaped).
+        f = _make_finding(
+            level="error", rule_id="S-003", path="a.yaml", line=10,
+            message=(
+                "Invalid HTTP method for "
+                "'#/paths/~1resources~1{id}/trace'."
+            ),
+        )
+        f["short_title"] = "Unsupported HTTP method on path"
+        sr = generate_workflow_summary(_make_result([f]), _make_context())
+        bullet = next(
+            ln for ln in sr.markdown.splitlines() if ln.startswith("- a.yaml:10")
+        )
+        assert r"\~1resources\~1" in bullet
+        assert "~1resources~1" not in bullet
+
+    def test_message_underscore_left_unitalicized(self):
+        findings = [
+            _make_finding(
+                level="error", rule_id="S-001", path="a.yaml", line=10,
+                message="property snake_case_name is not camelCase",
+            )
+        ]
+        sr = generate_workflow_summary(_make_result(findings), _make_context())
+        assert r"snake\_case\_name" in sr.markdown
+
+    def test_message_brackets_escaped(self):
+        findings = [
+            _make_finding(
+                level="error", rule_id="S-001", path="a.yaml", line=10,
+                message="see [section 5.7.4] of the design guide",
+            )
+        ]
+        sr = generate_workflow_summary(_make_result(findings), _make_context())
+        # Escaped brackets in the bullet body — would otherwise look like
+        # an unresolved reference link.
+        assert r"\[section 5.7.4\]" in sr.markdown
+
+    def test_subject_line_not_escaped(self):
+        # Subject line comes from rule metadata (short_title) or, as a
+        # fallback, the engine message — the renderer leaves it
+        # unescaped because rule metadata is author-controlled.  Verify
+        # the bold subject line still contains the literal short_title
+        # even when the engine message in the body is escape-laden.
+        f = _make_finding(
+            level="error", rule_id="S-008",
+            message="(-[a-z0-9]+)*",
+        )
+        f["short_title"] = "Path must use kebab-case (a*b)"
+        sr = generate_workflow_summary(_make_result([f]), _make_context())
+        # Subject line carries the literal short_title (asterisk
+        # included) — author-controlled, intentionally not escaped.
+        assert "**[S-008] Path must use kebab-case (a*b) — 1 hit**" in sr.markdown
+
+    def test_suggestion_not_escaped(self):
+        # Suggestion comes from rule metadata — author-controlled and
+        # may legitimately use Markdown (inline code spans, emphasis).
+        # Verify it passes through untouched even when the bullet body
+        # is escape-laden.
+        findings = [
+            _make_finding(
+                level="error", rule_id="S-008", path="a.yaml", line=10,
+                message="(-[a-z0-9]+)*",
+                suggestion="Use kebab-case: `/my-resource` not `/myResource`.",
+            )
+        ]
+        sr = generate_workflow_summary(_make_result(findings), _make_context())
+        assert (
+            "> Suggestion: Use kebab-case: `/my-resource` not `/myResource`."
+            in sr.markdown
+        )
+
 
 # ---------------------------------------------------------------------------
 # Footer
