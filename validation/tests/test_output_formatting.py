@@ -8,6 +8,7 @@ from validation.output.formatting import (
     count_findings,
     count_findings_by_api,
     deduplicate_findings,
+    escape_gfm_inline,
     format_finding_location,
     format_rule_label,
     resolve_annotation_title,
@@ -360,3 +361,68 @@ class TestResolveAnnotationTitle:
         # through, it is returned as-is (rather than silently truncated).
         long_short = "x" * 80
         assert resolve_annotation_title({"short_title": long_short}) == long_short
+
+
+# ---------------------------------------------------------------------------
+# escape_gfm_inline
+# ---------------------------------------------------------------------------
+
+
+class TestEscapeGfmInline:
+    def test_no_op_on_plain_text(self):
+        assert escape_gfm_inline("Just a normal message.") == "Just a normal message."
+
+    def test_empty_string(self):
+        assert escape_gfm_inline("") == ""
+
+    def test_asterisk_escaped(self):
+        # S-008-shape: regex with `*` quantifiers
+        assert escape_gfm_inline("(-[a-z0-9]+)*") == r"(-\[a-z0-9\]+)\*"
+
+    def test_underscore_escaped(self):
+        assert escape_gfm_inline("snake_case_word") == r"snake\_case\_word"
+
+    def test_tilde_escaped(self):
+        # S-003-shape: RFC 6901 path encoding `~1`
+        assert escape_gfm_inline("~1resources~1") == r"\~1resources\~1"
+
+    def test_backtick_escaped(self):
+        assert escape_gfm_inline("a `b` c") == r"a \`b\` c"
+
+    def test_brackets_escaped(self):
+        assert escape_gfm_inline("[link](url)") == r"\[link\](url)"
+
+    def test_lt_escaped(self):
+        assert escape_gfm_inline("<tag>") == r"\<tag>"
+
+    def test_backslash_escaped_first(self):
+        # Backslash must be escaped before the others, otherwise the
+        # backslashes inserted by the per-char loop would themselves get
+        # re-escaped on a second pass and produce double-escaped output.
+        # Input containing a literal backslash followed by an asterisk:
+        #   raw: '\*'
+        #   expected: backslash escaped → '\\', then '*' → '\*'
+        #   result:  '\\\*'
+        assert escape_gfm_inline(r"\*") == r"\\\*"
+
+    def test_no_double_escape_of_already_escaped_special(self):
+        # Engine messages do not pre-escape, but be invariant if they do:
+        # '\\*' becomes '\\\\\\*' — backslash first, then '*' once.
+        # In Markdown this renders as a literal backslash followed by a
+        # literal asterisk (no italic).
+        result = escape_gfm_inline(r"\*foo\*")
+        assert result == r"\\\*foo\\\*"
+
+    def test_multiple_special_chars_in_one_string(self):
+        result = escape_gfm_inline("regex `(a*|b_)` matches [text]")
+        assert result == r"regex \`(a\*|b\_)\` matches \[text\]"
+
+    def test_pipe_left_alone(self):
+        # GFM only treats `|` as syntax inside tables; the bullet
+        # renderer is not a table, so leave `|` literal.
+        assert escape_gfm_inline("left|right") == "left|right"
+
+    def test_ampersand_left_alone(self):
+        # Workflow summary is server-rendered Markdown, not raw HTML —
+        # `&` and `>` need no escaping.
+        assert escape_gfm_inline("a & b > c") == "a & b > c"

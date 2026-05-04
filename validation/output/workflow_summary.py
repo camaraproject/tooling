@@ -24,6 +24,7 @@ from .formatting import (
     REPO_LEVEL_LABEL,
     count_findings,
     count_findings_by_engine,
+    escape_gfm_inline,
     format_finding_location,
     format_rule_label,
     resolve_annotation_title,
@@ -179,6 +180,7 @@ def _render_rule_block(rule_id: str, findings: List[dict]) -> str:
     for f in findings:
         location = format_finding_location(f)
         message = (f.get("message", "") or "").replace("\n", " ")
+        message = escape_gfm_inline(message)
         out.append(f"- {location} — [{rule_id}] {message}")
 
     suggestion = (findings[0].get("suggestion") or "").strip()

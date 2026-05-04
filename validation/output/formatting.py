@@ -238,3 +238,28 @@ def format_finding_location(finding: dict) -> str:
     if column is not None:
         return f"{path}:{line}:{column}"
     return f"{path}:{line}"
+
+
+# Inline-syntax characters that GFM interprets specially.  Backslash is
+# handled separately and must run first to avoid double-escaping.
+_GFM_INLINE_CHARS = ("*", "_", "~", "`", "[", "]", "<")
+
+
+def escape_gfm_inline(text: str) -> str:
+    """Backslash-escape GFM inline-syntax characters in *text*.
+
+    Engine-emitted messages are not authored as Markdown — Spectral and
+    other linters can include regex quantifiers, RFC 6901 path
+    encoding, or bracketed identifiers that GFM otherwise parses as
+    emphasis, links, or code spans.  Apply this to messages before
+    interpolating them into a Markdown surface.
+
+    Out of scope: HTML entity escaping (the workflow summary is server-
+    rendered Markdown, not raw HTML — ``&`` and ``>`` need no special
+    handling), block-level constructs, and reference-link
+    disambiguation.  Inline-only is the documented contract.
+    """
+    text = text.replace("\\", "\\\\")
+    for ch in _GFM_INLINE_CHARS:
+        text = text.replace(ch, "\\" + ch)
+    return text
