@@ -21,7 +21,7 @@ name: Release Automation Regression
 
 on:
   push:
-    branches: [validation-framework]
+    branches: [main]
     paths:
       - '.github/workflows/release-automation-reusable.yml'
       - '.github/workflows/release-automation-regression.yml'
