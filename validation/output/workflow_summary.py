@@ -1,0 +1,407 @@
+"""Workflow summary generation for ``$GITHUB_STEP_SUMMARY``.
+
+Produces a Markdown string with header, engine summary table, findings
+sections grouped by severity (rule-grouped bullets within each), an
+optional artifact footnote, and footer.
+Implements 900 KB truncation with priority ordering (errors are never
+truncated).
+
+Design doc references:
+  - Section 9.3: workflow summary structure and truncation strategy
+  - Section 9.4: 1 MB GitHub limit (900 KB safety margin)
+"""
+
+from __future__ import annotations
+
+import logging
+from dataclasses import dataclass
+from typing import Dict, List, Optional
+
+from validation.context import ValidationContext
+from validation.postfilter.engine import PostFilterResult
+
+from .formatting import (
+    REPO_LEVEL_LABEL,
+    count_findings,
+    count_findings_by_engine,
+    escape_gfm_inline,
+    format_finding_location,
+    format_rule_label,
+    resolve_annotation_title,
+    sort_findings_by_priority,
+)
+
+logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Constants
+# ---------------------------------------------------------------------------
+
+SUMMARY_SIZE_LIMIT = 900 * 1024  # 900 KB (GitHub limit is 1 MB)
+
+_RESULT_LABEL = {
+    "pass": "PASS",
+    "fail": "FAIL",
+    "error": "ERROR",
+    "advisory": "ADVISORY",
+}
+
+_DIAGNOSTICS_ARTIFACT = "validation-diagnostics"
+
+# ---------------------------------------------------------------------------
+# Result type
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class SummaryResult:
+    """Result of workflow summary generation.
+
+    Attributes:
+        markdown: Complete Markdown string for ``$GITHUB_STEP_SUMMARY``.
+        truncated: Whether any findings sections were truncated.
+        truncation_note: Human-readable note about what was truncated,
+            or empty string if nothing was truncated.
+    """
+
+    markdown: str
+    truncated: bool
+    truncation_note: str
+
+
+# ---------------------------------------------------------------------------
+# Internal section renderers
+# ---------------------------------------------------------------------------
+
+
+def _resolve_result_label(
+    result: str,
+    context: ValidationContext,
+    findings: List[dict],
+) -> str:
+    """Map result string to display label, with advisory override.
+
+    Advisory profile never blocks, so the post-filter always returns
+    ``"pass"``.  Showing **PASS** when there are errors is misleading;
+    **ADVISORY** signals that findings exist but nothing was blocked.
+    """
+    if (
+        result == "pass"
+        and context.profile == "advisory"
+        and findings
+    ):
+        return _RESULT_LABEL["advisory"]
+    return _RESULT_LABEL.get(result, result.upper())
+
+
+def _render_header(
+    result: str,
+    context: ValidationContext,
+    findings: List[dict],
+) -> str:
+    """Render the summary header with result and metadata."""
+    label = _resolve_result_label(result, context, findings)
+    return (
+        f"## CAMARA Validation — {label}\n\n"
+        f"**Profile**: {context.profile} | "
+        f"**Branch**: {context.branch_type} | "
+        f"**Trigger**: {context.trigger_type}\n"
+    )
+
+
+def _render_engine_summary_table(
+    findings: List[dict],
+    engine_statuses: Optional[Dict[str, str]],
+) -> str:
+    """Render a per-engine summary table with post-filter counts.
+
+    For engines that produced findings: show error/warning/hint counts.
+    For engines that ran clean: show 0/0/0.
+    For engines that were skipped or errored: show status text instead.
+    """
+    if not engine_statuses:
+        return ""
+
+    by_engine = count_findings_by_engine(findings)
+
+    lines = [
+        "\n### Summary\n",
+        "| Engine | Errors | Warnings | Hints | Status |",
+        "|--------|--------|----------|-------|--------|",
+    ]
+
+    for engine, status in engine_statuses.items():
+        counts = by_engine.get(engine)
+        # Engine ran and produced findings, or ran clean with "N finding(s)"
+        ran = status.endswith("finding(s)") or status.startswith("0 ")
+        if ran:
+            c = counts if counts else None
+            errors = c.errors if c else 0
+            warnings = c.warnings if c else 0
+            hints = c.hints if c else 0
+            lines.append(
+                f"| {engine} | {errors} | {warnings} | {hints} | — |"
+            )
+        else:
+            # Skipped, error, or special status
+            lines.append(
+                f"| {engine} | — | — | — | {status} |"
+            )
+
+    lines.append("")
+    return "\n".join(lines)
+
+
+def _group_by_rule(findings: List[dict]) -> "Dict[str, List[dict]]":
+    """Group findings by ``rule_id`` (or engine_rule fallback).
+
+    Returns a dict in first-seen order — under the upstream
+    ``sort_findings_by_priority`` ordering this naturally clusters
+    each rule's hits together when one rule dominates a file.
+    """
+    groups: "Dict[str, List[dict]]" = {}
+    for f in findings:
+        rid = format_rule_label(f)
+        groups.setdefault(rid, []).append(f)
+    return groups
+
+
+def _render_rule_block(rule_id: str, findings: List[dict]) -> str:
+    """Render one rule's block: bold subject line, bullets, suggestion.
+
+    Spacing is intentional: no blank lines inside the block, so the
+    bullet list stays tight in the GitHub-flavoured Markdown renderer.
+    """
+    subject = resolve_annotation_title(findings[0])
+    n = len(findings)
+    plural = "hits" if n != 1 else "hit"
+
+    out: List[str] = [f"**[{rule_id}] {subject} — {n} {plural}**"]
+    for f in findings:
+        location = format_finding_location(f)
+        message = (f.get("message", "") or "").replace("\n", " ")
+        message = escape_gfm_inline(message)
+        out.append(f"- {location} — [{rule_id}] {message}")
+
+    suggestion = (findings[0].get("suggestion") or "").strip()
+    if suggestion:
+        suggestion_lines = suggestion.splitlines() or [suggestion]
+        out.append(f"> Suggestion: {suggestion_lines[0]}")
+        for cont in suggestion_lines[1:]:
+            out.append(f"> {cont}")
+
+    return "\n".join(out)
+
+
+def _render_findings_section(
+    findings: List[dict],
+    level_label: str,
+) -> str:
+    """Render a findings section for a single severity level.
+
+    Returns an empty string if there are no findings at this level.
+    """
+    if not findings:
+        return ""
+
+    blocks = [
+        _render_rule_block(rid, group)
+        for rid, group in _group_by_rule(findings).items()
+    ]
+    return (
+        f"\n### {level_label} ({len(findings)})\n\n"
+        + "\n\n".join(blocks)
+        + "\n"
+    )
+
+
+def _render_artifact_footnote() -> str:
+    """Render the artifact-pointer footnote.
+
+    Tells the reader where to find the full TSV / JSON findings —
+    handy for spreadsheet review or pasting many rows at once.
+    """
+    return (
+        f"\n> Full findings are also available as `findings.tsv` and "
+        f"`findings.json` in the workflow's `{_DIAGNOSTICS_ARTIFACT}` "
+        f"artifact — useful for spreadsheet review or pasting many "
+        f"rows at once.\n"
+    )
+
+
+def _render_footer(
+    context: ValidationContext,
+    commit_sha: str,
+) -> str:
+    """Render the footer with commit info and workflow link."""
+    parts = []
+    if commit_sha:
+        parts.append(f"Commit: {commit_sha[:7]}")
+    if context.tooling_ref:
+        parts.append(f"Tooling: {context.tooling_ref[:7]}")
+    if context.workflow_run_url:
+        parts.append(f"[Full workflow run]({context.workflow_run_url})")
+    if not parts:
+        return ""
+    return "\n---\n" + " | ".join(parts) + "\n"
+
+
+# ---------------------------------------------------------------------------
+# Truncation
+# ---------------------------------------------------------------------------
+
+
+def _byte_size(text: str) -> int:
+    """Return the UTF-8 byte size of *text*."""
+    return len(text.encode("utf-8"))
+
+
+def _truncation_notice(shown: int, total: int, level_label: str) -> str:
+    """Build a truncation notice for a findings section."""
+    return (
+        f"> Showing {shown} of {total} {level_label.lower()} findings. "
+        f"Full results available in workflow artifacts.\n"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
+
+
+def generate_workflow_summary(
+    post_filter_result: PostFilterResult,
+    context: ValidationContext,
+    engine_statuses: Optional[Dict[str, str]] = None,
+    commit_sha: str = "",
+    diagnostics_written: bool = False,
+) -> SummaryResult:
+    """Generate the full workflow summary Markdown.
+
+    Implements truncation: errors are never truncated; warnings and then
+    hints are truncated if the cumulative size exceeds
+    :data:`SUMMARY_SIZE_LIMIT`.
+
+    Args:
+        post_filter_result: Output of the post-filter engine.
+        context: Unified validation context.
+        engine_statuses: Optional mapping of engine name to status string.
+        commit_sha: Full commit SHA (first 7 chars shown in footer).
+        diagnostics_written: When ``True`` the rendered summary includes
+            a footnote pointing at the diagnostics artifact.  The
+            orchestrator sets this when it calls
+            :func:`validation.output.diagnostics.write_diagnostics`
+            in the same run.
+
+    Returns:
+        :class:`SummaryResult` with the complete Markdown and truncation info.
+    """
+    findings = post_filter_result.findings
+    sorted_all = sort_findings_by_priority(findings)
+
+    # Partition by level
+    errors = [f for f in sorted_all if f.get("level") == "error"]
+    warnings = [f for f in sorted_all if f.get("level") == "warn"]
+    hints = [f for f in sorted_all if f.get("level") == "hint"]
+
+    # Fixed sections (always rendered)
+    header = _render_header(post_filter_result.result, context, findings)
+    engine_summary = _render_engine_summary_table(findings, engine_statuses)
+    artifact_footnote = (
+        _render_artifact_footnote() if diagnostics_written else ""
+    )
+    footer = _render_footer(context, commit_sha)
+
+    fixed_size = sum(
+        _byte_size(s)
+        for s in (header, engine_summary, artifact_footnote, footer)
+    )
+
+    # Budget for findings sections
+    budget = SUMMARY_SIZE_LIMIT - fixed_size
+    truncated = False
+    truncation_note = ""
+
+    # Errors section — never truncated
+    errors_section = _render_findings_section(errors, "Errors")
+    budget -= _byte_size(errors_section)
+
+    # Warnings section — truncated if over budget
+    warnings_section = _render_findings_section(warnings, "Warnings")
+    if budget - _byte_size(warnings_section) < 0 and warnings:
+        # Find how many warnings fit
+        shown = _fit_count(warnings, "Warnings", budget)
+        if shown > 0:
+            warnings_section = _render_findings_section(
+                warnings[:shown], "Warnings"
+            )
+            warnings_section += _truncation_notice(
+                shown, len(warnings), "Warnings"
+            )
+        else:
+            warnings_section = _truncation_notice(0, len(warnings), "Warnings")
+        truncated = True
+        truncation_note = f"{len(warnings) - shown} warning(s) truncated"
+    budget -= _byte_size(warnings_section)
+
+    # Hints section — truncated if over budget
+    hints_section = _render_findings_section(hints, "Hints")
+    if budget - _byte_size(hints_section) < 0 and hints:
+        shown = _fit_count(hints, "Hints", budget)
+        if shown > 0:
+            hints_section = _render_findings_section(hints[:shown], "Hints")
+            hints_section += _truncation_notice(shown, len(hints), "Hints")
+        else:
+            hints_section = _truncation_notice(0, len(hints), "Hints")
+        truncated = True
+        note = f"{len(hints) - shown} hint(s) truncated"
+        truncation_note = (
+            f"{truncation_note}; {note}" if truncation_note else note
+        )
+
+    # Assemble
+    markdown = (
+        header
+        + engine_summary
+        + errors_section
+        + warnings_section
+        + hints_section
+        + artifact_footnote
+        + footer
+    )
+
+    return SummaryResult(
+        markdown=markdown,
+        truncated=truncated,
+        truncation_note=truncation_note,
+    )
+
+
+def _fit_count(
+    findings: List[dict],
+    level_label: str,
+    budget: int,
+) -> int:
+    """Binary-search for how many findings fit within *budget* bytes.
+
+    Accounts for the truncation notice size that will be appended.
+    """
+    if budget <= 0:
+        return 0
+
+    # Quick check: does the full section fit?
+    full = _render_findings_section(findings, level_label)
+    if _byte_size(full) <= budget:
+        return len(findings)
+
+    # Binary search
+    lo, hi = 0, len(findings)
+    while lo < hi:
+        mid = (lo + hi + 1) // 2
+        section = _render_findings_section(findings[:mid], level_label)
+        notice = _truncation_notice(mid, len(findings), level_label)
+        if _byte_size(section) + _byte_size(notice) <= budget:
+            lo = mid
+        else:
+            hi = mid - 1
+    return lo

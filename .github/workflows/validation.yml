@@ -1,15 +1,518 @@
-# CAMARA Validation Framework — Stub
+# CAMARA Validation Framework — Reusable Workflow (v1)
 #
-# Minimal stub on main so GitHub recognizes the workflow file on feature
-# branches.  The full implementation lives on the validation-framework branch.
+# Called by the identical per-repo caller workflow.  All validation logic,
+# configuration, and output surfacing are handled here.
+#
+# Architecture: single-job, sequential steps.  The Python orchestrator
+# (validation.orchestrator) chains all modules and writes output files;
+# the workflow reads those files and posts them to GitHub surfaces.
 
 name: CAMARA Validation
 
 on:
   workflow_call:
+    inputs:
+      tooling_ref_override:
+        description: >-
+          40-character SHA to override the automatic tooling checkout ref.
+          Pilot / break-glass only.
+        type: string
+        required: false
+        default: ""
+      profile:
+        description: >-
+          Validation profile override (advisory, standard, strict).
+          Default: framework auto-selects based on context.
+        type: string
+        required: false
+        default: ""
+      mode:
+        description: >-
+          Execution mode.  Set to "pre-snapshot" by release automation
+          for pre-snapshot validation gate.
+        type: string
+        required: false
+        default: ""
+
+permissions:
+  checks: write
+  pull-requests: write
+  issues: write
+  contents: read
+  statuses: write
+  id-token: write
 
 jobs:
-  stub:
+  validate:
+    name: Validate
     runs-on: ubuntu-latest
+
     steps:
-      - run: 'echo "Stub — use the validation-framework branch for the full workflow"'
+      # ── Step 1: Checkout repository content ────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      # ── Step 2: Resolve tooling ref (OIDC → override → fallback) ──
+      - name: Resolve tooling ref
+        id: resolve-ref
+        uses: actions/github-script@v9
+        env:
+          TOOLING_REF_OVERRIDE: ${{ inputs.tooling_ref_override }}
+        with:
+          script: |
+            const overrideRef = (process.env.TOOLING_REF_OVERRIDE || '').trim();
+            const shaPattern = /^[0-9a-f]{40}$/i;
+            const workflowRefPattern =
+              /^([^/]+\/[^/]+)\/\.github\/workflows\/validation\.yml@.+$/;
+
+            function decodeJwtPayload(jwt) {
+              const parts = jwt.split('.');
+              if (parts.length !== 3) {
+                throw new Error('OIDC token is not a valid JWT');
+              }
+              const payload = parts[1]
+                .replace(/-/g, '+')
+                .replace(/_/g, '/');
+              const padLength = (4 - (payload.length % 4)) % 4;
+              const padded = payload + '='.repeat(padLength);
+              return JSON.parse(Buffer.from(padded, 'base64').toString('utf8'));
+            }
+
+            // Tier 1: Explicit override (highest priority)
+            if (overrideRef) {
+              if (!shaPattern.test(overrideRef)) {
+                core.setFailed('tooling_ref_override must be a full 40-character SHA');
+                return;
+              }
+              core.setOutput('tooling_checkout_repo', 'camaraproject/tooling');
+              core.setOutput('tooling_checkout_ref', overrideRef.toLowerCase());
+              core.setOutput('tooling_ref_source', 'override');
+              core.info(`Tooling ref: override ${overrideRef.substring(0, 7)}`);
+              return;
+            }
+
+            // Tier 2: OIDC job_workflow_sha
+            try {
+              const oidcToken = await core.getIDToken('camara-validation-tooling-ref');
+              const claims = decodeJwtPayload(oidcToken);
+              const workflowRef = claims.job_workflow_ref || '';
+              const workflowSha = claims.job_workflow_sha || '';
+              const match = workflowRef.match(workflowRefPattern);
+
+              if (match && shaPattern.test(workflowSha)) {
+                const repo = match[1];
+                const ref = workflowSha.toLowerCase();
+                core.setOutput('tooling_checkout_repo', repo);
+                core.setOutput('tooling_checkout_ref', ref);
+                core.setOutput('tooling_ref_source', 'oidc');
+                core.info(`Tooling ref: OIDC ${ref.substring(0, 7)} from ${repo}`);
+                core.info(`job_workflow_ref: ${workflowRef}`);
+                return;
+              }
+              core.info(`OIDC claims unusable: ref=${workflowRef} sha=${workflowSha}`);
+            } catch (e) {
+              core.info(`OIDC token unavailable: ${e.message}`);
+            }
+
+            // Tier 3: Hardcoded fallback tag
+            core.setOutput('tooling_checkout_repo', 'camaraproject/tooling');
+            core.setOutput('tooling_checkout_ref', 'v1-rc');
+            core.setOutput('tooling_ref_source', 'fallback_tag');
+            core.info('Tooling ref: fallback camaraproject/tooling@v1-rc');
+
+      # ── Step 3: Checkout tooling (sparse) ──────────────────────────
+      - name: Checkout tooling
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ steps.resolve-ref.outputs.tooling_checkout_repo }}
+          ref: ${{ steps.resolve-ref.outputs.tooling_checkout_ref }}
+          sparse-checkout: |
+            config
+            linting/config
+            validation
+            shared-actions
+            tooling_lib
+          path: .tooling
+
+      # ── Step 3b: Checkout central validation settings (main) ───────
+      #
+      # The validation settings file lives on `main` of camaraproject/tooling
+      # so per-repo stage flips (and any other forward-compatible settings
+      # change) take effect on the next workflow run without re-tagging the
+      # workflow.  Schema for this file ships with the workflow code at the
+      # pinned ref (`validation/schemas/validation-settings-schema.yaml`).
+      #
+      # `continue-on-error: true` lets the run fall back to the in-tree copy
+      # at the pinned ref if main is unreachable; the fallback decision is
+      # logged in the next step and surfaced as an annotation.
+      - name: Checkout central validation settings (main)
+        id: checkout-config
+        continue-on-error: true
+        uses: actions/checkout@v6
+        with:
+          repository: camaraproject/tooling
+          ref: main
+          sparse-checkout: config
+          path: .tooling-config
+
+      - name: Resolve validation settings path
+        id: resolve-config
+        shell: bash
+        env:
+          CHECKOUT_OUTCOME: ${{ steps.checkout-config.outcome }}
+        run: |
+          MAIN_PATH="${GITHUB_WORKSPACE}/.tooling-config/config/validation-settings.yaml"
+          FALLBACK_PATH="${GITHUB_WORKSPACE}/.tooling/config/validation-settings.yaml"
+
+          if [ "$CHECKOUT_OUTCOME" = "success" ] && [ -f "$MAIN_PATH" ]; then
+            echo "config_path=${MAIN_PATH}" >> "$GITHUB_OUTPUT"
+            echo "source=main" >> "$GITHUB_OUTPUT"
+            echo "Validation settings: ${MAIN_PATH} (main)"
+          elif [ -f "$FALLBACK_PATH" ]; then
+            echo "config_path=${FALLBACK_PATH}" >> "$GITHUB_OUTPUT"
+            echo "source=fallback" >> "$GITHUB_OUTPUT"
+            echo "::warning title=Validation settings::Falling back to pinned-ref copy of validation-settings.yaml — main checkout failed or file missing on main"
+          else
+            echo "config_path=" >> "$GITHUB_OUTPUT"
+            echo "source=missing" >> "$GITHUB_OUTPUT"
+            echo "::error title=Validation settings missing::Neither main nor pinned-ref copy of validation-settings.yaml is available"
+            exit 1
+          fi
+
+      # ── Step 4: Setup Python ───────────────────────────────────────
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      # ── Step 5: Setup Node ─────────────────────────────────────────
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+
+      # ── Step 6: Detect release-plan changes (PR only) ──────────────
+      - name: Detect release-plan changes
+        id: detect-changes
+        if: github.event_name == 'pull_request'
+        run: |
+          # Emit the list of non-release-plan files touched in this PR so
+          # P-022 (exclusivity) can report them.  Empty JSON array when
+          # release-plan.yaml is the only change.
+          if git diff --name-only "origin/${{ github.base_ref }}...HEAD" -- release-plan.yaml | grep -q .; then
+            echo "release_plan_changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "release_plan_changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          OTHER_FILES=$(
+            git diff --name-only "origin/${{ github.base_ref }}...HEAD" \
+              | grep -v '^release-plan\.yaml$' \
+              | python3 -c 'import json, sys; print(json.dumps([line for line in sys.stdin.read().splitlines() if line]))'
+          )
+          echo "non_release_plan_files_changed=${OTHER_FILES}" >> "$GITHUB_OUTPUT"
+
+      # ── Step 6b: Resolve dependency changes and declared-tag existence
+      #
+      # When release-plan.yaml changed, diff base vs head to detect which
+      # dependency declarations advanced (commonalities_release,
+      # identity_consent_management_release).  For each advanced tag,
+      # look it up in the source repository via the GitHub API.  Emit a
+      # tri-state existence flag: 'true' / 'false' / '' (empty = lookup
+      # failed or skipped).  release_plan_check_only is set only when
+      # commonalities_release advances — that's the dependency whose
+      # content (code/common/*) is stale under the new ruleset, which is
+      # why the orchestrator suppresses the Spectral + gherkin engines.
+      # ICM has no common files to sync, so an ICM advance does not
+      # trigger engine suppression.
+      - name: Install pyyaml for dependency resolver
+        if: >-
+          github.event_name == 'pull_request'
+          && steps.detect-changes.outputs.release_plan_changed == 'true'
+        run: pip install --quiet pyyaml==6.0.3
+
+      - name: Resolve dependency changes and declared tags
+        id: detect-deps
+        if: >-
+          github.event_name == 'pull_request'
+          && steps.detect-changes.outputs.release_plan_changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 .tooling/validation/scripts/resolve-release-plan-deps.py \
+            --base-ref "${{ github.base_ref }}" \
+            --workspace "${GITHUB_WORKSPACE}"
+
+      # ── Step 7: Run validation (shared action) ─────────────────────
+      #
+      # The run-validation action installs dependencies, runs the Python
+      # orchestrator, writes the workflow summary, and outputs the result.
+      - name: Run validation
+        id: validation
+        uses: ./.tooling/shared-actions/run-validation
+        with:
+          repo_path: ${{ github.workspace }}
+          tooling_path: ${{ github.workspace }}/.tooling
+          mode: ${{ inputs.mode }}
+          profile: ${{ inputs.profile }}
+          release_plan_changed: ${{ steps.detect-changes.outputs.release_plan_changed || 'false' }}
+          release_plan_check_only: ${{ steps.detect-deps.outputs.release_plan_check_only || 'false' }}
+          commonalities_release_changed: ${{ steps.detect-deps.outputs.commonalities_release_changed || 'false' }}
+          icm_release_changed: ${{ steps.detect-deps.outputs.icm_release_changed || 'false' }}
+          commonalities_tag_exists: ${{ steps.detect-deps.outputs.commonalities_tag_exists || '' }}
+          icm_tag_exists: ${{ steps.detect-deps.outputs.icm_tag_exists || '' }}
+          non_release_plan_files_changed: ${{ steps.detect-changes.outputs.non_release_plan_files_changed || '[]' }}
+          tooling_ref: ${{ steps.resolve-ref.outputs.tooling_checkout_ref }}
+          config_path: ${{ steps.resolve-config.outputs.config_path }}
+
+      # ── Step 8: Mint validation app token (PR only) ──────────────
+      - name: Mint validation app token
+        id: mint-token
+        if: >-
+          always() && steps.validation.outcome == 'success'
+          && github.event_name == 'pull_request'
+          && vars.VALIDATION_APP_CLIENT_ID != ''
+        continue-on-error: true
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.VALIDATION_APP_CLIENT_ID }}
+          private-key: ${{ secrets.VALIDATION_APP_PRIVATE_KEY }}
+
+      # ── Step 9: Resolve write access ───────────────────────────
+      #
+      # Determines whether the workflow has write access to the
+      # Checks and PR APIs.  Write access is available when:
+      #   - App token was minted (any PR type), or
+      #   - Upstream PR (GITHUB_TOKEN has write permissions)
+      # Fork PRs without app token have read-only GITHUB_TOKEN.
+      - name: Resolve write access
+        id: write-access
+        if: >-
+          always() && steps.validation.outcome == 'success'
+          && github.event_name == 'pull_request'
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const mintOutcome = '${{ steps.mint-token.outcome }}';
+            const appToken = '${{ steps.mint-token.outputs.token }}';
+
+            if (mintOutcome === 'success' && appToken) {
+              core.setOutput('has_write', 'true');
+              core.setOutput('source', 'validation_app');
+              core.info('Write access: validation app token');
+              return;
+            }
+
+            const pr = context.payload.pull_request;
+            const isForkPR = pr.head.repo.full_name !== pr.base.repo.full_name;
+
+            if (isForkPR) {
+              core.setOutput('has_write', 'false');
+              core.setOutput('source', 'none');
+              core.info('No write access: fork PR with read-only GITHUB_TOKEN');
+            } else {
+              core.setOutput('has_write', 'true');
+              core.setOutput('source', 'github_token');
+              core.info('Write access: GITHUB_TOKEN (upstream PR)');
+            }
+
+      # ── Step 10: Post findings to PR (write access) ────────────
+      #
+      # Creates a Check Run with inline annotations (Checks API,
+      # no display cap) and posts/updates the PR comment.  The
+      # Check Run replaces commit status in the merge area.
+      - name: Post findings to PR
+        if: >-
+          always() && steps.validation.outcome == 'success'
+          && github.event_name == 'pull_request'
+          && steps.write-access.outputs.has_write == 'true'
+        uses: actions/github-script@v9
+        with:
+          github-token: ${{ steps.mint-token.outputs.token || github.token }}
+          script: |
+            const fs = require('fs');
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+
+            // ── Check Run with annotations ────────────────────────
+            const checkRunPath = 'validation-output/check-run.json';
+            if (fs.existsSync(checkRunPath)) {
+              try {
+                const payload = JSON.parse(fs.readFileSync(checkRunPath, 'utf8'));
+                const sha = '${{ github.event.pull_request.head.sha || github.sha }}';
+                const allAnnotations = payload.annotations || [];
+
+                const BATCH_SIZE = 50;
+                const firstBatch = allAnnotations.slice(0, BATCH_SIZE);
+
+                const checkRun = await github.rest.checks.create({
+                  owner, repo,
+                  name: 'CAMARA Validation',
+                  head_sha: sha,
+                  status: 'completed',
+                  conclusion: payload.conclusion,
+                  output: {
+                    title: payload.title,
+                    summary: payload.summary,
+                    annotations: firstBatch,
+                  },
+                });
+                core.info(`Check Run created: id=${checkRun.data.id}, conclusion=${payload.conclusion}`);
+
+                for (let i = BATCH_SIZE; i < allAnnotations.length; i += BATCH_SIZE) {
+                  const batch = allAnnotations.slice(i, i + BATCH_SIZE);
+                  await github.rest.checks.update({
+                    owner, repo,
+                    check_run_id: checkRun.data.id,
+                    output: {
+                      title: payload.title,
+                      summary: payload.summary,
+                      annotations: batch,
+                    },
+                  });
+                  core.info(`Check Run batch ${Math.floor(i / BATCH_SIZE) + 1}: ${batch.length} annotations`);
+                }
+                core.info(`Total annotations: ${allAnnotations.length}`);
+              } catch (e) {
+                core.warning(`Check Run failed: ${e.message}`);
+              }
+            }
+
+            // ── PR comment (create-or-update) ─────────────────────
+            const commentPath = 'validation-output/pr-comment.md';
+            if (fs.existsSync(commentPath)) {
+              try {
+                const body = fs.readFileSync(commentPath, 'utf8');
+                const marker = '<!-- camara-validation -->';
+                const prNumber = context.payload.pull_request.number;
+
+                const comments = await github.paginate(
+                  github.rest.issues.listComments,
+                  { owner, repo, issue_number: prNumber }
+                );
+                const existing = comments.find(c => c.body && c.body.includes(marker));
+
+                if (existing) {
+                  await github.rest.issues.updateComment({
+                    owner, repo, comment_id: existing.id, body,
+                  });
+                  core.info(`Updated existing comment ${existing.id}`);
+                } else {
+                  const created = await github.rest.issues.createComment({
+                    owner, repo, issue_number: prNumber, body,
+                  });
+                  core.info(`Created comment ${created.data.id}`);
+                }
+              } catch (e) {
+                core.warning(`PR comment failed: ${e.message}`);
+              }
+            }
+
+      # ── Step 11: Emit annotations (no write access) ────────────
+      #
+      # Fallback for fork PRs without app token: workflow command
+      # annotations (limited to ~10 per severity in PR view).
+      # The workflow exit status is the only pass/fail signal.
+      - name: Emit annotations
+        if: >-
+          always() && steps.validation.outcome == 'success'
+          && github.event_name == 'pull_request'
+          && steps.write-access.outputs.has_write != 'true'
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const fs = require('fs');
+
+            // ── Workflow command annotations ───────────────────────
+            const annotationsPath = 'validation-output/annotations.txt';
+            if (fs.existsSync(annotationsPath)) {
+              const lines = fs.readFileSync(annotationsPath, 'utf8').trim();
+              if (lines) {
+                core.info('Emitting workflow command annotations (limited display)');
+                console.log(lines);
+              }
+            }
+
+            // ── Summary note ──────────────────────────────────────
+            const notice = [
+              '',
+              '> **Note**: No write permissions available (expected for fork PRs)',
+              '> — PR comment skipped, showing findings in workflow summary and annotations.',
+            ].join('\n');
+            fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, notice);
+
+      # ── Step 14: Upload diagnostics ────────────────────────────────
+      - name: Upload diagnostics
+        if: always() && steps.validation.outcome == 'success'
+        uses: actions/upload-artifact@v7
+        with:
+          name: validation-diagnostics
+          path: validation-output/diagnostics/
+          if-no-files-found: ignore
+          retention-days: 30
+
+      # ── Step 15: Bundle API specs ─────────────────────────────────
+      #
+      # Produce standalone bundled specs for artifact download and
+      # release automation handoff.  Spectral resolves $ref natively,
+      # so this is an output step, not a validation prerequisite.
+      - name: Bundle API specs
+        if: always() && steps.validation.outcome == 'success'
+        env:
+          PATH_NODE_MODULES: ${{ github.workspace }}/.tooling/validation/node_modules/.bin
+        run: |
+          export PATH="${PATH_NODE_MODULES}:${PATH}"
+          mkdir -p validation-output/bundled
+          BUNDLED=0
+          for spec in code/API_definitions/*.yaml; do
+            [ -f "$spec" ] || continue
+            name=$(basename "$spec")
+            # Skip specs with no external $ref — bundling would only
+            # normalize formatting, producing a misleading diff artifact.
+            if ! grep -qE '\$ref:\s*["'"'"'][^#]' "$spec"; then
+              echo "Skipped (no external \$ref): $name"
+              continue
+            fi
+            if err=$(redocly bundle "$spec" -o "validation-output/bundled/$name" 2>&1); then
+              if ! diff -q "$spec" "validation-output/bundled/$name" > /dev/null 2>&1; then
+                BUNDLED=$((BUNDLED + 1))
+                echo "Bundled: $name"
+              else
+                rm "validation-output/bundled/$name"
+              fi
+            else
+              echo "::warning::Bundling failed for $name: ${err##*$'\n'}"
+            fi
+          done
+          echo "Bundled $BUNDLED spec(s)"
+
+      # ── Step 16: Upload bundled specs ──────────────────────────────
+      - name: Upload bundled specs
+        if: always() && steps.validation.outcome == 'success'
+        uses: actions/upload-artifact@v7
+        with:
+          name: validation-bundled-specs
+          path: validation-output/bundled/
+          if-no-files-found: ignore
+          retention-days: 90
+
+      # ── Check result ────────────────────────────────────────────────
+      - name: Check result
+        if: always() && steps.validation.outcome == 'success'
+        run: |
+          if [ "${{ steps.validation.outputs.should_fail }}" = "true" ]; then
+            echo "::error::Validation failed — see summary and annotations above"
+            exit 1
+          fi
+
+      # ── Fallback: orchestrator infrastructure error ────────────────
+      - name: Report orchestrator failure
+        if: always() && steps.validation.outcome == 'failure'
+        run: |
+          echo "## CAMARA Validation" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Error**: The validation orchestrator failed with an infrastructure error." >> "$GITHUB_STEP_SUMMARY"
+          echo "Check the workflow logs for details." >> "$GITHUB_STEP_SUMMARY"
+          exit 1

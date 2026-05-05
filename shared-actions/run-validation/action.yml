@@ -1,0 +1,208 @@
+name: run-validation
+description: |
+  Run the CAMARA validation orchestrator and return results.
+
+  Installs Python and Node dependencies, runs the validation pipeline
+  (all engines, post-filter, output generation), writes workflow summary,
+  and outputs the overall result.
+
+  Prerequisites: Python 3.11 and Node 24 must be available (caller sets
+  up runtimes via setup-python and setup-node before invoking this action).
+
+inputs:
+  repo_path:
+    description: 'Absolute path to the API repository checkout'
+    required: true
+  tooling_path:
+    description: 'Absolute path to the tooling checkout (parent of validation/ and linting/)'
+    required: true
+  mode:
+    description: 'Execution mode: "" (default) or "pre-snapshot"'
+    required: false
+    default: ''
+  profile:
+    description: 'Profile override: advisory, standard, strict, or "" for auto-select'
+    required: false
+    default: ''
+  release_plan_changed:
+    description: 'Whether release-plan.yaml changed in this PR (true/false)'
+    required: false
+    default: 'false'
+  release_plan_check_only:
+    description: >
+      When true, a Commonalities dependency declaration advanced in this
+      PR — orchestrator skips Spectral + gherkin engines and post-filter
+      keeps only release-plan-validation rules.  Set by the caller
+      workflow''s release-plan detection step.
+    required: false
+    default: 'false'
+  commonalities_release_changed:
+    description: >
+      Whether dependencies.commonalities_release differs between base and
+      head in this PR diff (true/false).  Used by P-023 to gate the
+      tag-existence check.
+    required: false
+    default: 'false'
+  icm_release_changed:
+    description: >
+      Whether dependencies.icm_release (or identity_consent_management_release)
+      differs between base and head in this PR diff (true/false).
+    required: false
+    default: 'false'
+  commonalities_tag_exists:
+    description: >
+      Tri-state result of the GitHub API lookup for the declared
+      commonalities_release tag.  ''true'' = confirmed present, ''false''
+      = confirmed 404, '''' (empty) = lookup skipped or failed.  Consumed
+      by P-023.
+    required: false
+    default: ''
+  icm_tag_exists:
+    description: >
+      Tri-state result for the declared icm_release tag.  Same semantics
+      as commonalities_tag_exists.
+    required: false
+    default: ''
+  non_release_plan_files_changed:
+    description: >
+      JSON array of file paths changed in the PR alongside
+      release-plan.yaml.  Empty array (''[]'') when release-plan.yaml is
+      the only changed file.  Consumed by P-022 (exclusivity check).
+    required: false
+    default: '[]'
+  tooling_ref:
+    description: 'Tooling ref used for this run (for diagnostics)'
+    required: false
+    default: ''
+  config_path:
+    description: >
+      Absolute path to the validation settings file (`validation-settings.yaml`).
+      When set, the orchestrator reads from this path instead of the in-tree
+      copy at the pinned tooling ref.  Used by the workflow to point at a
+      copy fetched from main of the tooling repo, decoupling stage flips
+      from tag moves.  When empty, falls back to the pinned-ref copy.
+    required: false
+    default: ''
+
+outputs:
+  result:
+    description: 'Validation result: pass, fail, or error'
+    value: ${{ steps.read-result.outputs.result }}
+  should_fail:
+    description: 'Whether the caller should fail the workflow (true/false)'
+    value: ${{ steps.read-result.outputs.should_fail }}
+  summary:
+    description: 'One-line result summary'
+    value: ${{ steps.read-result.outputs.summary }}
+  output_dir:
+    description: 'Absolute path to the validation output directory'
+    value: ${{ steps.run.outputs.output_dir }}
+
+runs:
+  using: composite
+  steps:
+    - name: Install Python dependencies
+      shell: bash
+      run: pip install --quiet pyyaml==6.0.3 jsonschema==4.26.0 yamllint==1.38.0
+
+    - name: Install Node dependencies
+      shell: bash
+      run: npm ci --ignore-scripts
+      working-directory: ${{ inputs.tooling_path }}/validation
+
+    - name: Resolve Commonalities version
+      id: resolve-commonalities
+      shell: bash
+      env:
+        REPO_PATH: ${{ inputs.repo_path }}
+      run: |
+        # Extract commonalities_release tag from release-plan.yaml (if present)
+        PLAN_FILE="${REPO_PATH}/release-plan.yaml"
+        if [ -f "$PLAN_FILE" ]; then
+          RELEASE_TAG=$(python3 -c "
+        import yaml, sys
+        try:
+            plan = yaml.safe_load(open('${PLAN_FILE}'))
+            tag = plan.get('dependencies', {}).get('commonalities_release', '')
+            print(tag)
+        except Exception:
+            print('')
+        ")
+          if [ -n "$RELEASE_TAG" ]; then
+            VERSION=$(gh api "repos/camaraproject/Commonalities/contents/VERSION.yaml?ref=${RELEASE_TAG}" \
+              --jq '.content' 2>/dev/null | base64 -d 2>/dev/null | \
+              python3 -c "import yaml,sys; print(yaml.safe_load(sys.stdin).get('version',''))" 2>/dev/null || echo "")
+            if [ -n "$VERSION" ]; then
+              echo "VALIDATION_COMMONALITIES_VERSION=$VERSION" >> "$GITHUB_ENV"
+              echo "Resolved commonalities_release ${RELEASE_TAG} -> version ${VERSION}"
+            fi
+          fi
+        fi
+
+    - name: Run validation orchestrator
+      id: run
+      shell: bash
+      env:
+        PYTHONPATH: ${{ inputs.tooling_path }}
+        PATH_NODE_MODULES: ${{ inputs.tooling_path }}/validation/node_modules/.bin
+        # NODE_PATH: Spectral rulesets live in linting/config/ but npm packages
+        # (including @stoplight/spectral-owasp-ruleset) are installed in
+        # validation/node_modules/. NODE_PATH bridges this gap for Node's
+        # module resolution.
+        NODE_PATH: ${{ inputs.tooling_path }}/validation/node_modules
+        VALIDATION_REPO_PATH: ${{ inputs.repo_path }}
+        VALIDATION_TOOLING_PATH: ${{ inputs.tooling_path }}
+        VALIDATION_OUTPUT_DIR: ${{ inputs.repo_path }}/validation-output
+        VALIDATION_REPO_NAME: ${{ github.repository }}
+        VALIDATION_REPO_OWNER: ${{ github.repository_owner }}
+        VALIDATION_EVENT_NAME: ${{ github.event_name }}
+        VALIDATION_REF_NAME: ${{ github.ref_name }}
+        VALIDATION_BASE_REF: ${{ github.base_ref }}
+        VALIDATION_MODE: ${{ inputs.mode }}
+        VALIDATION_PROFILE: ${{ inputs.profile }}
+        VALIDATION_PR_NUMBER: ${{ github.event.pull_request.number }}
+        VALIDATION_RELEASE_PLAN_CHANGED: ${{ inputs.release_plan_changed }}
+        VALIDATION_RELEASE_PLAN_CHECK_ONLY: ${{ inputs.release_plan_check_only }}
+        VALIDATION_COMMONALITIES_RELEASE_CHANGED: ${{ inputs.commonalities_release_changed }}
+        VALIDATION_ICM_RELEASE_CHANGED: ${{ inputs.icm_release_changed }}
+        VALIDATION_COMMONALITIES_TAG_EXISTS: ${{ inputs.commonalities_tag_exists }}
+        VALIDATION_ICM_TAG_EXISTS: ${{ inputs.icm_tag_exists }}
+        VALIDATION_NON_RELEASE_PLAN_FILES_CHANGED: ${{ inputs.non_release_plan_files_changed }}
+        VALIDATION_WORKFLOW_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        VALIDATION_TOOLING_REF: ${{ inputs.tooling_ref }}
+        VALIDATION_COMMIT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        VALIDATION_CONFIG_PATH: ${{ inputs.config_path }}
+      run: |
+        export PATH="${PATH_NODE_MODULES}:${PATH}"
+        python -m validation.orchestrator
+        echo "output_dir=${VALIDATION_OUTPUT_DIR}" >> "$GITHUB_OUTPUT"
+
+    - name: Write workflow summary
+      if: always() && steps.run.outcome == 'success'
+      shell: bash
+      env:
+        OUTPUT_DIR: ${{ steps.run.outputs.output_dir }}
+      run: |
+        if [ -f "${OUTPUT_DIR}/summary.md" ]; then
+          cat "${OUTPUT_DIR}/summary.md" >> "$GITHUB_STEP_SUMMARY"
+        fi
+
+    - name: Read result
+      id: read-result
+      if: always() && steps.run.outcome == 'success'
+      shell: bash
+      env:
+        OUTPUT_DIR: ${{ steps.run.outputs.output_dir }}
+      run: |
+        if [ -f "${OUTPUT_DIR}/result.json" ]; then
+          RESULT=$(python3 -c "import json; r=json.load(open('${OUTPUT_DIR}/result.json')); print(r.get('result', 'error'))")
+          SHOULD_FAIL=$(python3 -c "import json; r=json.load(open('${OUTPUT_DIR}/result.json')); print(str(r.get('should_fail', False)).lower())")
+          SUMMARY=$(python3 -c "import json; r=json.load(open('${OUTPUT_DIR}/result.json')); print(r.get('summary', ''))")
+          echo "result=${RESULT}" >> "$GITHUB_OUTPUT"
+          echo "should_fail=${SHOULD_FAIL}" >> "$GITHUB_OUTPUT"
+          echo "summary=${SUMMARY}" >> "$GITHUB_OUTPUT"
+        else
+          echo "result=error" >> "$GITHUB_OUTPUT"
+          echo "should_fail=true" >> "$GITHUB_OUTPUT"
+          echo "summary=Orchestrator produced no result file" >> "$GITHUB_OUTPUT"
+        fi

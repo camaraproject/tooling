@@ -1,0 +1,84 @@
+# JSON Schema for the central validation settings file.
+#
+# Lives next to the workflow code so a tagged release of the workflow validates
+# against exactly the schema shape that release knows how to consume.  The data
+# (config/validation-settings.yaml) lives on `main` of camaraproject/tooling
+# and is read at runtime independent of the caller's pinned tooling ref.
+#
+# Forward-compatibility rules baked into the schema:
+#   - additionalProperties is `true` at every level so older callers do not
+#     reject configs that contain fields added in newer schema revisions.
+#     This makes hotfix-gated fields (introduced by a hotfix tag and applied
+#     to a subset of repositories) safe to ship without re-cutting any
+#     already-deployed tag.
+#   - Known fields keep their enum / type constraints, so value-level typos
+#     (e.g. `stage: enable`) are still rejected loudly at PR-CI time.
+#   - `version` is an integer; schema additions are always backward
+#     compatible (additive only), so no `version: 2` is planned.
+
+$schema: "https://json-schema.org/draft/2020-12/schema"
+title: CAMARA Validation Settings
+description: >
+  Central configuration controlling which repositories have validation
+  enabled and at what rollout stage.  Read from main of tooling at runtime.
+
+type: object
+required:
+  - version
+  - defaults
+
+properties:
+  version:
+    type: integer
+    description: Schema version.  Informational; no breaking-change bumps planned.
+
+  defaults:
+    type: object
+    required: [stage]
+    properties:
+      stage:
+        type: string
+        enum: [disabled, advisory, enabled]
+        description: >
+          Default stage for repositories not listed under "repositories".
+          disabled = dark (exit immediately), advisory = dispatch only,
+          enabled = PRs and dispatch.
+      pr_profile:
+        type: string
+        enum: [advisory, standard, strict]
+        description: >
+          Default profile for PR-triggered validation.
+          advisory = nothing blocks, standard = errors block,
+          strict = errors and warnings block.
+      release_profile:
+        type: string
+        enum: [advisory, standard, strict]
+        description: >
+          Default profile for release-automation and release-review
+          validation.
+    additionalProperties: true
+
+  repositories:
+    type: object
+    description: Per-repository overrides keyed by repository name.
+    additionalProperties:
+      type: object
+      required: [stage]
+      properties:
+        stage:
+          type: string
+          enum: [disabled, advisory, enabled]
+        pr_profile:
+          type: string
+          enum: [advisory, standard, strict]
+          description: >
+            Profile for PR-triggered validation on this repository.
+        release_profile:
+          type: string
+          enum: [advisory, standard, strict]
+          description: >
+            Profile for release-automation and release-review validation
+            on this repository.
+      additionalProperties: true
+
+additionalProperties: true

@@ -25,6 +25,14 @@ inputs:
   github_token:
     description: 'GitHub token with repo and PR write permissions'
     required: true
+  tooling_path:
+    description: >
+      Absolute path to the tooling checkout (parent of validation/).  Used
+      to locate the Redocly CLI binary in validation/node_modules/.bin so a
+      single `validation/package.json` pin governs both PR-time bundling
+      and snapshot bundling.  Caller must have populated this directory by
+      running shared-actions/run-validation first.
+    required: true
   bot_name:
     description: 'Git committer name for snapshot commits'
     required: false
@@ -68,7 +76,7 @@ runs:
       with:
         python-version: '3.11'
 
-    - name: Install dependencies
+    - name: Install Python dependencies
       shell: bash
       run: pip install --quiet pyyaml pystache
 
@@ -84,10 +92,16 @@ runs:
         SCRIPTS_PATH: ${{ github.action_path }}/../../release_automation/scripts
         BOT_NAME: ${{ inputs.bot_name }}
         BOT_EMAIL: ${{ inputs.bot_email }}
+        PATH_NODE_MODULES: ${{ inputs.tooling_path }}/validation/node_modules/.bin
       run: |
         import os
         import sys
         import json
+
+        # Make `redocly` resolvable from validation/node_modules/.bin so a
+        # single validation/package.json pin governs both PR-time bundling
+        # and snapshot bundling.
+        os.environ['PATH'] = os.environ['PATH_NODE_MODULES'] + os.pathsep + os.environ['PATH']
 
         # Add scripts path to module search path
         scripts_path = os.path.realpath(os.environ['SCRIPTS_PATH'])

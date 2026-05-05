@@ -355,6 +355,119 @@ class TestRegexTransformation:
             os.unlink(temp_path)
 
 
+class TestFeatureLineReplacement:
+    """T1b: regression coverage for `test_def_api_version` across Feature-line shapes.
+
+    CAMARA test files use two conventions in the wild:
+    - `Feature: <name>, vwip - <op>` (comma-separated, majority)
+    - `Feature: <name> vwip - <op>` (space-only)
+
+    The earlier regex `(Feature: [^,]+, )vwip` silently missed the second form
+    and shipped unreplaced placeholders in snapshot branches (observed on
+    NetworkInsights r1.1). The new pattern `(Feature: .*?) vwip\\b` anchors on
+    the single space before `vwip` which is common to both forms.
+    """
+
+    T1B_RULE = TransformationRule(
+        name="test_def_api_version",
+        description="Replace wip/vwip in test definition Feature line",
+        type=TransformationType.REGEX,
+        file_pattern="code/Test_definitions/*.feature",
+        pattern=r"(Feature: .*?) v?wip\b",
+        replacement=r"\g<1> v{api_version}",
+    )
+
+    def _run(self, transformer, context, content):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            feature_path = os.path.join(tmpdir, "quality-on-demand-createSession.feature")
+            with open(feature_path, "w") as f:
+                f.write(content)
+
+            result = transformer._apply_regex(feature_path, self.T1B_RULE, context)
+
+            with open(feature_path, "r") as f:
+                transformed = f.read()
+
+            return result, transformed, feature_path
+
+    def test_comma_separated_form(self, transformer, context):
+        """Majority form: `Feature: <name>, vwip - <op>`."""
+        result, content, feature_path = self._run(
+            transformer,
+            context,
+            "Feature: CAMARA Quality On Demand, vwip - Operation createSession\n",
+        )
+        assert result.success
+        assert feature_path in result.files_modified
+        assert content == (
+            "Feature: CAMARA Quality On Demand, v3.2.0-rc.2 - Operation createSession\n"
+        )
+
+    def test_space_only_form(self, transformer, context):
+        """Blocking bug: `Feature: <name> vwip - <op>` (no comma).
+
+        Observed on NetworkInsights r1.1: both .feature files used this form
+        and the earlier regex silently left `vwip` in place.
+        """
+        result, content, feature_path = self._run(
+            transformer,
+            context,
+            "Feature: CAMARA Quality On Demand vwip - Operation createSession\n",
+        )
+        assert result.success
+        assert feature_path in result.files_modified
+        assert content == (
+            "Feature: CAMARA Quality On Demand v3.2.0-rc.2 - Operation createSession\n"
+        )
+
+    def test_already_versioned_unchanged(self, transformer, context):
+        """A Feature line that already carries a real version must not match."""
+        original = "Feature: CAMARA Quality On Demand, v0.3.0 - Operation createSession\n"
+        result, content, feature_path = self._run(transformer, context, original)
+        assert result.success
+        assert feature_path not in result.files_modified
+        assert content == original
+
+    def test_no_vwip_unchanged(self, transformer, context):
+        """A Feature line with no `wip` or `vwip` anywhere is a no-op."""
+        original = "Feature: CAMARA Quality On Demand - Operation createSession\n"
+        result, content, feature_path = self._run(transformer, context, original)
+        assert result.success
+        assert feature_path not in result.files_modified
+        assert content == original
+
+    def test_bare_wip_comma_form(self, transformer, context):
+        """Bare `wip` (no leading v) on a comma-separated Feature line.
+
+        Observed on Simple Edge Discovery — treated as a style variation
+        parallel to `0.1.0` vs `v0.1.0` in info.version.
+        """
+        result, content, feature_path = self._run(
+            transformer,
+            context,
+            "Feature: CAMARA Simple Edge Discovery, wip - Operation readClosestEdgeCloudZone\n",
+        )
+        assert result.success
+        assert feature_path in result.files_modified
+        assert content == (
+            "Feature: CAMARA Simple Edge Discovery, v3.2.0-rc.2 - "
+            "Operation readClosestEdgeCloudZone\n"
+        )
+
+    def test_bare_wip_space_form(self, transformer, context):
+        """Bare `wip` on a space-only Feature line."""
+        result, content, feature_path = self._run(
+            transformer,
+            context,
+            "Feature: CAMARA Quality On Demand wip - Operation createSession\n",
+        )
+        assert result.success
+        assert feature_path in result.files_modified
+        assert content == (
+            "Feature: CAMARA Quality On Demand v3.2.0-rc.2 - Operation createSession\n"
+        )
+
+
 class TestYamlPathTransformation:
     """Tests for YAML path transformations."""
 

@@ -5,9 +5,11 @@ This module orchestrates the complete snapshot creation flow, including
 version calculation, mechanical transformations, and metadata generation.
 """
 
+import glob
 import os
 import re
 import shutil
+import subprocess
 import tempfile
 from copy import deepcopy
 from dataclasses import dataclass, field
@@ -238,6 +240,13 @@ class SnapshotCreator:
             if not wip_result.compliant:
                 result.errors.append(wip_result.format_error_message())
                 return result
+
+            # Step 7c: Bundle API specs (resolve external $ref)
+            bundled_count = self._bundle_specs(temp_dir)
+            if bundled_count > 0:
+                result.warnings.append(
+                    f"Bundled {bundled_count} API spec(s) — external $ref resolved"
+                )
 
             # Step 8: Apply transformations
             context = TransformationContext(
@@ -471,7 +480,13 @@ class SnapshotCreator:
         errors = []
 
         # Check current state
-        state = self.state_manager.derive_state(release_tag)
+        release_info = self.state_manager.derive_state()
+        if not release_info.success:
+            errors.append(
+                f"Configuration error: {release_info.config_error.message}"
+            )
+            return errors
+        state = release_info.state
 
         if state == ReleaseState.PUBLISHED:
             errors.append(
@@ -517,6 +532,65 @@ class SnapshotCreator:
         """
         short_sha = commit_sha[: self.SHORT_SHA_LENGTH]
         return f"{release_tag}-{short_sha}"
+
+    def _bundle_specs(self, repo_path: str) -> int:
+        """Bundle API specs that contain external $ref references.
+
+        Scans each YAML file in ``code/API_definitions/`` for external
+        ``$ref`` (relative paths like ``../common/``).  For each file
+        that has them, runs ``redocly bundle`` to produce a standalone
+        spec (in-place replacement).  After bundling, removes the
+        ``code/common/`` and ``code/modules/`` directories since their
+        content is now inlined.
+
+        Returns the number of specs that were bundled.  Returns 0 if
+        no specs have external refs (no-op for repos using copy-paste).
+        """
+        api_dir = os.path.join(repo_path, "code", "API_definitions")
+        if not os.path.isdir(api_dir):
+            return 0
+
+        specs = glob.glob(os.path.join(api_dir, "*.yaml"))
+        if not specs:
+            return 0
+
+        # Detect which specs have external $ref
+        external_ref_re = re.compile(r'\$ref\s*:\s*["\']?\.\.')
+        specs_to_bundle = []
+        for spec in specs:
+            with open(spec, encoding="utf-8") as f:
+                content = f.read()
+            if external_ref_re.search(content):
+                specs_to_bundle.append(spec)
+
+        if not specs_to_bundle:
+            return 0
+
+        # Bundle each spec in-place
+        for spec in specs_to_bundle:
+            name = os.path.basename(spec)
+            print(f"Bundling {name}...")
+            result = subprocess.run(
+                ["redocly", "bundle", spec, "-o", spec],
+                capture_output=True,
+                text=True,
+                cwd=repo_path,
+                timeout=60,
+            )
+            if result.returncode != 0:
+                stderr = result.stderr.strip()
+                raise RuntimeError(
+                    f"Bundling failed for {name}: {stderr or result.stdout.strip()}"
+                )
+
+        # Remove common/modules directories (content now inlined)
+        for subdir in ("common", "modules"):
+            path = os.path.join(repo_path, "code", subdir)
+            if os.path.isdir(path):
+                shutil.rmtree(path)
+                print(f"Removed code/{subdir}/ (content inlined by bundling)")
+
+        return len(specs_to_bundle)
 
     def _extract_api_titles(
         self,
@@ -803,9 +877,15 @@ class SnapshotCreator:
             for api_name, version in api_versions.items()
         ]
 
+        cycle_match = re.match(r"r(\d+)\.", config.release_tag)
+        cycle = cycle_match.group(1) if cycle_match else ""
+
         # Build data dict
         data = {
             "repo_name": repo_name,
+            "changelog_url": self._changelog_url(
+                temp_dir, org, repo_name, release_type, cycle
+            ),
         }
 
         if release_state in ("public_release", "public_with_prerelease"):
@@ -854,6 +934,29 @@ class SnapshotCreator:
         updater = ReadmeUpdater()
         return updater.update_release_info(readme_path, release_state, data)
 
+    @staticmethod
+    def _changelog_url(
+        temp_dir: str,
+        org: str,
+        repo_name: str,
+        release_type: str,
+        cycle: str,
+    ) -> str:
+        """Build the CHANGELOG link used in README release-info.
+
+        Mirrors the generator's dual-mode rule: a maintenance release
+        into a cycle with no per-cycle file writes flat ``CHANGELOG.md``
+        and the link points there. Every other case uses the per-cycle
+        ``CHANGELOG/`` directory tree view.
+        """
+        base = f"https://github.com/{org}/{repo_name}"
+        per_cycle_file = os.path.join(
+            temp_dir, "CHANGELOG", f"CHANGELOG-r{cycle}.md"
+        )
+        if release_type == "maintenance-release" and not os.path.isfile(per_cycle_file):
+            return f"{base}/blob/main/CHANGELOG.md"
+        return f"{base}/tree/main/CHANGELOG"
+
     def _generate_changelog(
         self,
         temp_dir: str,
@@ -896,7 +999,13 @@ class SnapshotCreator:
             repo_name=repo_name,
             candidate_changes=candidate_changes,
         )
-        return generator.write_changelog(temp_dir, content, config.release_tag, repo_name)
+        return generator.write_changelog(
+            temp_dir,
+            content,
+            config.release_tag,
+            repo_name,
+            release_type=release_type,
+        )
 
     def _cleanup_branches(
         self,

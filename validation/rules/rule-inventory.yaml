@@ -1,0 +1,413 @@
+# CAMARA Validation Framework — Rule Inventory
+#
+# Complete inventory of all known validation rules across all sources.
+# Core set rules have metadata entries in *-rules.yaml files.
+# Gap and manual rules are tracked here for WS07 implementation.
+#
+# Status values:
+#   implemented — metadata in *-rules.yaml, engine check active
+#   gap         — documented in audit, no engine implementation yet
+#   manual      — requires human judgment, not machine-checkable
+#   pending     — in open PRs, not yet merged
+
+version: 1
+generated: 2026-04-07
+
+summary:
+  total_implemented: 144
+  total_gap: 0
+  total_manual: 25
+  total_pending: 0
+  total_tested: 84
+  by_engine:
+    spectral: 85
+    gherkin: 25
+    python: 21
+    yamllint: 13
+
+# ---------------------------------------------------------------------------
+# Implemented rules — metadata in *-rules.yaml
+# ---------------------------------------------------------------------------
+# Not duplicated here — the *-rules.yaml files ARE the authoritative registry.
+# See: python-rules.yaml, spectral-rules.yaml, gherkin-rules.yaml,
+#      yamllint-rules.yaml
+
+# ---------------------------------------------------------------------------
+# Gap rules — documented but not implemented (WS07 scope)
+# ---------------------------------------------------------------------------
+# Source: private-dev-docs/validation-framework/reviews/commonalities-design-guide-audit.md
+
+gap_rules:
+  # Spectral gaps — implemented in Phase 2a
+  - audit_id: DG-003
+    description: date-time description RFC 3339 format
+    target_engine: spectral
+    status: implemented
+    rule_id: S-028
+
+  - audit_id: DG-004
+    description: duration description RFC 3339 format
+    target_engine: spectral
+    status: implemented
+    rule_id: S-029
+
+  - audit_id: DG-008
+    description: "Object: required properties MUST exist in properties"
+    target_engine: spectral
+    status: implemented
+    rule_id: S-030
+
+  - audit_id: DG-013
+    description: Error code MUST NOT be numeric
+    target_engine: spectral
+    status: implemented
+    rule_id: S-025
+
+  - audit_id: DG-014
+    description: Error code MUST be SCREAMING_SNAKE_CASE (r4.x)
+    target_engine: spectral
+    status: implemented
+    rule_id: S-026
+
+  - audit_id: DG-015
+    description: "API-specific error: API_NAME.SPECIFIC_CODE format"
+    target_engine: spectral
+    status: implemented
+    rule_id: S-027
+
+  - audit_id: DG-017
+    description: All APIs MUST document 403 response
+    target_engine: spectral
+    status: implemented
+    rule_id: S-024
+
+  - audit_id: DG-026
+    description: "info.license.name MUST be 'Apache 2.0'"
+    target_engine: spectral
+    status: implemented
+    rule_id: S-018
+
+  - audit_id: DG-027
+    description: info.license.url MUST be Apache License URL
+    target_engine: spectral
+    status: implemented
+    rule_id: S-019
+
+  - audit_id: DG-032
+    description: info.contact MUST be absent
+    target_engine: spectral
+    status: implemented
+    rule_id: S-020
+
+  - audit_id: DG-041
+    description: Tag names Title Case convention
+    target_engine: spectral
+    status: implemented
+    rule_id: S-021
+
+  - audit_id: DG-058
+    description: Array items MUST have description (r4.x)
+    target_engine: spectral
+    status: implemented
+    rule_id: S-031
+
+  - audit_id: DG-087
+    description: "specversion MUST be '1.0' (subscription)"
+    target_engine: spectral
+    status: implemented
+    rule_id: S-032
+
+  - audit_id: DG-090
+    description: "protocol MUST be 'HTTP' (subscription)"
+    target_engine: spectral
+    status: implemented
+    rule_id: S-033
+
+  - audit_id: DG-091
+    description: sink MUST use HTTPS (subscription)
+    target_engine: spectral
+    status: implemented
+    rule_id: S-034
+
+  - audit_id: DG-094
+    description: Notification content-type cloudevents+json (subscription)
+    target_engine: spectral
+    status: implemented
+    rule_id: S-035
+
+  # Python gaps — implemented in Phase 2b
+  - audit_id: DG-011
+    description: contextCode SCREAMING_SNAKE_CASE format (r4.x)
+    target_engine: python
+    status: implemented
+    rule_id: P-018
+
+  - audit_id: DG-018
+    description: CONFLICT error code deprecated (r4.x)
+    target_engine: python
+    status: implemented
+    rule_id: P-017
+
+  - audit_id: DG-028
+    description: x-camara-commonalities MUST specify valid version
+    target_engine: python
+    status: implemented
+    rule_id: P-011
+    notes: Rewrite of original P-011 (license/commonalities consistency)
+
+  - audit_id: DG-086
+    description: Event type format org.camaraproject validation (subscription)
+    target_engine: python
+    status: implemented
+    rule_id: P-015
+
+  - audit_id: DG-088
+    description: Subscription API filename convention
+    target_engine: python
+    status: implemented
+    rule_id: P-014
+
+  - audit_id: DG-092
+    description: sinkCredential not in responses
+    target_engine: python
+    status: implemented
+    rule_id: P-016
+
+  # Python gaps — deferred
+  - audit_id: DG-095
+    description: Event version independence from API version
+    target_engine: python
+    status: deferred
+    notes: "No actionable static check — event version format already validated by P-015 (DG-086)"
+
+  # New rules (not from audit — identified during implementation)
+  - audit_id: NEW-001
+    description: README.md placeholder must be removed from API_definitions/ when spec files are present
+    target_engine: python
+    status: implemented
+    rule_id: P-013
+
+  - audit_id: NEW-002
+    description: "apiRoot variable: default and description MUST match Design Guide values"
+    target_engine: spectral
+    status: implemented
+    rule_id: S-022, S-023
+
+  - audit_id: NEW-003
+    description: "Orphan API definitions: YAML files in code/API_definitions/ not listed in release-plan.yaml"
+    target_engine: python
+    status: implemented
+    rule_id: P-019
+
+  - audit_id: NEW-004
+    description: "CloudEvent schema should be consumed via $ref to CAMARA_event_common.yaml, not maintained as a local inline copy"
+    target_engine: python
+    status: implemented
+    rule_id: P-020
+
+  - audit_id: DEC-027
+    description: "Common file cache sync safety check — code/common/ must match sync manifest from Commonalities artifacts"
+    target_engine: python
+    status: implemented
+    rule_id: P-021
+
+# ---------------------------------------------------------------------------
+# Fixes needed — implemented rules with incorrect behavior
+# ---------------------------------------------------------------------------
+
+fixes:
+  - rule_id: S-016
+    engine_rule: camara-schema-type-check
+    status: done
+    issue: >
+      Original inline rule only checked top-level schemas. Did not recurse
+      into properties, items, or nested schemas. Did not handle combiners.
+    fix: >
+      Replaced with custom JS function in .spectral-r4.yaml. Recursive
+      traversal, combiner-aware, validates type values. Original inline
+      rule preserved in r3.4 and fallback rulesets.
+
+  - rule_id: P-007
+    engine_rule: check-test-file-version
+    status: suppressed
+    issue: Checks version suffix in filename, but version belongs inside .feature file (first line)
+    fix: Rewrite to parse file content, same approach as P-003 for spec info.version
+    conditional_level_after_fix:
+      default: hint
+      overrides:
+        - condition:
+            target_api_maturity: [stable]
+          level: warn
+
+# ---------------------------------------------------------------------------
+# Proposed changes — need upstream discussion before implementation
+# ---------------------------------------------------------------------------
+
+proposed_changes:
+  - rule_id: S-211
+    engine_rule: oas3-unused-component
+    change: Keep Spectral severity (warn), add conditional_level default=hint in metadata
+    reason: >
+      Spectral does not follow discriminator mappings — schemas referenced
+      only via discriminator appear as unused. False positives on subscription
+      event schemas (e.g. EventApiSpecific1, EventSubscriptionStarted).
+      Unused schemas are cosmetic, not harmful.
+    status: done
+
+  - rule_id: S-313
+    engine_rule: "owasp:api4:2023-string-restricted"
+    change: Keep Spectral severity (warn), add conditional_level default=hint + hint text in metadata
+    hint: "Acceptable if free-form field or implementation-dependent — no fix needed."
+    reason: >
+      Free-text string properties (ErrorInfo.message, CloudEvent.id,
+      SubscriptionId, *Description fields) cannot meaningfully have format
+      or pattern without risking backward-incompatibility (e.g. localized
+      messages). The resource consumption concern is already covered by
+      string-limit (maxLength). string-restricted adds noise on fields
+      where no actionable fix exists.
+    status: done
+
+  - rule_id: S-015
+    engine_rule: camara-schema-casing-convention
+    change: >
+      Custom JS function replaces built-in casing: pascal. Exact exception
+      list for 4 CloudEvents schema names (HTTPSettings, HTTPSubscriptionRequest,
+      HTTPSubscriptionResponse, PrivateKeyJWTCredential). r4 ruleset only.
+    reason: >
+      CloudEvents convention uses uppercase protocol prefixes in schema names.
+      Renaming would deviate from CloudEvents spec.
+    status: done
+
+# ---------------------------------------------------------------------------
+# Pending rules — in open PRs
+# ---------------------------------------------------------------------------
+
+pending_rules:
+  # OWASP rules (tooling#95) implemented in WS07 Phase 1b — see spectral-rules.yaml S-300..S-319
+
+# ---------------------------------------------------------------------------
+# Manual rules — require human judgment
+# ---------------------------------------------------------------------------
+# Source: private-dev-docs/validation-framework/reviews/testing-guidelines-audit.md
+
+# ---------------------------------------------------------------------------
+# Tested rules — verified via regression branches (WS07 Phase 3)
+# ---------------------------------------------------------------------------
+# Updated as regression branches verify rules. Each rule lists the branches
+# where its expected behaviour is pinned by a regression-expected.yaml
+# fixture. Populated by scripts/regression_runner.py runs (capture mode).
+# Format: rule_id: [branch, ...]
+
+tested_rules:
+  G-002: [regression/r4.2-broken-spec-test-files]
+  G-014: [regression/r4.2-broken-spec-test-files]
+  G-016: [regression/r4.2-broken-spec-test-files]
+  G-019: [regression/r4.2-broken-spec-test-files]
+  G-021: [regression/r4.2-broken-spec-test-files]
+  G-024: [regression/r4.2-broken-spec-test-files]
+  G-025: [regression/r4.2-broken-spec-test-files]
+  P-001: [regression/r4.2-broken-spec-test-files]
+  P-002: [regression/r4.2-broken-spec-test-files]
+  P-004: [regression/r4.2-broken-spec-test-files]
+  P-005: [regression/r4.2-broken-spec-test-files]
+  P-006: [regression/r4.2-main-baseline]
+  P-015: [regression/r4.2-broken-spec-subscriptions]
+  P-016: [regression/r4.2-broken-spec-subscriptions]
+  P-020: [regression/r4.2-broken-spec-subscriptions]
+  S-002: [regression/r4.2-broken-spec-routing]
+  S-003: [regression/r4.2-broken-spec-routing]
+  S-005: [regression/r4.2-broken-spec-yaml-fundamentals]
+  S-006: [regression/r4.2-broken-spec-descriptions]
+  S-007: [regression/r4.2-broken-spec-routing]
+  S-008: [regression/r4.2-broken-spec-routing]
+  S-009: [regression/r4.2-broken-spec-descriptions]
+  S-010: [regression/r4.2-broken-spec-routing]
+  S-011: [regression/r4.2-broken-spec-descriptions]
+  S-012: [regression/r4.2-broken-spec-schema-constraints]
+  S-013: [regression/r4.2-broken-spec-descriptions]
+  S-014: [regression/r4.2-broken-spec-descriptions]
+  S-016: [regression/r4.2-broken-spec-yaml-fundamentals]
+  S-017: [regression/r4.2-broken-spec-schema-constraints]
+  S-018: [regression/r4.2-broken-spec-api-metadata]
+  S-019: [regression/r4.2-broken-spec-api-metadata]
+  S-020: [regression/r4.2-broken-spec-api-metadata]
+  S-021: [regression/r4.2-broken-spec-api-metadata]
+  S-022: [regression/r4.2-broken-spec-api-metadata]
+  S-023: [regression/r4.2-broken-spec-api-metadata]
+  S-024: [regression/r4.2-broken-spec-api-metadata]
+  S-025: [regression/r4.2-broken-spec-error-handling]
+  S-026: [regression/r4.2-broken-spec-error-handling]
+  S-027: [regression/r4.2-broken-spec-error-handling]
+  S-028: [regression/r4.2-broken-spec-descriptions]
+  S-029: [regression/r4.2-broken-spec-descriptions]
+  S-030: [regression/r4.2-broken-spec-schema-constraints]
+  S-031: [regression/r4.2-broken-spec-descriptions]
+  S-032: [regression/r4.2-broken-spec-subscriptions]
+  S-033: [regression/r4.2-broken-spec-subscriptions]
+  S-034: [regression/r4.2-broken-spec-subscriptions]
+  S-035: [regression/r4.2-broken-spec-subscriptions]
+  S-036: [regression/r4.2-broken-spec-routing]
+  S-201: [regression/r4.2-broken-spec-api-metadata]
+  S-210: [regression/r4.2-broken-spec-api-metadata]
+  S-211: [regression/r4.2-main-baseline]
+  S-215: [regression/r4.2-broken-spec-descriptions]
+  S-216: [regression/r4.2-broken-spec-descriptions]
+  S-217: [regression/r4.2-broken-spec-routing]
+  S-220: [regression/r4.2-broken-spec-routing]
+  S-221: [regression/r4.2-broken-spec-error-handling]
+  S-222: [regression/r4.2-broken-spec-routing]
+  S-223: [regression/r4.2-broken-spec-descriptions]
+  S-225: [regression/r4.2-broken-spec-routing]
+  S-227: [regression/r4.2-broken-spec-routing]
+  S-300: [regression/r4.2-broken-spec-schema-constraints]
+  S-303: [regression/r4.2-broken-spec-schema-constraints]
+  S-306: [regression/r4.2-broken-spec-routing]
+  S-307: [regression/r4.2-broken-spec-error-handling]
+  S-308: [regression/r4.2-broken-spec-schema-constraints]
+  S-309: [regression/r4.2-broken-spec-schema-constraints]
+  S-310: [regression/r4.2-broken-spec-schema-constraints]
+  S-311: [regression/r4.2-broken-spec-schema-constraints]
+  S-312: [regression/r4.2-broken-spec-schema-constraints]
+  S-313: [regression/r4.2-main-baseline]
+  # S-314 / S-316 muted via linting/config/.spectral-r4.yaml since 2026-04-28
+  # pending Commonalities#615; not exercised by any regression branch.
+  S-318: [regression/r4.2-broken-spec-error-handling]
+  Y-001: [regression/r4.2-broken-spec-yaml-fundamentals]
+  Y-002: [regression/r4.2-broken-spec-yaml-fundamentals]
+  Y-003: [regression/r4.2-broken-spec-yaml-fundamentals]
+  Y-004: [regression/r4.2-broken-spec-yaml-fundamentals]
+  Y-005: [regression/r4.2-broken-spec-yaml-fundamentals]
+  Y-006: [regression/r4.2-broken-spec-yaml-fundamentals]
+  Y-007: [regression/r4.2-broken-spec-yaml-fundamentals]
+  Y-008: [regression/r4.2-broken-spec-yaml-fundamentals]
+  Y-009: [regression/r4.2-broken-spec-yaml-fundamentals]
+  Y-010: [regression/r4.2-broken-spec-yaml-fundamentals]
+  Y-011: [regression/r4.2-broken-spec-yaml-fundamentals]
+  Y-012: [regression/r4.2-broken-spec-yaml-fundamentals]
+  Y-013: [regression/r4.2-broken-spec-yaml-fundamentals]
+
+# ---------------------------------------------------------------------------
+# Manual rules — require human judgment
+# ---------------------------------------------------------------------------
+
+manual_rules:
+  count: 25
+  categories:
+    - name: Feature context sections
+      audit_ids: [TG-015, TG-016, TG-017]
+      description: Feature file should describe API context
+    - name: Background setup patterns
+      audit_ids: [TG-020, TG-021, TG-022, TG-023]
+      description: Background section setup conventions
+    - name: Standardized step syntax
+      audit_ids: [TG-042, TG-043, TG-044, TG-045, TG-046, TG-047, TG-048]
+      description: Given/When/Then step phrasing conventions
+    - name: Test coverage adequacy
+      audit_ids: [TG-054, TG-055]
+      description: Test plan completeness for RC and public releases
+    - name: Device identifier rules
+      audit_ids: [TG-057, TG-058]
+      description: Device identifier handling in test scenarios
+    - name: Other semantic rules
+      audit_ids: [TG-024, TG-025, TG-026, TG-027, TG-028, TG-029, TG-056, TG-059, TG-060]
+      description: Various semantic test quality rules

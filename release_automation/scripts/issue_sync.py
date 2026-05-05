@@ -117,6 +117,9 @@ class IssueSyncManager:
         release_pr_number_override: Optional[str] = None,
         draft_release_url_override: Optional[str] = None,
         force_update: bool = False,
+        common_cache_status: str = "",
+        common_cache_details: str = "",
+        common_sync_pr_url: str = "",
     ) -> SyncResult:
         """
         Ensure Release Issue exists and reflects current state.
@@ -147,11 +150,20 @@ class IssueSyncManager:
         self.ensure_labels_exist()
 
         # Derive current state
-        state = state_override or self.state_manager.derive_state(
-            release_tag,
-            retry_draft_release=True,
-        )
-        context_source = "override" if state_override else "re-derived"
+        if state_override:
+            state = state_override
+            context_source = "override"
+        else:
+            release_info = self.state_manager.derive_state(
+                retry_draft_release=True,
+            )
+            if not release_info.success:
+                return SyncResult(
+                    action="none",
+                    reason=f"config_error: {release_info.config_error.message}",
+                )
+            state = release_info.state
+            context_source = "re-derived"
         print(
             f"Issue sync effective context: source={context_source}, "
             f"state={state.value}, "
@@ -180,6 +192,9 @@ class IssueSyncManager:
                         snapshot_branch_override=snapshot_branch_override,
                         release_pr_number_override=release_pr_number_override,
                         draft_release_url_override=draft_release_url_override,
+                        common_cache_status=common_cache_status,
+                        common_cache_details=common_cache_details,
+                        common_sync_pr_url=common_sync_pr_url,
                     )
                     return self.gh.get_issue(new_issue["number"])
                 updated_issue = self.gh.retry_on_not_found(_post_create)
@@ -196,6 +211,9 @@ class IssueSyncManager:
                 snapshot_branch_override=snapshot_branch_override,
                 release_pr_number_override=release_pr_number_override,
                 draft_release_url_override=draft_release_url_override,
+                common_cache_status=common_cache_status,
+                common_cache_details=common_cache_details,
+                common_sync_pr_url=common_sync_pr_url,
             )
             # Refetch issue after update
             updated_issue = self.gh.get_issue(issue["number"])
@@ -347,6 +365,9 @@ class IssueSyncManager:
         snapshot_branch_override: Optional[str] = None,
         release_pr_number_override: Optional[str] = None,
         draft_release_url_override: Optional[str] = None,
+        common_cache_status: str = "",
+        common_cache_details: str = "",
+        common_sync_pr_url: str = "",
     ) -> None:
         """
         Update an existing Release Issue to match current state.
@@ -458,7 +479,10 @@ class IssueSyncManager:
             release_plan=release_plan,
             api_versions=api_versions,
             commonalities_release=commonalities_release,
-            icm_release=icm_release
+            icm_release=icm_release,
+            common_cache_status=common_cache_status,
+            common_cache_details=common_cache_details,
+            common_sync_pr_url=common_sync_pr_url,
         )
         updated_body = self.issue_manager.update_section(
             updated_body, "CONFIG", new_config_content

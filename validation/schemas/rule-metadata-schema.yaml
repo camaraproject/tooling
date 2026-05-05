@@ -1,0 +1,174 @@
+# JSON Schema for validation rule metadata definitions.
+# Each rule maps an engine-level check to framework-level applicability,
+# conditional severity, and fix guidance.
+
+$schema: "https://json-schema.org/draft/2020-12/schema"
+title: CAMARA Validation Rule Metadata
+description: >
+  Defines one validation rule within the framework.  Rule metadata files
+  contain an array of these objects.
+
+type: object
+required:
+  - id
+  - engine
+  - engine_rule
+
+properties:
+  id:
+    type: string
+    pattern: "^[A-Z]-[0-9]{3}$"
+    description: >
+      Stable ID with engine prefix and three-digit number (e.g. "S-042").
+      Once assigned, never reused even if the rule is retired.
+
+  name:
+    type: string
+    pattern: "^[a-z][a-z0-9-]+$"
+    description: >
+      Human-readable kebab-case name.  Optional — defaults to engine_rule
+      when omitted.
+
+  short_title:
+    type: string
+    minLength: 1
+    maxLength: 70
+    description: >
+      Short human-readable label used as the annotation title in the
+      GitHub file-diff popover and Check Run annotations.  Soft target
+      50 chars, hard cap 70 to avoid wrapping in the annotation UI.
+      Optional — when omitted, the emitter falls back to the finding
+      message truncated to 69 chars + "…"; the full untruncated message
+      is always preserved in the annotation body.
+
+  engine:
+    type: string
+    enum: [spectral, yamllint, gherkin, python, manual]
+    description: >
+      Engine responsible for producing the finding.  "manual" means the
+      rule is documented but not machine-checkable.
+
+  engine_rule:
+    type: string
+    description: >
+      Native rule identifier within the engine.  For Spectral this is the
+      rule name in .spectral.yaml; for Python checks the function name.
+
+  message_override:
+    type: string
+    description: >
+      Replaces the engine's finding message entirely.  Use when the
+      engine message is misleading or unhelpful.  Optional — when
+      omitted, the engine message is preserved.
+
+  suggestion:
+    type: string
+    description: >
+      Additional fix guidance rendered alongside the finding message
+      (under a `Suggestion:` label in annotations and the workflow
+      summary).  Optional — only set when there is "how to fix"
+      guidance beyond what the message already says.
+
+  applicability:
+    type: object
+    description: >
+      Conditions under which this rule fires.  Omitted fields are
+      unconstrained (always match).  All present fields must match (AND).
+      Array fields use OR logic (value must be in the array).
+    properties:
+      branch_types:
+        type: array
+        items:
+          type: string
+          enum: [main, release, maintenance, feature]
+
+      trigger_types:
+        type: array
+        items:
+          type: string
+          enum: [pr, dispatch, release-automation, local]
+
+      target_release_type:
+        type: array
+        items:
+          type: string
+
+      target_api_status:
+        type: array
+        items:
+          type: string
+
+      target_api_maturity:
+        type: array
+        items:
+          type: string
+          enum: [initial, stable]
+
+      api_pattern:
+        type: array
+        items:
+          type: string
+          enum: [request-response, implicit-subscription, explicit-subscription]
+
+      commonalities_release:
+        type: string
+        description: >
+          Range expression for Commonalities version (e.g. ">=r4.1").
+
+      is_release_review_pr:
+        type: boolean
+
+      release_plan_changed:
+        type: boolean
+
+    additionalProperties: false
+
+  suppress_schema_paths:
+    type: array
+    description: >
+      Post-filter allowlist of JSON paths within a source document to
+      suppress for this rule.  A finding is dropped entirely when its
+      ``schema_path`` field equals an entry here or starts with the entry
+      followed by a dot (prefix-with-boundary match).  Intended for rules
+      that fire on known-unactionable locations — e.g. free-text fields in
+      Commonalities common schemas where no sensible ``pattern``/``format``
+      exists.  Entries should be specific field paths, not whole
+      components, so that any new unconstrained field surfaces instead of
+      being silently masked.  Optional — omit for rules that do not need
+      per-path suppression.
+    items:
+      type: string
+      minLength: 1
+
+  conditional_level:
+    type: object
+    description: >
+      Severity specification.  Optional — when omitted, the engine's
+      reported severity is preserved (identity mapping).
+    required: [default]
+    properties:
+      default:
+        type: string
+        enum: [error, warn, hint, muted]
+        description: >
+          Base severity level.  "muted" means the rule is suppressed in
+          contexts where no override matches.
+
+      overrides:
+        type: array
+        description: >
+          Ordered list of condition/level pairs.  First match wins.
+        items:
+          type: object
+          required: [condition, level]
+          properties:
+            condition:
+              type: object
+              description: >
+                Same field vocabulary as applicability.  All present
+                fields must match; array fields use OR logic.
+            level:
+              type: string
+              enum: [error, warn, hint, muted]
+
+additionalProperties: false

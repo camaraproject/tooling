@@ -13,6 +13,11 @@
 # enum/type-checked. This makes hotfix-gated fields (added in a hotfix tag and
 # applied to a subset of repositories) safe to introduce without re-cutting any
 # already-deployed tag.
+#
+# This copy on the validation-framework branch is the pinned-ref last-known-good
+# fallback for the workflow. It is updated only when this branch is rebased
+# against main (or merged from main) before a tag move; routine stage flips are
+# made on `main` of tooling and do NOT touch this copy.
 
 version: 1
 

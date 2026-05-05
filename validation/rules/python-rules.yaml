@@ -1,0 +1,359 @@
+# Python check rule metadata.
+# These checks have context-dependent behavior: conditional levels based on
+# branch type, API maturity, and release context; applicability conditions
+# for release-review and release-plan-changed contexts.
+# Engine messages from make_finding() are preserved by default (design doc 8.4.1).
+# message_override and hint can be added when engine messages are insufficient.
+
+# P-001: check-filename-kebab-case
+- id: P-001
+  engine: python
+  engine_rule: check-filename-kebab-case
+  short_title: "API filename must be kebab-case"
+  conditional_level:
+    default: error
+
+# P-002: check-filename-matches-api-name
+# Draft entries are intentionally allowed to have no spec file yet
+# (placeholder for upcoming work). Downgrade to hint for draft so the
+# missing file still surfaces in the codeowner annotation list, but
+# stays an error for alpha/rc/public where it gates release advancement.
+- id: P-002
+  engine: python
+  engine_rule: check-filename-matches-api-name
+  short_title: "API definition file must match release-plan api_name"
+  conditional_level:
+    default: error
+    overrides:
+      - condition:
+          target_api_status: [draft]
+        level: hint
+  suggestion: >-
+    Spec file not yet present. For draft entries this is acceptable;
+    add the spec file before advancing target_api_status to alpha.
+
+# P-003: check-info-version-format
+- id: P-003
+  engine: python
+  engine_rule: check-info-version-format
+  short_title: "info.version must be wip on main or maintenance"
+  conditional_level:
+    default: error
+
+# P-004: check-server-url-version
+- id: P-004
+  engine: python
+  engine_rule: check-server-url-version
+  short_title: "Server URL must include version segment"
+  conditional_level:
+    default: error
+
+# P-005: check-server-url-api-name
+- id: P-005
+  engine: python
+  engine_rule: check-server-url-api-name
+  short_title: "Server URL api-name must match release-plan"
+  conditional_level:
+    default: error
+
+# P-006: check-test-files-exist
+#
+# Severity is a function of API maturity and release type:
+#   - default (alpha, wip, any non-rc release): hint
+#   - initial (0.x) + rc/public release: warn
+#   - stable  (>=1.x) + rc/public release: error
+- id: P-006
+  engine: python
+  engine_rule: check-test-files-exist
+  short_title: "Missing test definition file for API"
+  conditional_level:
+    default: hint
+    overrides:
+      - condition:
+          target_api_maturity: [stable]
+          target_release_type: [pre-release-rc, public-release]
+        level: error
+      - condition:
+          target_api_maturity: [initial]
+          target_release_type: [pre-release-rc, public-release]
+        level: warn
+  suggestion: >-
+    Test files are optional for alpha releases but expected before the
+    first release candidate. On stable (>=1.x) APIs they are required
+    at rc and public release; on initial (0.x) APIs they are strongly
+    recommended. See CAMARA Testing Guidelines for the expected file
+    layout.
+
+# P-007: check-test-file-version
+# Parses the Feature line of .feature files to extract the version
+# (e.g. "Feature: CAMARA API, vwip - Operation foo") and compares
+# against the expected version from info.version.
+- id: P-007
+  engine: python
+  engine_rule: check-test-file-version
+  short_title: "Test file: feature-line version mismatch"
+  conditional_level:
+    default: hint
+    overrides:
+      - condition:
+          target_api_maturity: [stable]
+          target_release_type: [pre-release-rc, public-release]
+        level: warn
+
+# P-008: check-test-directory-exists
+- id: P-008
+  engine: python
+  engine_rule: check-test-directory-exists
+  short_title: "Test_definitions directory is missing"
+  conditional_level:
+    default: hint
+    overrides:
+      - condition:
+          target_release_type: [pre-release-rc, public-release]
+        level: warn
+
+# P-009: check-release-plan-semantics
+- id: P-009
+  engine: python
+  engine_rule: check-release-plan-semantics
+  short_title: "release-plan.yaml has semantic error"
+  applicability:
+    release_plan_changed: true
+  conditional_level:
+    default: error
+
+# P-010: check-changelog-format
+- id: P-010
+  engine: python
+  engine_rule: check-changelog-format
+  short_title: "CHANGELOG.md or CHANGELOG/ is required"
+  conditional_level:
+    default: warn
+
+# P-011: check-commonalities-version (DG-028 rewrite)
+# Validates info.x-camara-commonalities presence and version format.
+# Error for missing or invalid format; warn for version mismatch.
+- id: P-011
+  engine: python
+  engine_rule: check-commonalities-version
+  short_title: "info.x-camara-commonalities missing or wrong"
+  conditional_level:
+    default: error
+
+# P-012: check-release-review-file-restriction
+- id: P-012
+  engine: python
+  engine_rule: check-release-review-file-restriction
+  short_title: "Release Review PR: only docs may change"
+  applicability:
+    is_release_review_pr: true
+  conditional_level:
+    default: error
+
+# P-013: check-readme-placeholder-removal
+- id: P-013
+  engine: python
+  engine_rule: check-readme-placeholder-removal
+  short_title: "Remove placeholder README alongside API definitions"
+  conditional_level:
+    default: warn
+
+# P-014: check-subscription-filename (DG-088)
+# Explicit subscription API names must end with '-subscriptions'.
+- id: P-014
+  engine: python
+  engine_rule: check-subscription-filename
+  short_title: "Subscription API name must end with -subscriptions"
+  applicability:
+    api_pattern: [explicit-subscription]
+  conditional_level:
+    default: warn
+
+# P-015: check-event-type-format (DG-086)
+# Event types must follow org.camaraproject.<api-name>.<vN>.<event-name>.
+# Gated to Commonalities >=r4.2, where the named ApiEventType schema
+# pattern (via $ref to CAMARA_event_common.yaml) is established and the
+# hint below is actionable.
+#
+# Level is conditional on api_pattern:
+#   - explicit-subscription: error
+#   - implicit-subscription: warn (conservative during migration to the
+#     named ApiEventType pattern)
+- id: P-015
+  engine: python
+  engine_rule: check-event-type-format
+  short_title: "CloudEvent type format is wrong"
+  applicability:
+    api_pattern: [explicit-subscription, implicit-subscription]
+    commonalities_release: ">=r4.2"
+  conditional_level:
+    default: error
+    overrides:
+      - condition:
+          api_pattern: [implicit-subscription]
+        level: warn
+  suggestion: >-
+    Define a named event type schema (e.g. ApiEventType) that constrains
+    the CloudEvent `type` value via allOf, rather than inlining the enum
+    directly in CloudEvent.properties.type.enum. See the implicit-events
+    API template in Commonalities artifacts/api-templates/ (tracked in
+    camaraproject/Commonalities#608).
+
+# P-016: check-sinkcredential-not-in-response (DG-092)
+# sinkCredential must not appear in subscription 2xx response schemas.
+- id: P-016
+  engine: python
+  engine_rule: check-sinkcredential-not-in-response
+  short_title: "sinkCredential must not appear in response"
+  applicability:
+    api_pattern: [explicit-subscription]
+  conditional_level:
+    default: error
+
+# P-017: check-conflict-deprecated (DG-018)
+# CONFLICT error code is deprecated in Commonalities r4.x.
+- id: P-017
+  engine: python
+  engine_rule: check-conflict-deprecated
+  short_title: "CONFLICT error code is deprecated"
+  applicability:
+    commonalities_release: ">=r4.0"
+  conditional_level:
+    default: warn
+
+# P-018: check-contextcode-format (DG-011)
+# contextCode enum values should follow SCREAMING_SNAKE_CASE.
+- id: P-018
+  engine: python
+  engine_rule: check-contextcode-format
+  short_title: "contextCode must be SCREAMING_SNAKE_CASE enum"
+  applicability:
+    commonalities_release: ">=r4.0"
+  conditional_level:
+    default: hint
+
+# P-019: check-orphan-api-definitions (NEW-003)
+# YAML files in API_definitions not listed in release-plan.yaml.
+- id: P-019
+  engine: python
+  engine_rule: check-orphan-api-definitions
+  short_title: "API YAML not listed in release-plan.yaml"
+  conditional_level:
+    default: warn
+
+# P-020: check-cloudevent-via-ref
+# Subscription APIs should consume CloudEvent via $ref to
+# CAMARA_event_common.yaml rather than maintaining a local inline copy.
+# Detection: components.schemas.CloudEvent exists with top-level
+# `properties`. The $ref-only and `allOf: [{$ref: ...}]` forms have no
+# top-level `properties` and are not flagged.
+# Gated to Commonalities >=r4.2, where CAMARA_event_common.yaml exists.
+# Skipped on Release Review PRs, where inline CloudEvent is the expected
+# output of bundling rather than drift.
+- id: P-020
+  engine: python
+  engine_rule: check-cloudevent-via-ref
+  short_title: "CloudEvent should be $ref, not inline"
+  applicability:
+    api_pattern: [explicit-subscription, implicit-subscription]
+    commonalities_release: ">=r4.2"
+    is_release_review_pr: false
+  conditional_level:
+    default: warn
+  suggestion: >-
+    Replace the local CloudEvent schema with
+    `$ref: './CAMARA_event_common.yaml#/components/schemas/CloudEvent'`,
+    or an allOf combining the $ref with an API-specific ApiEventType
+    schema. See implicit-events API template in Commonalities
+    artifacts/api-templates/.
+
+# P-021: check-common-cache-sync (DEC-027/030)
+# Safety check: code/common/ files must match the sync manifest written
+# by the RA sync-common handler.  Suppressed on bump PRs via the
+# three-step consistency model (DEC-029).  Version-gated to repos
+# adopting $ref consumption (>=r4.2).
+- id: P-021
+  engine: python
+  engine_rule: check-common-cache-sync
+  short_title: "code/common/ is missing or out of sync"
+  applicability:
+    release_plan_changed: false
+    commonalities_release: ">=r4.2"
+  conditional_level:
+    default: warn
+    overrides:
+      - condition:
+          trigger_types: [release-automation]
+        level: error
+  suggestion: >-
+    `code/common/` is managed by the sync mechanism. If your PR diff
+    includes manual edits to `code/common/`, revert them. If your branch
+    is missing files that should be present, merge `main` into your
+    branch — it carries the latest synced files; if `main` is also
+    behind, merge the auto-created sync PR or dispatch the release
+    automation workflow.
+
+# P-022: check-release-plan-exclusivity
+# release-plan.yaml changes must be in their own PR — any co-changed
+# files are reported so that any new validation errors stay clearly
+# attributable to the release-plan change rather than masked by
+# unrelated code changes in the same PR.
+- id: P-022
+  engine: python
+  engine_rule: check-release-plan-exclusivity
+  short_title: "release-plan.yaml must change in its own PR"
+  applicability:
+    release_plan_changed: true
+  conditional_level:
+    default: error
+  suggestion: >-
+    Split this PR: keep release-plan.yaml changes in a dedicated PR,
+    and move the other listed files to a separate PR.
+
+# P-023: check-declared-dependency-tags-exist
+# When a dependency declaration (commonalities_release or icm_release)
+# advances in this PR, verify the declared tag exists in the source
+# repository.  Confirmed missing → error; API lookup failure → warn.
+# When the declaration is unchanged in the diff, the check is skipped
+# (pre-existing state is not this PR's responsibility).
+- id: P-023
+  engine: python
+  engine_rule: check-declared-dependency-tags-exist
+  short_title: "Declared dependency tag not found upstream"
+  applicability:
+    release_plan_changed: true
+  conditional_level:
+    default: error
+
+# P-024: check-test-file-feature-line-untransformable
+# Fires under either of two conditions in a `.feature` file:
+#   1. No `Feature:` line is present in the first 50 lines.
+#   2. The `Feature:` line is present but carries no `wip`, `vwip`, or
+#      `v{version}` token to indicate the API version.
+# Comment lines, feature-level tags, and blank lines preceding `Feature:`
+# are valid Gherkin and are skipped during the scan. The check emits a
+# distinct message per condition. Always error: distinct from P-007
+# (which covers the "version present but mismatched" case under
+# conditional_level hint/warn). P-007 and P-024 are mutually exclusive
+# per the check's code path (`continue` after each P-024 branch prevents
+# both from firing on the same file).
+- id: P-024
+  engine: python
+  engine_rule: check-test-file-feature-line-untransformable
+  short_title: "Feature line has no wip/vwip/version token"
+  conditional_level:
+    default: error
+
+# P-025: check-feature-file-url-version
+# Validates that URL paths inside .feature scenario steps carry the
+# expected version segment derived from info.version. Sibling to P-004
+# (which covers servers[].url in API YAMLs). Unlike Feature-line `wip`
+# (covered by P-007), a URL path version has no style-variation escape
+# hatch: bare `/wip` is never valid because snapshot transformation
+# T2b rewrites only the strict `/vwip` form. Always error.
+- id: P-025
+  engine: python
+  engine_rule: check-feature-file-url-version
+  short_title: "Feature-step URL version segment wrong"
+  conditional_level:
+    default: error

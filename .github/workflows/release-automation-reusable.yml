@@ -9,7 +9,7 @@
 #
 # Called by: release-automation-caller.yml in API repositories
 
-name: Release Automation
+name: CAMARA Release Automation
 
 on:
   workflow_call:
@@ -62,8 +62,21 @@ jobs:
       # Note: release_tag is NOT output here - it comes from derive-state job
       # which reads from authoritative sources (release-plan.yaml or release-metadata.yaml)
     steps:
+      - name: Fork Guard - Check Issues Enabled
+        id: fork-guard
+        env:
+          HAS_ISSUES: ${{ github.event.repository.has_issues }}
+        run: |
+          if [ "$HAS_ISSUES" = "true" ]; then
+            echo "issues_enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "issues_enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::warning title=Issues disabled — Release Automation skipped::To use Release Automation here, enable Issues in repository Settings → General → Features. To stop Release Automation from running on this fork, disable the Release Automation workflow."
+          fi
+
       - name: Detect Trigger Type
         id: detect
+        if: steps.fork-guard.outputs.issues_enabled == 'true'
         uses: actions/github-script@v9
         with:
           script: |
@@ -106,31 +119,43 @@ jobs:
                 return;
               }
 
-              // Parse slash commands
-              if (body.startsWith('/create-snapshot')) {
+              // Parse slash commands. Each pattern anchors at start and
+              // requires either whitespace or end-of-string after the
+              // command so /create-snapshotextra does not match /create-snapshot.
+              //
+              // commandArgs is clamped to what follows on the SAME line as
+              // the command. Anything after the first newline is treated
+              // as free-form context and ignored. No command consumes more
+              // than a single-token reason or a '--confirm <tag>' flag, so
+              // this also blocks shell-injection via backticks in multi-line
+              // bodies when command_args flows into downstream shell steps
+              // (e.g. post-result's Resolve Reason).
+              const firstLine = body.split(/\r?\n/, 1)[0];
+
+              if (/^\/create-snapshot(?:\s|$)/.test(body)) {
                 triggerType = 'slash_command';
                 command = 'create-snapshot';
-                commandArgs = body.replace('/create-snapshot', '').trim();
+                commandArgs = '';  // no arguments accepted
                 shouldContinue = 'true';
-              } else if (body.startsWith('/discard-snapshot')) {
+              } else if (/^\/discard-snapshot(?:\s|$)/.test(body)) {
                 triggerType = 'slash_command';
                 command = 'discard-snapshot';
-                commandArgs = body.replace('/discard-snapshot', '').trim();
+                commandArgs = firstLine.replace(/^\/discard-snapshot/, '').trim();
                 shouldContinue = 'true';
-              } else if (body.startsWith('/delete-draft')) {
+              } else if (/^\/delete-draft(?:\s|$)/.test(body)) {
                 triggerType = 'slash_command';
                 command = 'delete-draft';
-                commandArgs = body.replace('/delete-draft', '').trim();
+                commandArgs = firstLine.replace(/^\/delete-draft/, '').trim();
                 shouldContinue = 'true';
-              } else if (body.startsWith('/sync-issue')) {
+              } else if (/^\/sync-issue(?:\s|$)/.test(body)) {
                 triggerType = 'slash_command';
                 command = 'sync-issue';
-                commandArgs = body.replace('/sync-issue', '').trim();
+                commandArgs = '';  // no arguments accepted
                 shouldContinue = 'true';
-              } else if (body.startsWith('/publish-release')) {
+              } else if (/^\/publish-release(?:\s|$)/.test(body)) {
                 triggerType = 'slash_command';
                 command = 'publish-release';
-                commandArgs = body.replace('/publish-release', '').trim();
+                commandArgs = firstLine.replace(/^\/publish-release/, '').trim();
                 // Parse --confirm <tag> argument
                 const confirmMatch = commandArgs.match(/--confirm\s+(\S+)/);
                 confirmTag = confirmMatch ? confirmMatch[1] : '';
@@ -199,10 +224,16 @@ jobs:
             }
 
             // ─────────────────────────────────────────────────────────────────
-            // Event: push (release-plan.yaml change on main)
+            // Event: push (release-plan.yaml, code/common, or the caller
+            // workflow itself changed on main)
             // ─────────────────────────────────────────────────────────────────
             else if (eventName === 'push') {
-              triggerType = 'release_plan_change';
+              // Classify by which paths changed
+              const changedFiles = (context.payload.commits || [])
+                .flatMap(c => [...(c.added || []), ...(c.modified || []), ...(c.removed || [])]);
+              const hasReleasePlanChange = changedFiles.includes('release-plan.yaml');
+
+              triggerType = hasReleasePlanChange ? 'release_plan_change' : 'push';
               command = 'sync-issue';
               user = context.actor;
               shouldContinue = 'true';
@@ -378,6 +409,10 @@ jobs:
       release_plan_url: ${{ steps.state.outputs.release_plan_url }}
       src_commit_sha_short: ${{ steps.state.outputs.src_commit_sha_short }}
       meta_release: ${{ steps.state.outputs.meta_release }}
+      # Common file cache sync outputs
+      common_cache_status: ${{ steps.cache-sync.outputs.common_cache_status }}
+      common_cache_details: ${{ steps.cache-sync.outputs.common_cache_details }}
+      common_sync_pr_url: ${{ steps.find-sync-pr.outputs.common_sync_pr_url }}
     steps:
       - name: Checkout tooling
         uses: actions/checkout@v6
@@ -388,11 +423,115 @@ jobs:
           sparse-checkout: |
             release_automation/scripts
             shared-actions/derive-release-state
+            tooling_lib
 
       - name: Derive Release State
         id: state
         uses: ./_tooling/shared-actions/derive-release-state
         # No release_tag input - derived from repository artifacts (release-plan.yaml or release-metadata.yaml)
+
+      # ── Common file cache sync detection ──────────────────────────────
+      - name: Checkout API repo (sparse, for cache sync check)
+        if: |
+          steps.state.outputs.config_error == '' &&
+          steps.state.outputs.commonalities_release != ''
+        uses: actions/checkout@v6
+        with:
+          path: _api_repo
+          sparse-checkout: |
+            code/common
+          sparse-checkout-cone-mode: true
+
+      - name: Check common cache sync
+        id: cache-sync
+        if: |
+          steps.state.outputs.config_error == '' &&
+          steps.state.outputs.commonalities_release != ''
+        shell: python
+        env:
+          API_REPO_PATH: ${{ github.workspace }}/_api_repo
+          COMMONALITIES_RELEASE: ${{ steps.state.outputs.commonalities_release }}
+          TOOLING_PATH: ${{ github.workspace }}/_tooling
+        run: |
+          import os, sys
+          from pathlib import Path
+
+          sys.path.insert(0, os.environ['TOOLING_PATH'])
+
+          comm_release = os.environ['COMMONALITIES_RELEASE']
+          api_repo = Path(os.environ['API_REPO_PATH'])
+          output_file = os.environ['GITHUB_OUTPUT']
+
+          # Version gate: only check for r4.2+
+          import re
+          m = re.match(r'^r(\d+)\.(\d+)$', comm_release)
+          if not m:
+              print(f"Cannot parse commonalities_release '{comm_release}', skipping cache check")
+              with open(output_file, 'a') as f:
+                  f.write("common_cache_status=\n")
+                  f.write("common_cache_details=\n")
+              sys.exit(0)
+
+          major, minor = int(m.group(1)), int(m.group(2))
+          if major < 4 or (major == 4 and minor < 2):
+              print(f"commonalities_release {comm_release} < r4.2, skipping cache check")
+              with open(output_file, 'a') as f:
+                  f.write("common_cache_status=\n")
+                  f.write("common_cache_details=\n")
+              sys.exit(0)
+
+          from tooling_lib.cache_sync import check_sync_status
+
+          expected = {"Commonalities": comm_release}
+          status = check_sync_status(api_repo, expected)
+
+          if status.in_sync:
+              print(f"Common file cache is in sync with {comm_release}")
+              with open(output_file, 'a') as f:
+                  f.write("common_cache_status=in_sync\n")
+                  f.write("common_cache_details=\n")
+              sys.exit(0)
+
+          # Build descriptive details
+          details_parts = []
+          if status.no_common_dir:
+              details_parts.append("code/common/ directory is missing")
+          elif status.no_manifest:
+              details_parts.append("code/common/.sync-manifest.yaml is missing")
+          else:
+              for src in status.sources:
+                  if src.tag_mismatch:
+                      expected_tag, actual_tag = src.tag_mismatch
+                      details_parts.append(
+                          f"{src.repository}: expected {expected_tag}, manifest has {actual_tag}"
+                      )
+                  for fname in src.missing_files:
+                      details_parts.append(f"{fname} missing from code/common/")
+                  for fname in src.modified_files:
+                      details_parts.append(f"{fname} modified since last sync")
+
+          details = "; ".join(details_parts) if details_parts else "cache mismatch detected"
+          print(f"Common file cache is stale: {details}")
+
+          with open(output_file, 'a') as f:
+              f.write("common_cache_status=stale\n")
+              f.write(f"common_cache_details={details}\n")
+
+      - name: Find existing sync PR
+        id: find-sync-pr
+        if: steps.cache-sync.outputs.common_cache_status == 'stale'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          SYNC_PR_URL=$(gh pr list --state open --json headRefName,url \
+            --jq '.[] | select(.headRefName | startswith("sync-common/")) | .url' 2>/dev/null | head -1 || true)
+          echo "common_sync_pr_url=$SYNC_PR_URL" >> "$GITHUB_OUTPUT"
+          if [ -n "$SYNC_PR_URL" ]; then
+            echo "Found existing sync PR: $SYNC_PR_URL"
+          else
+            echo "No existing sync PR found"
+          fi
 
   # ─────────────────────────────────────────────────────────────────────────────
   # Phase 2b: Handle configuration errors (if derive-state detected any)
@@ -422,10 +561,10 @@ jobs:
 
       - name: Generate App Token
         id: app-token
-        if: steps.decide.outputs.action == 'post_comment' && vars.RELEASE_APP_ID != ''
+        if: steps.decide.outputs.action == 'post_comment' && vars.RELEASE_APP_CLIENT_ID != ''
         uses: actions/create-github-app-token@v3
         with:
-          app-id: ${{ vars.RELEASE_APP_ID }}
+          client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
 
       - name: Checkout tooling (for slash command)
@@ -530,6 +669,8 @@ jobs:
           CTX_APIS_JSON: ${{ needs.derive-state.outputs.apis_json }}
           CTX_COMMONALITIES_RELEASE: ${{ needs.derive-state.outputs.commonalities_release }}
           CTX_IDENTITY_CONSENT_MANAGEMENT_RELEASE: ${{ needs.derive-state.outputs.identity_consent_management_release }}
+          CTX_COMMON_CACHE_STATUS: ${{ needs.derive-state.outputs.common_cache_status }}
+          CTX_COMMON_CACHE_DETAILS: ${{ needs.derive-state.outputs.common_cache_details }}
           CTX_TRIGGER_PR_NUMBER: ${{ needs.check-trigger.outputs.trigger_pr_number }}
           CTX_TRIGGER_PR_URL: ${{ needs.check-trigger.outputs.trigger_pr_url }}
           GITHUB_TOKEN: ${{ github.token }}
@@ -622,32 +763,61 @@ jobs:
               return;
             }
 
+            // Block /create-snapshot when common file cache is stale
+            if (command === 'create-snapshot') {
+              const cacheStatus = '${{ needs.derive-state.outputs.common_cache_status }}';
+              const cacheDetails = '${{ needs.derive-state.outputs.common_cache_details }}';
+              const syncPrUrl = '${{ needs.derive-state.outputs.common_sync_pr_url }}';
+              if (cacheStatus === 'stale') {
+                const prHint = syncPrUrl
+                  ? ` Merge the sync PR: ${syncPrUrl}`
+                  : ' Run workflow_dispatch to trigger sync, or close and reopen the Release Issue.';
+                core.setOutput('allowed', 'false');
+                core.setOutput('error_message',
+                  `Common file cache is stale: ${cacheDetails}.${prHint}`);
+                return;
+              }
+            }
+
             // Check user permission (must be write or higher)
             console.log('Checking user permission...');
             let userPermission;
 
-            try {
-              const { data: permission } = await github.rest.repos.getCollaboratorPermissionLevel({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                username: user
-              });
+            // Trusted CI bot identities. App bots don't register as collaborators,
+            // so getCollaboratorPermissionLevel returns 'none' for them; the write
+            // intent is established by the App installation on the target repo.
+            // Currently used by the Release Automation Regression canary in
+            // camaraproject/tooling, which posts slash commands as
+            // camara-validation[bot].
+            const TRUSTED_BOT_USERS = new Set(['camara-validation[bot]']);
 
-              userPermission = permission.permission;
-              console.log(`User permission: ${userPermission}`);
+            if (TRUSTED_BOT_USERS.has(user)) {
+              userPermission = 'write';
+              console.log(`User ${user} is a trusted CI bot; treating as write`);
+            } else {
+              try {
+                const { data: permission } = await github.rest.repos.getCollaboratorPermissionLevel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  username: user
+                });
 
-              const hasPermission = ['admin', 'maintain', 'write'].includes(userPermission);
-
-              if (!hasPermission) {
+                userPermission = permission.permission;
+                console.log(`User permission: ${userPermission}`);
+              } catch (error) {
+                console.log(`Permission check failed: ${error.message}`);
+                // If we can't check permission, deny by default
                 core.setOutput('allowed', 'false');
-                core.setOutput('error_message', `You must have write access or higher to run release commands. Your current permission: ${userPermission}`);
+                core.setOutput('error_message', `Failed to verify permissions: ${error.message}`);
                 return;
               }
-            } catch (error) {
-              console.log(`Permission check failed: ${error.message}`);
-              // If we can't check permission, deny by default
+            }
+
+            const hasPermission = ['admin', 'maintain', 'write'].includes(userPermission);
+
+            if (!hasPermission) {
               core.setOutput('allowed', 'false');
-              core.setOutput('error_message', `Failed to verify permissions: ${error.message}`);
+              core.setOutput('error_message', `You must have write access or higher to run release commands. Your current permission: ${userPermission}`);
               return;
             }
 
@@ -787,21 +957,21 @@ jobs:
       needs.validate-command.outputs.allowed == 'true'
     runs-on: ubuntu-latest
     outputs:
-      success: ${{ steps.create.outputs.success }}
+      success: ${{ steps.create.outputs.success || steps.validation-gate.outputs.success }}
       snapshot_id: ${{ steps.create.outputs.snapshot_id }}
       snapshot_branch: ${{ steps.create.outputs.snapshot_branch }}
       release_review_branch: ${{ steps.create.outputs.release_review_branch }}
       release_pr_number: ${{ steps.create.outputs.release_pr_number }}
       release_pr_url: ${{ steps.create.outputs.release_pr_url }}
-      error_message: ${{ steps.create.outputs.error_message }}
+      error_message: ${{ steps.create.outputs.error_message || steps.validation-gate.outputs.error_message }}
       apis_json: ${{ steps.create.outputs.apis_json }}
     steps:
       - name: Generate App Token
         id: app-token
-        if: vars.RELEASE_APP_ID != ''
+        if: vars.RELEASE_APP_CLIENT_ID != ''
         uses: actions/create-github-app-token@v3
         with:
-          app-id: ${{ vars.RELEASE_APP_ID }}
+          client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
 
       - name: Checkout tooling
@@ -815,6 +985,122 @@ jobs:
             release_automation/templates
             release_automation/config
             shared-actions/create-snapshot
+            shared-actions/run-validation
+            validation
+            linting/config
+            tooling_lib
+
+      # ── Pre-snapshot validation ────────────────────────────────────
+      #
+      # Run the validation framework on the source branch before
+      # creating the snapshot.  Profile from per-repo config
+      # (default: standard — errors block snapshot creation).
+
+      - name: Checkout repository for validation
+        uses: actions/checkout@v6
+        with:
+          path: _repo
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+
+      # ── Central validation settings (main) ─────────────────────────
+      #
+      # Pre-snapshot validation reads `config/validation-settings.yaml`
+      # from `main` of camaraproject/tooling so a stage flip on main takes
+      # effect on the next snapshot run without a tag move.
+      #
+      # No fallback to the pinned-ref copy here — release automation
+      # produces durable artifacts (snapshots, release branches, eventually
+      # tags and releases) and must not silently use stale config. If main
+      # is unreachable, this step fails before any irreversible action.
+      # This differs from the validation reusable workflow, which is
+      # read-only and falls back to the pinned-ref copy with a warning.
+      - name: Checkout central validation settings (main)
+        uses: actions/checkout@v6
+        with:
+          repository: camaraproject/tooling
+          ref: main
+          sparse-checkout: config
+          path: _tooling-config
+
+      - name: Validate central settings against schema
+        shell: bash
+        run: |
+          pip install --quiet pyyaml==6.0.3 jsonschema==4.26.0
+          python3 - <<'PY'
+          import sys
+          from pathlib import Path
+
+          import yaml
+          from jsonschema import Draft202012Validator
+
+          config_path = Path("_tooling-config/config/validation-settings.yaml")
+          schema_path = Path("_tooling/validation/schemas/validation-settings-schema.yaml")
+
+          if not config_path.exists():
+              print(
+                  f"::error title=Validation settings missing::"
+                  f"{config_path} not present on tooling/main; "
+                  f"aborting before snapshot creation"
+              )
+              sys.exit(1)
+          if not schema_path.exists():
+              print(
+                  f"::error title=Validation settings schema missing::"
+                  f"{schema_path} not present on the pinned tooling ref"
+              )
+              sys.exit(1)
+
+          config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+          schema = yaml.safe_load(schema_path.read_text(encoding="utf-8"))
+
+          errors = list(Draft202012Validator(schema).iter_errors(config))
+          if errors:
+              for err in errors:
+                  loc = ".".join(str(p) for p in err.absolute_path) or "(root)"
+                  print(
+                      f"::error title=Validation settings invalid::"
+                      f"{loc}: {err.message}"
+                  )
+              print(
+                  "::error::Aborting before snapshot creation — "
+                  "validation settings on tooling/main fail schema validation"
+              )
+              sys.exit(1)
+
+          print(f"Validation settings: {config_path} (main) — schema-valid")
+          PY
+
+      - name: Run pre-snapshot validation
+        id: validation
+        uses: ./_tooling/shared-actions/run-validation
+        with:
+          repo_path: ${{ github.workspace }}/_repo
+          tooling_path: ${{ github.workspace }}/_tooling
+          mode: pre-snapshot
+          tooling_ref: ${{ needs.check-trigger.outputs.tooling_checkout_ref }}
+          config_path: ${{ github.workspace }}/_tooling-config/config/validation-settings.yaml
+
+      - name: Gate on validation result
+        id: validation-gate
+        if: always() && steps.validation.outputs.should_fail == 'true'
+        run: |
+          echo "::error::Pre-snapshot validation failed — fix issues on main before re-running /create-snapshot"
+          echo "success=false" >> "$GITHUB_OUTPUT"
+          SUMMARY="${{ steps.validation.outputs.summary }}"
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          echo "error_message=Pre-snapshot validation failed: ${SUMMARY}. [View workflow logs](${RUN_URL})" >> "$GITHUB_OUTPUT"
+          exit 1
+
+      # ── Snapshot creation ─────────────────────────────────────────
 
       - name: Resolve Bot Identity
         id: bot-identity
@@ -840,12 +1126,18 @@ jobs:
           release_tag: ${{ needs.derive-state.outputs.release_tag }}
           base_branch: main
           github_token: ${{ steps.app-token.outputs.token || github.token }}
+          tooling_path: ${{ github.workspace }}/_tooling
           bot_name: ${{ steps.bot-identity.outputs.bot_name }}
           bot_email: ${{ steps.bot-identity.outputs.bot_email }}
 
       - name: Log Result
         if: always()
         run: |
+          echo "Pre-snapshot validation: ${{ steps.validation.outputs.result || 'skipped' }}"
+          if [ "${{ steps.validation-gate.outcome }}" == "failure" ]; then
+            echo "  Validation blocked snapshot creation"
+            echo "  Summary: ${{ steps.validation.outputs.summary }}"
+          fi
           echo "Create snapshot result:"
           echo "  Success: ${{ steps.create.outputs.success }}"
           echo "  Snapshot ID: ${{ steps.create.outputs.snapshot_id }}"
@@ -871,10 +1163,10 @@ jobs:
     steps:
       - name: Generate App Token
         id: app-token
-        if: vars.RELEASE_APP_ID != ''
+        if: vars.RELEASE_APP_CLIENT_ID != ''
         uses: actions/create-github-app-token@v3
         with:
-          app-id: ${{ vars.RELEASE_APP_ID }}
+          client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
 
       - name: Discard Snapshot
@@ -981,10 +1273,10 @@ jobs:
     steps:
       - name: Generate App Token
         id: app-token
-        if: vars.RELEASE_APP_ID != ''
+        if: vars.RELEASE_APP_CLIENT_ID != ''
         uses: actions/create-github-app-token@v3
         with:
-          app-id: ${{ vars.RELEASE_APP_ID }}
+          client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
 
       - name: Delete Draft Release
@@ -1109,10 +1401,10 @@ jobs:
     steps:
       - name: Generate App Token
         id: app-token
-        if: vars.RELEASE_APP_ID != ''
+        if: vars.RELEASE_APP_CLIENT_ID != ''
         uses: actions/create-github-app-token@v3
         with:
-          app-id: ${{ vars.RELEASE_APP_ID }}
+          client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
 
       - name: Checkout tooling
@@ -1188,10 +1480,10 @@ jobs:
 
       - name: Generate App Token
         id: app-token
-        if: vars.RELEASE_APP_ID != ''
+        if: vars.RELEASE_APP_CLIENT_ID != ''
         uses: actions/create-github-app-token@v3
         with:
-          app-id: ${{ vars.RELEASE_APP_ID }}
+          client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
 
       - name: Execute Publish Flow
@@ -1326,10 +1618,10 @@ jobs:
 
       - name: Generate App Token
         id: app-token
-        if: vars.RELEASE_APP_ID != ''
+        if: vars.RELEASE_APP_CLIENT_ID != ''
         uses: actions/create-github-app-token@v3
         with:
-          app-id: ${{ vars.RELEASE_APP_ID }}
+          client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
 
       - name: Copy README release info from tag
@@ -1502,16 +1794,22 @@ jobs:
           git commit -m "chore: post-release sync for ${RELEASE_TAG}"
           git push origin "$SYNC_BRANCH"
 
-          # Create PR — capture failure as sync_status=failed
-          if PR_URL=$(gh pr create \
-            --title "Release Automation: Post-release sync (${RELEASE_TAG})" \
-            --body "Automated post-release sync PR for ${RELEASE_TAG}.
+          # Create PR — capture failure as sync_status=failed.
+          # Body assembled via heredoc so the markdown has no
+          # YAML-run-block indent leaking into the rendered PR description.
+          PR_BODY=$(cat <<EOF
+          Automated post-release sync PR for ${RELEASE_TAG}.
 
           This PR updates:
           - README.md Release Information section (copied from release tag)
           - CHANGELOG for the release cycle
 
-          Created by release automation workflow." \
+          Created by release automation workflow.
+          EOF
+          )
+          if PR_URL=$(gh pr create \
+            --title "Release Automation: Post-release sync (${RELEASE_TAG})" \
+            --body "$PR_BODY" \
             --head "$SYNC_BRANCH" \
             --base main); then
 
@@ -1545,10 +1843,10 @@ jobs:
     steps:
       - name: Generate App Token
         id: app-token
-        if: vars.RELEASE_APP_ID != ''
+        if: vars.RELEASE_APP_CLIENT_ID != ''
         uses: actions/create-github-app-token@v3
         with:
-          app-id: ${{ vars.RELEASE_APP_ID }}
+          client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
 
       - name: Extract CHANGELOG release notes
@@ -1786,10 +2084,10 @@ jobs:
     steps:
       - name: Generate App Token
         id: app-token
-        if: vars.RELEASE_APP_ID != ''
+        if: vars.RELEASE_APP_CLIENT_ID != ''
         uses: actions/create-github-app-token@v3
         with:
-          app-id: ${{ vars.RELEASE_APP_ID }}
+          client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
 
       - name: Checkout tooling
@@ -1895,10 +2193,10 @@ jobs:
     steps:
       - name: Generate App Token
         id: app-token
-        if: vars.RELEASE_APP_ID != ''
+        if: vars.RELEASE_APP_CLIENT_ID != ''
         uses: actions/create-github-app-token@v3
         with:
-          app-id: ${{ vars.RELEASE_APP_ID }}
+          client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
 
       - name: Checkout tooling
@@ -1912,6 +2210,207 @@ jobs:
             release_automation/templates
             shared-actions/sync-release-issue
             shared-actions/post-bot-comment
+            tooling_lib
+
+      # ── Common file cache sync ─────────────────────────────────────────
+      # When cache is stale, fetch Commonalities files and create/update a
+      # sync PR before the Release Issue update. Uses continue-on-error so
+      # sync failures don't prevent the issue update.
+
+      - name: Checkout API repo (for common sync)
+        id: sync-checkout-api
+        if: needs.derive-state.outputs.common_cache_status == 'stale'
+        continue-on-error: true
+        uses: actions/checkout@v6
+        with:
+          path: _api_repo
+          fetch-depth: 1
+          token: ${{ steps.app-token.outputs.token || github.token }}
+
+      - name: Checkout Commonalities at declared tag (sparse)
+        id: sync-checkout-commonalities
+        if: steps.sync-checkout-api.outcome == 'success'
+        continue-on-error: true
+        uses: actions/checkout@v6
+        with:
+          repository: camaraproject/Commonalities
+          ref: ${{ needs.derive-state.outputs.commonalities_release }}
+          path: _commonalities
+          sparse-checkout: artifacts/common
+          sparse-checkout-cone-mode: true
+
+      - name: Copy Commonalities files and write manifest
+        id: sync-common
+        if: steps.sync-checkout-commonalities.outcome == 'success'
+        continue-on-error: true
+        env:
+          COMMONALITIES_RELEASE: ${{ needs.derive-state.outputs.commonalities_release }}
+          TOOLING_PATH: ${{ github.workspace }}/_tooling
+        shell: python
+        run: |
+          import os, shutil, sys
+          from pathlib import Path
+
+          sys.path.insert(0, os.environ['TOOLING_PATH'])
+
+          comm_release = os.environ['COMMONALITIES_RELEASE']
+          source_dir = Path('_commonalities/artifacts/common')
+          api_repo = Path('_api_repo')
+          common_dir = api_repo / 'code' / 'common'
+          common_dir.mkdir(parents=True, exist_ok=True)
+          output_file = os.environ['GITHUB_OUTPUT']
+
+          if not source_dir.is_dir():
+              print(f"::error::Commonalities artifacts/common not found at tag {comm_release}")
+              with open(output_file, 'a') as f:
+                  f.write("synced=false\n")
+              sys.exit(0)
+
+          # Copy YAML files from Commonalities checkout to code/common/
+          from tooling_lib.cache_sync import git_blob_sha
+
+          source_files = sorted(p for p in source_dir.iterdir() if p.suffix == '.yaml')
+          if not source_files:
+              print(f"::error::No YAML files in Commonalities artifacts/common at {comm_release}")
+              with open(output_file, 'a') as f:
+                  f.write("synced=false\n")
+              sys.exit(0)
+
+          manifest_files = {}
+          for src_path in source_files:
+              dest = common_dir / src_path.name
+              shutil.copy2(src_path, dest)
+              raw_bytes = dest.read_bytes()
+              sha = git_blob_sha(raw_bytes)
+              manifest_files[src_path.name] = sha
+              print(f"Synced: {src_path.name} ({sha[:12]})")
+
+          # Write .sync-manifest.yaml per sync-manifest-schema.yaml
+          import yaml
+
+          manifest = {
+              'sources': [{
+                  'repository': 'Commonalities',
+                  'release': comm_release,
+                  'files': manifest_files,
+              }]
+          }
+          manifest_path = common_dir / '.sync-manifest.yaml'
+          manifest_path.write_text(
+              yaml.dump(manifest, default_flow_style=False, sort_keys=False),
+              encoding='utf-8'
+          )
+          print(f"Wrote manifest: {manifest_path} ({len(manifest_files)} files)")
+
+          with open(output_file, 'a') as f:
+              f.write("synced=true\n")
+              f.write(f"files_count={len(manifest_files)}\n")
+
+      - name: Resolve Bot Identity (for common sync)
+        id: sync-bot-identity
+        if: needs.derive-state.outputs.common_cache_status == 'stale' && steps.sync-common.outputs.synced == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token || github.token }}
+        run: |
+          if [ -n "${{ vars.RELEASE_APP_SLUG }}" ] && [ -n "${{ steps.app-token.outputs.token }}" ]; then
+            BOT_LOGIN="${{ vars.RELEASE_APP_SLUG }}[bot]"
+          else
+            BOT_LOGIN="github-actions[bot]"
+          fi
+          BOT_INFO=$(gh api "/users/$BOT_LOGIN" --jq '{id: .id, login: .login}')
+          BOT_NAME=$(echo "$BOT_INFO" | jq -r '.login')
+          BOT_ID=$(echo "$BOT_INFO" | jq -r '.id')
+          echo "bot_name=$BOT_NAME" >> $GITHUB_OUTPUT
+          echo "bot_email=${BOT_ID}+${BOT_NAME}@users.noreply.github.com" >> $GITHUB_OUTPUT
+
+      - name: Create or update common sync PR
+        id: sync-pr
+        if: needs.derive-state.outputs.common_cache_status == 'stale' && steps.sync-common.outputs.synced == 'true'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token || github.token }}
+          COMMONALITIES_RELEASE: ${{ needs.derive-state.outputs.commonalities_release }}
+        run: |
+          cd _api_repo
+
+          SYNC_BRANCH="sync-common/${COMMONALITIES_RELEASE}"
+
+          # Close stale sync PRs (different commonalities release)
+          STALE_PRS=$(gh pr list --state open --json number,headRefName \
+            --jq '.[] | select(.headRefName | startswith("sync-common/")) | select(.headRefName != "'"$SYNC_BRANCH"'") | .number' 2>/dev/null || true)
+          for pr_num in $STALE_PRS; do
+            echo "Closing stale sync PR #$pr_num"
+            gh pr close "$pr_num" --comment "Superseded by sync to Commonalities ${COMMONALITIES_RELEASE}" || true
+          done
+
+          git config user.name "${{ steps.sync-bot-identity.outputs.bot_name }}"
+          git config user.email "${{ steps.sync-bot-identity.outputs.bot_email }}"
+
+          # Check if branch already exists on remote
+          if git ls-remote --heads origin "$SYNC_BRANCH" | grep -q .; then
+            # Existing branch — update it
+            git fetch origin "$SYNC_BRANCH"
+            git checkout "$SYNC_BRANCH"
+            git add code/common/
+            if git diff --cached --quiet; then
+              echo "No changes to commit on existing sync branch"
+              EXISTING_PR=$(gh pr list --head "$SYNC_BRANCH" --state open --json url --jq '.[0].url' 2>/dev/null || true)
+              echo "sync_pr_url=$EXISTING_PR" >> $GITHUB_OUTPUT
+              echo "sync_pr_number=" >> $GITHUB_OUTPUT
+              echo "sync_status=up_to_date" >> $GITHUB_OUTPUT
+              exit 0
+            fi
+            git commit -m "chore: update common file cache for Commonalities ${COMMONALITIES_RELEASE}"
+            git push origin "$SYNC_BRANCH"
+            EXISTING_PR=$(gh pr list --head "$SYNC_BRANCH" --state open --json url --jq '.[0].url' 2>/dev/null || true)
+            echo "sync_pr_url=$EXISTING_PR" >> $GITHUB_OUTPUT
+            echo "sync_status=updated" >> $GITHUB_OUTPUT
+          else
+            # New branch
+            git checkout -b "$SYNC_BRANCH"
+            git add code/common/
+            if git diff --cached --quiet; then
+              echo "No changes to commit"
+              echo "sync_status=no_changes" >> $GITHUB_OUTPUT
+              exit 0
+            fi
+            git commit -m "chore: sync common files from Commonalities ${COMMONALITIES_RELEASE}"
+            git push origin "$SYNC_BRANCH"
+
+            # Create PR. Body assembled via heredoc so markdown has no
+            # YAML-run-block indent leaking into the rendered PR description.
+            PR_BODY=$(cat <<EOF
+          Automated sync of \`code/common/\` files from \`camaraproject/Commonalities\` at release tag \`${COMMONALITIES_RELEASE}\`.
+
+          This PR was created by release automation because the cached Commonalities files were out of sync with the declared dependency in \`release-plan.yaml\`.
+
+          **What changed:**
+          - Updated files in \`code/common/\` to match Commonalities ${COMMONALITIES_RELEASE}
+          - Added/updated \`.sync-manifest.yaml\` with file integrity hashes
+
+          **Action required:** Review and merge this PR. The \`/create-snapshot\` command will be blocked until common files are in sync.
+          EOF
+          )
+            PR_URL=$(gh pr create \
+              --title "Sync common files from Commonalities ${COMMONALITIES_RELEASE}" \
+              --body "$PR_BODY" \
+              --head "$SYNC_BRANCH" \
+              --base main) || {
+              echo "::error::Failed to create sync PR"
+              echo "sync_status=failed" >> $GITHUB_OUTPUT
+              exit 0
+            }
+
+            PR_NUMBER=$(echo "$PR_URL" | grep -oE '[0-9]+$')
+            gh pr edit "$PR_NUMBER" --add-label "common-sync" --add-label "automated" 2>/dev/null || true
+
+            echo "sync_pr_url=$PR_URL" >> $GITHUB_OUTPUT
+            echo "sync_pr_number=$PR_NUMBER" >> $GITHUB_OUTPUT
+            echo "sync_status=created" >> $GITHUB_OUTPUT
+            echo "Sync PR created: $PR_URL"
+          fi
+
+      # ── End common file cache sync ────────────────────────────────────────
 
       - name: Resolve Sync Context
         id: sync-context
@@ -1967,6 +2466,9 @@ jobs:
           force_update: ${{ steps.sync-context.outputs.force_update }}
           trigger_type: ${{ needs.check-trigger.outputs.trigger_type }}
           github_token: ${{ steps.app-token.outputs.token || github.token }}
+          common_cache_status: ${{ needs.derive-state.outputs.common_cache_status }}
+          common_cache_details: ${{ needs.derive-state.outputs.common_cache_details }}
+          common_sync_pr_url: ${{ steps.sync-pr.outputs.sync_pr_url || needs.derive-state.outputs.common_sync_pr_url }}
 
       - name: Log Result
         run: |
@@ -2038,6 +2540,38 @@ jobs:
               "release_plan_url": "${{ github.server_url }}/${{ github.repository }}/blob/main/release-plan.yaml"
             }
 
+      - name: Post Common Sync PR Created
+        if: |
+          steps.sync-pr.outputs.sync_status == 'created' &&
+          (needs.derive-state.outputs.release_issue_number != '' || steps.sync.outputs.issue_number != '')
+        uses: ./_tooling/shared-actions/post-bot-comment
+        with:
+          issue_number: ${{ needs.derive-state.outputs.release_issue_number || steps.sync.outputs.issue_number }}
+          release_tag: ${{ needs.derive-state.outputs.release_tag }}
+          run_id: ${{ github.run_id }}
+          template: common_sync_pr_created
+          base_context: ${{ needs.assemble-context.outputs.base_context }}
+          github_token: ${{ steps.app-token.outputs.token || github.token }}
+          context: |
+            {
+              "common_cache_details": "${{ needs.derive-state.outputs.common_cache_details }}",
+              "common_sync_pr_url": "${{ steps.sync-pr.outputs.sync_pr_url }}"
+            }
+
+      - name: Post Common Sync Failed
+        if: |
+          steps.sync-checkout-commonalities.outcome == 'failure' &&
+          (needs.derive-state.outputs.release_issue_number != '' || steps.sync.outputs.issue_number != '')
+        uses: ./_tooling/shared-actions/post-bot-comment
+        with:
+          issue_number: ${{ needs.derive-state.outputs.release_issue_number || steps.sync.outputs.issue_number }}
+          release_tag: ${{ needs.derive-state.outputs.release_tag }}
+          run_id: ${{ github.run_id }}
+          template: common_sync_failed
+          base_context: ${{ needs.assemble-context.outputs.base_context }}
+          github_token: ${{ steps.app-token.outputs.token || github.token }}
+          context: '{}'
+
   # ─────────────────────────────────────────────────────────────────────────────
   # Phase 7: Post final result comment
   # ─────────────────────────────────────────────────────────────────────────────
@@ -2066,10 +2600,10 @@ jobs:
     steps:
       - name: Generate App Token
         id: app-token
-        if: vars.RELEASE_APP_ID != ''
+        if: vars.RELEASE_APP_CLIENT_ID != ''
         uses: actions/create-github-app-token@v3
         with:
-          app-id: ${{ vars.RELEASE_APP_ID }}
+          client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
 
       - name: Checkout tooling

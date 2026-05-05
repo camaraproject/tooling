@@ -1,0 +1,11 @@
+{
+  "name": "camara-validation-tools",
+  "private": true,
+  "description": "Node.js tool dependencies for CAMARA validation framework",
+  "dependencies": {
+    "@redocly/cli": "^2.30.1",
+    "@stoplight/spectral-cli": "^6.15.1",
+    "@stoplight/spectral-owasp-ruleset": "^2.0.0",
+    "gherkin-lint": "^4.2.4"
+  }
+}

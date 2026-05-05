@@ -158,11 +158,23 @@ class ChangelogGenerator:
         return self.renderer.render(template_content, context)
 
     def write_changelog(
-        self, work_dir: str, content: str, release_tag: str, repo_name: str
+        self,
+        work_dir: str,
+        content: str,
+        release_tag: str,
+        repo_name: str,
+        release_type: str = "",
     ) -> str:
-        """Write CHANGELOG section to the appropriate per-cycle file.
+        """Write CHANGELOG section to the appropriate file.
 
-        File naming: r4.1 -> cycle 4 -> CHANGELOG/CHANGELOG-r4.md
+        Target selection (maintenance releases preserve legacy flat CHANGELOG.md
+        until the repo has been migrated to per-cycle via ``/migrate-changelog``):
+
+            if release_type == "maintenance-release" and
+               CHANGELOG/CHANGELOG-r{cycle}.md does NOT exist:
+                write to CHANGELOG.md at the repo root (flat mode)
+            else:
+                write to CHANGELOG/CHANGELOG-r{cycle}.md (per-cycle mode)
 
         Behavior:
             - If file exists: prepend new section after the header block
@@ -173,17 +185,17 @@ class ChangelogGenerator:
             content: Rendered release section content
             release_tag: Release tag for cycle extraction
             repo_name: Repository name for header generation
+            release_type: Release type from release-plan/metadata; used only
+                to enable flat-mode fallback for maintenance releases.
 
         Returns:
-            Relative path to the written file (e.g., "CHANGELOG/CHANGELOG-r4.md")
+            Relative path to the written file, e.g. ``CHANGELOG/CHANGELOG-r4.md``
+            (per-cycle) or ``CHANGELOG.md`` (flat).
         """
         cycle = self._get_cycle(release_tag)
-        changelog_dir = Path(work_dir) / "CHANGELOG"
-        changelog_dir.mkdir(exist_ok=True)
-
-        filename = f"CHANGELOG-r{cycle}.md"
-        filepath = changelog_dir / filename
-        relative_path = f"CHANGELOG/{filename}"
+        filepath, relative_path = self._resolve_changelog_path(
+            Path(work_dir), cycle, release_type
+        )
 
         if filepath.exists():
             existing = filepath.read_text()
@@ -200,6 +212,27 @@ class ChangelogGenerator:
         self._update_toc(filepath)
 
         return relative_path
+
+    @staticmethod
+    def _resolve_changelog_path(
+        work_dir: Path, cycle: str, release_type: str
+    ) -> Tuple[Path, str]:
+        """Pick flat vs per-cycle target for write_changelog().
+
+        Flat mode (``CHANGELOG.md`` at repo root) activates only when the
+        release is a maintenance release AND no per-cycle file exists yet
+        for the target cycle. Every other case uses per-cycle, and the
+        ``CHANGELOG/`` directory is created if missing.
+
+        Returns:
+            Tuple of (absolute Path to target file, relative path string).
+        """
+        per_cycle_file = work_dir / "CHANGELOG" / f"CHANGELOG-r{cycle}.md"
+        if release_type == "maintenance-release" and not per_cycle_file.exists():
+            return work_dir / "CHANGELOG.md", "CHANGELOG.md"
+
+        per_cycle_file.parent.mkdir(exist_ok=True)
+        return per_cycle_file, f"CHANGELOG/CHANGELOG-r{cycle}.md"
 
     def _find_header_end(self, content: str) -> int:
         """Find the position where release sections start in an existing file.
@@ -312,9 +345,15 @@ class ChangelogGenerator:
     def _extract_toc_entries(content: str) -> List[Dict[str, Any]]:
         """Extract TOC entries from file content by scanning level-1 headings.
 
-        Finds all ``# rX.Y`` headings and determines if the release is a
-        public release (bold in TOC) by checking the "This {type} contains"
-        line in the few lines following the heading.
+        Finds all ``# rX.Y`` release-tag headings (optionally followed by
+        trailing descriptor text, e.g. ``# r2.2 - Fall25 public release``)
+        and determines if the release is a public release (bold in TOC)
+        by checking the "This {type} contains" line in the few lines
+        following the heading.
+
+        ``heading`` is the full heading text after ``# `` — used both as
+        the TOC link label and as the anchor source so link text and
+        anchor track what the underlying heading actually says.
 
         Returns:
             List of dicts ordered by appearance (newest first):
@@ -323,10 +362,9 @@ class ChangelogGenerator:
         lines = content.split("\n")
         entries: List[Dict[str, Any]] = []
         for i, line in enumerate(lines):
-            match = re.match(r"^# (r\d+\.\d+)\s*$", line)
-            if not match:
+            if not re.match(r"^#\s+r\d+\.\d+\b", line):
                 continue
-            heading = match.group(1)
+            heading = line.lstrip("#").strip()
             is_public = False
             for j in range(i + 1, min(i + 6, len(lines))):
                 if re.search(
@@ -343,6 +381,9 @@ class ChangelogGenerator:
         """Format TOC entries into markdown.
 
         Public/maintenance releases are bold, pre-releases are plain.
+        Link text and anchor both derive from the full heading text so
+        the TOC faithfully mirrors each heading and the anchor matches
+        GitHub's rendered anchor for that heading.
 
         Returns:
             TOC section string including ``## Table of Contents`` heading,
