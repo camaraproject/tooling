@@ -16,7 +16,7 @@ Maintained under the supervision of Commonalities Working Group.
 * Working Group wiki: https://lf-camaraproject.atlassian.net/wiki/x/_QPe
 
 > **CAMARA Validation and Release Automation V1 is in release candidate phase.**
-> See the [release candidate documentation](https://github.com/camaraproject/tooling/blob/validation-framework/documentation/README.md) for codeowners and contributors using the new framework on their API repositories.
+> See the [release candidate documentation](https://github.com/camaraproject/tooling/blob/main/documentation/README.md) for codeowners and contributors using the new framework on their API repositories.
 
 ## Purpose
 
@@ -49,13 +49,13 @@ The repository ships two consumption lines:
 
 ### v1-rc — CAMARA Validation and Release Automation V1
 
-A single tag (`v1-rc`, lightweight, on the [`validation-framework`](https://github.com/camaraproject/tooling/tree/validation-framework) branch) covers:
+A single lightweight tag (`v1-rc`) covers:
 
 * **Linting** — OpenAPI and test definition Spectral rulesets, including the Spring26 (Commonalities rc2) ruleset
 * **Validation** — API definitions, test files, and release-plan / release-metadata files; results appear on pull requests and Release Issues
 * **Release automation** — `/create-snapshot` → `/publish-release` workflow
 
-See the [release candidate documentation](https://github.com/camaraproject/tooling/blob/validation-framework/documentation/README.md) for linting and validation, and the [Release Process Guide](https://github.com/camaraproject/ReleaseManagement/blob/main/documentation/README.md) (in ReleaseManagement) for release automation.
+See the [release candidate documentation](https://github.com/camaraproject/tooling/blob/main/documentation/README.md) for linting and validation, and the [Release Process Guide](https://github.com/camaraproject/ReleaseManagement/blob/main/documentation/README.md) (in ReleaseManagement) for release automation.
 
 ### v0 (legacy)
 
@@ -83,9 +83,7 @@ Reusable GitHub Actions for cross-repository use.
   * `update-issue-section` — update marked sections in issue bodies
   * `update-readme-release-info` — update README release information block
 
-## Repository Structure (v1-rc)
-
-This is the structure on the `validation-framework` branch (the active v1-rc line) and will soon become the structure on `main`.
+## Repository Structure
 
 ```text
 tooling/
@@ -145,10 +143,9 @@ tooling/
 
 ## Release Information
 
-* **`v1-rc`** — lightweight tag on the `validation-framework` branch; promoted to `v1` (release 1.0.0) at GA
+* **`v1-rc`** — lightweight tag covering the validation and release automation framework v1 release candidate; promoted to `v1` (release 1.0.0) at GA
 * **`v0`** — floating tag tracking the latest v0.x release ([v0.3.0](https://github.com/camaraproject/tooling/releases/tag/v0.3.0))
-* **`main`** — tested v0 line
-* **`validation-framework`** — active development for v1-rc
+* **`main`** — active development; carries both the v0 linting line and the v1-rc framework
 
 ## Contributing
 
