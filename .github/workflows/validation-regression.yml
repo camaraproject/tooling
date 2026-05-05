@@ -1,9 +1,9 @@
 # CAMARA Validation Framework — Validation Regression (canary)
 #
 # Auto-dispatches validation/scripts/regression_runner.py against
-# camaraproject/ReleaseTest on every push to validation-framework, so
-# that "broken stays broken" and "clean stays clean" are verified
-# automatically before v1-rc is moved for the rest of the org.
+# camaraproject/ReleaseTest on every push to main, so that "broken
+# stays broken" and "clean stays clean" are verified automatically
+# before v1-rc is moved for the rest of the org.
 #
 # The runner dispatches camara-validation.yml on each branch matching
 # regression/* on ReleaseTest, waits for it to complete, downloads the
@@ -20,7 +20,7 @@ name: Validation Regression
 
 on:
   push:
-    branches: [validation-framework]
+    branches: [main]
     paths:
       - 'validation/**'
       - 'shared-actions/**'
