@@ -22,7 +22,7 @@
 version: 1
 
 defaults:
-  stage: advisory
+  stage: enabled  # 2026-05-05 (was advisory; central flip per #261)
   pr_profile: standard
   release_profile: standard
 
@@ -34,11 +34,11 @@ repositories:
   ConsentManagement:
     stage: enabled  # 2026-04-29
   CustomerInsights:
-    stage: enabled  # 2026-04-30 (pre-staged; effective when CustomerInsights#70 merges)
+    stage: enabled  # 2026-04-30
   DedicatedNetworks:
     stage: enabled  # 2026-04-29
   DeviceIdentifier:
-    stage: enabled  # 2026-04-29 (pre-staged; effective when DeviceIdentifier#161 merges)
+    stage: enabled  # 2026-04-29
   EdgeApplicationManagement:
     stage: enabled  # 2026-04-29
   IoTSIMFraudPrevention:
