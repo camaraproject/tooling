@@ -1,188 +1,66 @@
-# Upstream Branching and Versioning Model
+# Branching and Versioning Model
 
-**Last Updated**: 2026-03-24
+**Last Updated**: 2026-05-05
 
-## Overview
+`tooling/main` is the only long-lived branch. All development happens on fork branches that merge into `main` via pull request.
 
-The `camaraproject/tooling` repository uses feature branches for independent development streams. Each stream has its own lifecycle and tag namespace. Streams merge to `main` sequentially as they reach stability, with the `v1` tag assigned only after all streams are proven stable on `main`.
+## 1. v1-rc — RA + VF release candidate (current)
 
-## Branch Layout
+`v1-rc` is a floating lightweight tag on `main` covering the unified validation framework and release automation. API repositories pin `@v1-rc` from their caller workflows. The tag advances after each change is validated against the gates below.
 
-Development proceeds in two phases. Release automation merged to `main` first (at RC stability). The validation framework then branches from the merged `main` and merges when it reaches its own stability.
+### Tag-move gates
 
-### Phase 1: Release automation development (complete)
+| Change scope | Required signal before tag move |
+|---|---|
+| `.github/workflows/`, `release_automation/`, `shared-actions/`, `tooling_lib/` | Full manual end-to-end test on [`camaraproject/ReleaseTest`](https://github.com/camaraproject/ReleaseTest) (`/create-snapshot` → release-review merge → draft build → `/publish-release` → cleanup) |
+| `validation/rules/`, `validation/engines/python_checks/`, `validation/context/` (rule-metadata only) | Validation Regression canary green |
+| Documentation only | Tag does not move |
 
-```
-main ──────────────────────── pr_validation v0 (production)
-  │
-  └── release-automation ──── release creation workflow (RC)
-```
+### Regression workflows
 
-### Phase 2: Validation framework development (current)
+Two canaries verify the framework on every push to `main` that touches their declared paths:
 
-```
-main ──────────────────────── pr_validation v0 + release automation
-  │
-  └── validation-framework ── validation framework v1
-```
+| Workflow | Scope |
+|---|---|
+| [`validation-regression.yml`](../../.github/workflows/validation-regression.yml) | Diffs validation findings against committed expected fixtures on each `regression/*` branch of [`camaraproject/ReleaseTest`](https://github.com/camaraproject/ReleaseTest) |
+| [`release-automation-regression.yml`](../../.github/workflows/release-automation-regression.yml) | `/create-snapshot` + `/discard-snapshot` round-trip on ReleaseTest, matched against expected bot replies |
 
-| Branch | Purpose | Tag namespace | Status |
-|--------|---------|---------------|--------|
-| `main` | pr_validation v0 + release automation | `v0`, `v0.x.y`, `ra-v1-rc` | Active |
-| `validation-framework` | Validation framework superseding pr_validation | `v1-rc` | Active development |
+Both use a short-lived `camara-validation` GitHub App installation token for cross-repo access to ReleaseTest.
 
-### Why sequential merges
+### Mandatory E2E for release-automation changes
 
-- Release automation reached RC stability independently and can merge without waiting for the validation framework
-- Merging release automation first avoids managing two long-lived feature branches with shared dependencies (validation depends on release automation data structures such as release-metadata.yaml schema and branch naming conventions)
-- The validation framework branches from the merged `main`, inheriting both pr_validation v0 and release automation code as its base
-- Post-merge improvements to release automation land on `main` via short-lived fix branches; the `validation-framework` branch picks them up via periodic merge from `main`
+The Release Automation Regression canary is round-trip only — it does not exercise publish, draft build, or release artifact creation. Any change touching `release-automation-reusable.yml`, `release_automation/`, `shared-actions/create-snapshot/`, or related publish-side code requires a full manual E2E on ReleaseTest before `v1-rc` advances.
 
-## Lifecycle Phases
+## 2. v1 — GA (planned)
 
-### Release Automation Phases
+When `v1-rc` has soaked sufficiently in production, it is promoted to `v1` (with semver `v1.0.0`). API repository callers transition from `@v1-rc` to `@v1` via campaign. The legacy `v0` tag remains available for repositories not yet onboarded to v1.
 
-#### Alpha (internal validation)
+## 3. Feature development
 
-| Aspect | Detail |
-|--------|--------|
-| **Branch** | `release-automation` |
-| **Caller ref** | `@release-automation` (branch HEAD) |
-| **Test scope** | Test repositories (e.g., ReleaseTest) |
-| **Tag** | None — branch HEAD is the reference |
+Standard CAMARA contribution flow:
 
-The alpha phase validates the release automation on dedicated test repositories. Fixes land directly on the branch. No tag is needed because only test repositories reference this branch.
+1. Fork `camaraproject/tooling`.
+2. Create a branch on the fork.
+3. Open a pull request against `main`.
+4. Codeowner review per [`CODEOWNERS`](../../CODEOWNERS).
+5. Merge after review and required checks pass.
 
-#### RC (early adopters)
+Long-lived feature branches in the upstream repository are not the default. They may be appropriate for cross-cutting initiatives whose scope justifies the additional coordination overhead (sync PRs, configuration parallelism, regression-canary pinning), and are decided case-by-case.
 
-| Aspect | Detail |
-|--------|--------|
-| **Branch** | `release-automation` |
-| **Caller ref** | `@ra-v1-rc` (floating tag) |
-| **Test scope** | Test repositories + volunteering API repositories |
-| **Tag** | `ra-v1-rc` — moved forward after test repo validates each change |
+## 4. Hotfixes
 
-The RC phase opens the release automation to volunteering API repositories. The `ra-v1-rc` tag provides a stable reference that only advances after validation on test repositories.
+When a critical fix cannot wait for a regular feature cycle:
 
-**Hotfix flow during RC:**
-1. Fix lands on `release-automation` branch
-2. Validate on test repositories (caller references `@release-automation`)
-3. Move `ra-v1-rc` tag to the validated commit
-4. Volunteering repos pick up the fix on next workflow trigger
+1. Branch `fix/<description>` from `main`.
+2. Implement and validate the fix.
+3. Place a hotfix tag on the validated commit so consumers can pin to an immutable reference.
+4. Merge the branch back into `main` as soon as possible — the fix must not stay isolated on the hotfix branch.
 
-#### Merge to main
+## Appendix: development history
 
-The `release-automation` branch merges to `main` when it reaches RC stability. After merging:
+Two long-lived feature branches preceded the current single-branch model:
 
-- `ra-v1-rc` tag moves to the merge commit on `main`
-- Consumers continue referencing `@ra-v1-rc` — no caller workflow change required
-- `v0` tag advances to `v0.3.0` (after verifying pr_validation v0 is unchanged)
-- The `release-automation` branch is deleted
-- Further release automation fixes land on `main` via short-lived branches
+- **`release-automation`** — release-automation development. Merged into `main` 2026-03-27 ([#135](https://github.com/camaraproject/tooling/pull/135)); the `ra-v1-rc` tag was retired with the merge.
+- **`validation-framework`** — validation framework and release-automation integration. Merged into `main` 2026-05-05 ([#260](https://github.com/camaraproject/tooling/pull/260)). The unified `v1-rc` tag spanned the merge unchanged.
 
-### Validation Framework Phases
-
-The `validation-framework` branch is created from the merged `main` and develops a new validation workflow that supersedes pr_validation v0:
-- Validation aligned with the release concept (working on main and snapshot branches)
-- Extended validation rules and enforcement of allowed changes per branch type
-- Commonalities schema bundling (external `$ref` resolution)
-- Replacement of MegaLinter
-
-This workflow supersedes pr_validation v0 rather than replacing it — the v0 workflow remains available on `main` with the `v0` tag for repositories that have not yet migrated.
-
-#### Development
-
-| Aspect | Detail |
-|--------|--------|
-| **Branch** | `validation-framework` |
-| **Caller ref** | `@validation-framework` (branch HEAD) |
-| **Test scope** | Test repositories only |
-| **Tag** | None — branch HEAD is the reference |
-
-During development, the validation framework is tested on dedicated test repositories.
-
-#### Dark deployment and RC
-
-| Aspect | Detail |
-|--------|--------|
-| **Branch** | `validation-framework` |
-| **Caller ref** | `@v1-rc` (floating tag) |
-| **Test scope** | Test repositories + all repos (stage 0/dark) → volunteering repos (stages 1-2) |
-| **Tag** | `v1-rc` — moved forward after test repo validates each change |
-
-When the validation framework is ready for wider deployment, the `v1-rc` floating tag is introduced on the `validation-framework` branch. The validation caller workflow is rolled out to all repositories referencing `@v1-rc`. The central config file controls which repos actually run validation — the reusable workflow exits immediately for repos at stage 0 (dark).
-
-#### Release automation integration
-
-When the validation framework reaches sufficient stability, the release automation integration (pre-snapshot validation gate, bundled spec handoff) is implemented on the `validation-framework` branch. At this point, both the validation and release automation reusable workflows live on `validation-framework`, and `v1-rc` covers the combined stack.
-
-Repositories that need the integrated release automation switch their RA caller from `@ra-v1-rc` (on main) to `@v1-rc` (on validation-framework). Repositories that do not need early integration keep their RA caller on `@ra-v1-rc` and transition directly to `@v1` after the merge to main.
-
-#### Merge to main
-
-The `validation-framework` branch merges to `main` when the combined stack is stable. `v1-rc` moves to the merge commit on `main`.
-
-### GA Transition
-
-Once the validation framework merges to `main` and the combined stack is proven stable:
-
-- `v1` tag created on `main` (+ semver `v1.0.0`)
-- Campaign updates all callers to `@v1`:
-  - RA callers: most repos transition from `@ra-v1-rc` → `@v1` (direct, never left main)
-  - RA callers: test/volunteer repos transition from `@v1-rc` → `@v1`
-  - Validation callers: all repos transition from `@v1-rc` → `@v1`
-- `ra-v1-rc` and `v1-rc` tags are retired
-- `v0` tag remains on its last commit for repos not yet migrated from pr_validation
-
-| Aspect | After RA merge | During VF development | After VF merge + v1 tag |
-|--------|---------------|----------------------|------------------------|
-| **Branch** | `main` | `main` + `validation-framework` | `main` |
-| **RA caller ref** | `@ra-v1-rc` (on main) | most: `@ra-v1-rc` (main), test: `@v1-rc` (VF branch) | `@v1` |
-| **Validation caller ref** | — | `@v1-rc` (VF branch) | `@v1` |
-| **Test scope** | RA: test + volunteering | VF: test + volunteering, RA integration: test only | All API repos |
-
-## Tag Strategy
-
-| Tag | Type | Scope | Moves? |
-|-----|------|-------|--------|
-| `v0` | Floating major | main | Yes — tracks latest v0.x.y |
-| `v0.x.y` | Semver | main (pr_validation only for x < 3, incl. release automation for x >= 3) | No — immutable |
-| `ra-v1-rc` | Floating RC | release-automation branch → main | Yes — retired when `v1` is assigned |
-| `v1-rc` | Floating RC | validation-framework branch → main | Yes — moved after test repo validates; retired when `v1` is assigned |
-| `v1` | Floating major | main (after GA proven) | Yes — tracks latest v1.x.y |
-| `v1.x.y` | Semver | main (after GA) | No — immutable |
-
-## Caller Workflow References
-
-Each API repository's caller workflow references the reusable workflow by tag or branch:
-
-```yaml
-uses: camaraproject/tooling/.github/workflows/release-automation-reusable.yml@<ref>
-```
-
-| Phase | RA caller `<ref>` | Validation caller `<ref>` | Who uses it |
-|-------|-------------------|--------------------------|-------------|
-| RA Alpha | `release-automation` | — | Test repos only |
-| RA RC | `ra-v1-rc` | — | Test + volunteering repos |
-| RA post-merge | `ra-v1-rc` (on main) | — | Test + volunteering repos |
-| VF development | `ra-v1-rc` (on main) | `validation-framework` | VF: test repos only |
-| VF dark/RC | `ra-v1-rc` (on main) | `v1-rc` | VF: all repos (dark) → volunteering |
-| RA integration | test: `v1-rc`, rest: `ra-v1-rc` | `v1-rc` | RA+VF integration: test repos only |
-| GA | `v1` | `v1` | All API repos |
-
-The campaign infrastructure in `project-administration` distributes caller workflow updates when transitioning between phases.
-
-### Reusable workflow checkout consistency
-
-The reusable workflow derives tooling checkout repository and ref from OIDC claims:
-`job_workflow_ref` (repository identity) and `job_workflow_sha` (commit identity).
-This guarantees that Python scripts and shared actions are checked out from the same repository
-and commit as the reusable workflow itself, even when callers reference floating tags such as
-`ra-v1-rc` or `v1`.
-
-An optional `tooling_ref_override` input can be set in the caller workflow for break-glass
-or testing scenarios. The override must be a full 40-character SHA.
-
-## Coexistence with pr_validation v0
-
-Release automation and the validation framework coexist with pr_validation v0 without changes to the existing validation workflow. No modifications to pr_validation are required for either stream to function. After the release-automation merge, `main` contains both pr_validation v0 and the release automation; after the validation-framework merge, `main` contains all three.
+Both branches are retired.
