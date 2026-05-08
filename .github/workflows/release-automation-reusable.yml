@@ -416,6 +416,8 @@ jobs:
       # Validate-command outputs (slash-command path; empty for non-slash triggers)
       allowed: ${{ steps.validate.outputs.allowed }}
       error_message: ${{ steps.validate.outputs.error_message }}
+      # Assemble-context output (empty when config_error is set)
+      base_context: ${{ steps.assemble.outputs.base_context }}
     steps:
       - name: Checkout tooling
         uses: actions/checkout@v6
@@ -425,6 +427,7 @@ jobs:
           path: _tooling
           sparse-checkout: |
             release_automation/scripts
+            release_automation/templates
             shared-actions/derive-release-state
             tooling_lib
 
@@ -714,6 +717,35 @@ jobs:
             core.setOutput('allowed', 'true');
             core.setOutput('error_message', '');
 
+      # ── Assemble Context (skipped on config error) ──
+      - name: Assemble Context
+        id: assemble
+        if: steps.state.outputs.config_error == ''
+        run: |
+          python3 _tooling/release_automation/scripts/workflow_context.py
+        env:
+          CTX_COMMAND: ${{ needs.check-trigger.outputs.command }}
+          CTX_COMMAND_ARGS: ${{ needs.check-trigger.outputs.command_args }}
+          CTX_USER: ${{ needs.check-trigger.outputs.user }}
+          CTX_TRIGGER_TYPE: ${{ needs.check-trigger.outputs.trigger_type }}
+          CTX_RELEASE_TAG: ${{ steps.state.outputs.release_tag }}
+          CTX_STATE: ${{ steps.state.outputs.state }}
+          CTX_RELEASE_TYPE: ${{ steps.state.outputs.release_type }}
+          CTX_META_RELEASE: ${{ steps.state.outputs.meta_release }}
+          CTX_SNAPSHOT_ID: ${{ steps.state.outputs.snapshot_id }}
+          CTX_SNAPSHOT_BRANCH: ${{ steps.state.outputs.snapshot_branch }}
+          CTX_RELEASE_REVIEW_BRANCH: ${{ steps.state.outputs.release_review_branch }}
+          CTX_RELEASE_PR_NUMBER: ${{ steps.state.outputs.release_pr_number }}
+          CTX_SRC_COMMIT_SHA: ${{ steps.state.outputs.src_commit_sha }}
+          CTX_APIS_JSON: ${{ steps.state.outputs.apis_json }}
+          CTX_COMMONALITIES_RELEASE: ${{ steps.state.outputs.commonalities_release }}
+          CTX_IDENTITY_CONSENT_MANAGEMENT_RELEASE: ${{ steps.state.outputs.identity_consent_management_release }}
+          CTX_COMMON_CACHE_STATUS: ${{ steps.cache-sync.outputs.common_cache_status }}
+          CTX_COMMON_CACHE_DETAILS: ${{ steps.cache-sync.outputs.common_cache_details }}
+          CTX_TRIGGER_PR_NUMBER: ${{ needs.check-trigger.outputs.trigger_pr_number }}
+          CTX_TRIGGER_PR_URL: ${{ needs.check-trigger.outputs.trigger_pr_url }}
+          GITHUB_TOKEN: ${{ github.token }}
+
   # ─────────────────────────────────────────────────────────────────────────────
   # Phase 2b: Handle configuration errors (if derive-state detected any)
   # ─────────────────────────────────────────────────────────────────────────────
@@ -807,60 +839,15 @@ jobs:
           esac
           exit 1
 
-  # ─────────────────────────────────────────────────────────────────────────────
-  # Phase 3: Assemble Golden Context
-  # ─────────────────────────────────────────────────────────────────────────────
-  assemble-context:
-    needs: [check-trigger, derive-state]
-    if: |
-      needs.check-trigger.outputs.should_continue == 'true' &&
-      needs.derive-state.outputs.config_error == ''
-    runs-on: ubuntu-latest
-    outputs:
-      base_context: ${{ steps.assemble.outputs.base_context }}
-    steps:
-      - name: Checkout tooling
-        uses: actions/checkout@v6
-        with:
-          repository: ${{ needs.check-trigger.outputs.tooling_checkout_repo }}
-          ref: ${{ needs.check-trigger.outputs.tooling_checkout_ref }}
-          path: _tooling
-          sparse-checkout: |
-            release_automation/scripts
-            release_automation/templates
-
-      - name: Assemble Context
-        id: assemble
-        run: |
-          python3 _tooling/release_automation/scripts/workflow_context.py
-        env:
-          CTX_COMMAND: ${{ needs.check-trigger.outputs.command }}
-          CTX_COMMAND_ARGS: ${{ needs.check-trigger.outputs.command_args }}
-          CTX_USER: ${{ needs.check-trigger.outputs.user }}
-          CTX_TRIGGER_TYPE: ${{ needs.check-trigger.outputs.trigger_type }}
-          CTX_RELEASE_TAG: ${{ needs.derive-state.outputs.release_tag }}
-          CTX_STATE: ${{ needs.derive-state.outputs.state }}
-          CTX_RELEASE_TYPE: ${{ needs.derive-state.outputs.release_type }}
-          CTX_META_RELEASE: ${{ needs.derive-state.outputs.meta_release }}
-          CTX_SNAPSHOT_ID: ${{ needs.derive-state.outputs.snapshot_id }}
-          CTX_SNAPSHOT_BRANCH: ${{ needs.derive-state.outputs.snapshot_branch }}
-          CTX_RELEASE_REVIEW_BRANCH: ${{ needs.derive-state.outputs.release_review_branch }}
-          CTX_RELEASE_PR_NUMBER: ${{ needs.derive-state.outputs.release_pr_number }}
-          CTX_SRC_COMMIT_SHA: ${{ needs.derive-state.outputs.src_commit_sha }}
-          CTX_APIS_JSON: ${{ needs.derive-state.outputs.apis_json }}
-          CTX_COMMONALITIES_RELEASE: ${{ needs.derive-state.outputs.commonalities_release }}
-          CTX_IDENTITY_CONSENT_MANAGEMENT_RELEASE: ${{ needs.derive-state.outputs.identity_consent_management_release }}
-          CTX_COMMON_CACHE_STATUS: ${{ needs.derive-state.outputs.common_cache_status }}
-          CTX_COMMON_CACHE_DETAILS: ${{ needs.derive-state.outputs.common_cache_details }}
-          CTX_TRIGGER_PR_NUMBER: ${{ needs.check-trigger.outputs.trigger_pr_number }}
-          CTX_TRIGGER_PR_URL: ${{ needs.check-trigger.outputs.trigger_pr_url }}
-          GITHUB_TOKEN: ${{ github.token }}
+  # assemble-context was folded into derive-state (single runner; same setup).
+  # See the "Assemble Context" step at the end of derive-state for the canonical
+  # location. Output is exposed as needs.derive-state.outputs.base_context.
 
   # ─────────────────────────────────────────────────────────────────────────────
   # Phase 3: Post interim comment (for slash commands only)
   # ─────────────────────────────────────────────────────────────────────────────
   post-interim:
-    needs: [check-trigger, derive-state, assemble-context]
+    needs: [check-trigger, derive-state]
     if: |
       needs.check-trigger.outputs.should_continue == 'true' &&
       needs.check-trigger.outputs.trigger_type == 'slash_command' &&
@@ -892,7 +879,7 @@ jobs:
           release_tag: ${{ needs.derive-state.outputs.release_tag }}
           run_id: ${{ github.run_id }}
           template: interim_processing
-          base_context: ${{ needs.assemble-context.outputs.base_context }}
+          base_context: ${{ needs.derive-state.outputs.base_context }}
           context: "{}"
           comment_id: ${{ needs.check-trigger.outputs.comment_id }}
 
@@ -908,7 +895,6 @@ jobs:
       [
         check-trigger,
         derive-state,
-        assemble-context,
       ]
     if: |
       needs.check-trigger.outputs.trigger_type == 'slash_command' &&
@@ -936,7 +922,7 @@ jobs:
           release_tag: ${{ needs.derive-state.outputs.release_tag }}
           run_id: ${{ github.run_id }}
           template: command_rejected
-          base_context: ${{ needs.assemble-context.outputs.base_context }}
+          base_context: ${{ needs.derive-state.outputs.base_context }}
           context: |
             {
               "error_message": "${{ needs.derive-state.outputs.error_message }}"
@@ -1388,7 +1374,7 @@ jobs:
   # Phase 5e: Handle publish-release confirmation (no --confirm flag)
   # ─────────────────────────────────────────────────────────────────────────────
   publish-confirmation:
-    needs: [check-trigger, derive-state, assemble-context, post-interim]
+    needs: [check-trigger, derive-state, post-interim]
     if: |
       needs.check-trigger.outputs.command == 'publish-release' &&
       needs.derive-state.outputs.allowed == 'true' &&
@@ -1430,7 +1416,7 @@ jobs:
           release_tag: ${{ needs.derive-state.outputs.release_tag }}
           run_id: ${{ github.run_id }}
           template: publish_confirmation
-          base_context: ${{ needs.assemble-context.outputs.base_context }}
+          base_context: ${{ needs.derive-state.outputs.base_context }}
           context: |
             {
               "draft_release_url": "${{ steps.context.outputs.draft_release_url }}",
@@ -1829,7 +1815,7 @@ jobs:
   # Phase 5g: Handle PR merge (draft release creation)
   # ─────────────────────────────────────────────────────────────────────────────
   handle-pr-merge:
-    needs: [check-trigger, derive-state, assemble-context]
+    needs: [check-trigger, derive-state]
     if: needs.check-trigger.outputs.trigger_type == 'pr_merge'
     runs-on: ubuntu-latest
     outputs:
@@ -2054,7 +2040,7 @@ jobs:
           release_tag: ${{ needs.derive-state.outputs.release_tag }}
           run_id: ${{ github.run_id }}
           template: draft_created
-          base_context: ${{ needs.assemble-context.outputs.base_context }}
+          base_context: ${{ needs.derive-state.outputs.base_context }}
           github_token: ${{ steps.app-token.outputs.token || github.token }}
           context: |
             {
@@ -2068,10 +2054,11 @@ jobs:
   # Phase 5f: Handle issue close/reopen events
   # ─────────────────────────────────────────────────────────────────────────────
   handle-issue-event:
-    needs: [check-trigger, derive-state, assemble-context]
+    needs: [check-trigger, derive-state]
     if: |
       always() &&
-      needs.assemble-context.result == 'success' &&
+      needs.derive-state.result == 'success' &&
+      needs.derive-state.outputs.config_error == '' &&
       (needs.check-trigger.outputs.trigger_type == 'issue_close' ||
       needs.check-trigger.outputs.trigger_type == 'issue_reopen')
     runs-on: ubuntu-latest
@@ -2146,7 +2133,7 @@ jobs:
           release_tag: ${{ needs.derive-state.outputs.release_tag }}
           run_id: ${{ github.run_id }}
           template: issue_reopened
-          base_context: ${{ needs.assemble-context.outputs.base_context }}
+          base_context: ${{ needs.derive-state.outputs.base_context }}
           github_token: ${{ steps.app-token.outputs.token || github.token }}
           context: |
             {
@@ -2162,7 +2149,6 @@ jobs:
       [
         check-trigger,
         derive-state,
-        assemble-context,
         create-snapshot,
         discard-snapshot,
         delete-draft,
@@ -2484,7 +2470,7 @@ jobs:
           release_tag: ${{ needs.derive-state.outputs.release_tag }}
           run_id: ${{ github.run_id }}
           template: state_not_planned
-          base_context: ${{ needs.assemble-context.outputs.base_context }}
+          base_context: ${{ needs.derive-state.outputs.base_context }}
           github_token: ${{ steps.app-token.outputs.token || github.token }}
           context: |
             {
@@ -2501,7 +2487,7 @@ jobs:
           release_tag: ${{ needs.derive-state.outputs.release_tag }}
           run_id: ${{ github.run_id }}
           template: issue_created
-          base_context: ${{ needs.assemble-context.outputs.base_context }}
+          base_context: ${{ needs.derive-state.outputs.base_context }}
           github_token: ${{ steps.app-token.outputs.token || github.token }}
           context: |
             {
@@ -2526,7 +2512,7 @@ jobs:
           release_tag: ${{ needs.derive-state.outputs.release_tag }}
           run_id: ${{ github.run_id }}
           template: config_drift_warning
-          base_context: ${{ needs.assemble-context.outputs.base_context }}
+          base_context: ${{ needs.derive-state.outputs.base_context }}
           github_token: ${{ steps.app-token.outputs.token || github.token }}
           context: |
             {
@@ -2546,7 +2532,7 @@ jobs:
           release_tag: ${{ needs.derive-state.outputs.release_tag }}
           run_id: ${{ github.run_id }}
           template: common_sync_pr_created
-          base_context: ${{ needs.assemble-context.outputs.base_context }}
+          base_context: ${{ needs.derive-state.outputs.base_context }}
           github_token: ${{ steps.app-token.outputs.token || github.token }}
           context: |
             {
@@ -2564,7 +2550,7 @@ jobs:
           release_tag: ${{ needs.derive-state.outputs.release_tag }}
           run_id: ${{ github.run_id }}
           template: common_sync_failed
-          base_context: ${{ needs.assemble-context.outputs.base_context }}
+          base_context: ${{ needs.derive-state.outputs.base_context }}
           github_token: ${{ steps.app-token.outputs.token || github.token }}
           context: '{}'
 
@@ -2583,7 +2569,6 @@ jobs:
         publish-release,
         create-sync-pr,
         publish-confirmation,
-        assemble-context,
       ]
     if: |
       always() &&
@@ -2810,7 +2795,7 @@ jobs:
           run_id: ${{ github.run_id }}
           template: ${{ steps.template.outputs.template }}
           # Use base_context + delta
-          base_context: ${{ needs.assemble-context.outputs.base_context }}
+          base_context: ${{ needs.derive-state.outputs.base_context }}
           github_token: ${{ steps.app-token.outputs.token || github.token }}
           context: ${{ steps.context.outputs.context }}
           comment_id: ${{ needs.post-interim.outputs.comment_id }}
