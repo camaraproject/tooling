@@ -1707,39 +1707,45 @@ jobs:
             const path = require('path');
             const tag = process.env.RELEASE_TAG;
 
-            // Extract cycle number from tag (r4.1 → 4)
+            // Build candidate paths: per-cycle first, then flat CHANGELOG.md
+            // (flat covers legacy maintenance-release repos that have not yet
+            // migrated to per-cycle layout; mirrors the publish-side fallback).
             const match = tag.match(/^r(\d+)\.\d+/);
-            if (!match) {
-              core.warning(`Cannot extract cycle from tag: ${tag}`);
+            const candidates = [];
+            if (match) candidates.push(`CHANGELOG/CHANGELOG-r${match[1]}.md`);
+            candidates.push('CHANGELOG.md');
+
+            let syncedPath = '';
+            let content = '';
+            for (const p of candidates) {
+              try {
+                const { data } = await github.rest.repos.getContent({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  path: p,
+                  ref: tag
+                });
+                content = Buffer.from(data.content, 'base64').toString('utf8');
+                syncedPath = p;
+                break;
+              } catch (e) {
+                // Try next candidate
+              }
+            }
+
+            if (!syncedPath) {
+              core.warning(`No CHANGELOG found at ${candidates.join(' or ')} on tag ${tag}`);
               core.setOutput('synced', 'false');
               return;
             }
 
-            const cycle = match[1];
-            const changelogPath = `CHANGELOG/CHANGELOG-r${cycle}.md`;
-
-            try {
-              const { data } = await github.rest.repos.getContent({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                path: changelogPath,
-                ref: tag
-              });
-              const content = Buffer.from(data.content, 'base64').toString('utf8');
-
-              // Write to local api-repo checkout
-              const localDir = path.join('api-repo', 'CHANGELOG');
-              if (!fs.existsSync(localDir)) {
-                fs.mkdirSync(localDir, { recursive: true });
-              }
-              fs.writeFileSync(path.join('api-repo', changelogPath), content);
-              core.setOutput('synced', 'true');
-              core.setOutput('changelog_path', changelogPath);
-              console.log(`Synced ${changelogPath} from tag ${tag}`);
-            } catch (e) {
-              core.warning(`CHANGELOG not found at ${changelogPath} on tag ${tag}: ${e.message}`);
-              core.setOutput('synced', 'false');
-            }
+            // Write to local api-repo checkout (mkdir parent for per-cycle case)
+            const localPath = path.join('api-repo', syncedPath);
+            fs.mkdirSync(path.dirname(localPath), { recursive: true });
+            fs.writeFileSync(localPath, content);
+            core.setOutput('synced', 'true');
+            core.setOutput('changelog_path', syncedPath);
+            console.log(`Synced ${syncedPath} from tag ${tag}`);
 
       - name: Resolve Bot Identity
         id: bot-identity

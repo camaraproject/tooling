@@ -42,7 +42,6 @@ tooling/
 │   │   ├── issue_sync.py                # Release Issue lifecycle management
 │   │   ├── mechanical_transformer.py    # Placeholder replacement
 │   │   ├── metadata_generator.py        # release-metadata.yaml generation
-│   │   ├── post_release_syncer.py       # Post-release sync PR to main
 │   │   ├── readme_updater.py            # README Release Information updater
 │   │   ├── release_publisher.py         # Draft release publication
 │   │   ├── snapshot_creator.py          # Snapshot + release-review branch creation
@@ -109,9 +108,6 @@ tooling/
 │   │   └── action.yml
 │   │
 │   ├── update-issue-section/            # Update reserved sections in issue body
-│   │   └── action.yml
-│   │
-│   ├── update-readme-release-info/      # README Release Information (shared with campaign workflow)
 │   │   └── action.yml
 │   │
 │   └── validate-release-plan/           # Existing plan validation
@@ -459,8 +455,6 @@ Updates the "Release Information" section in README.md, replacing content betwee
 
 **Templates:** 4 Mustache templates in `release_automation/templates/readme/`, ported from the campaign workflow.
 
-**Shared action wrapper:** `shared-actions/update-readme-release-info/action.yml` wraps `readme_updater.py` for use by both release automation and the campaign workflow.
-
 #### 2.10.2 CHANGELOG Generator (`changelog_generator.py`)
 
 Generates structured CHANGELOG draft sections for maintainers to complete during release review.
@@ -495,21 +489,7 @@ Handles publication of draft releases via the `/publish-release` command.
 
 ---
 
-### 2.12 Post-Release Syncer (`post_release_syncer.py`)
-
-Creates a sync PR to main after release publication.
-
-**Sync PR content:**
-- Release-specific CHANGELOG: `CHANGELOG/CHANGELOG-rX.md` (X = cycle number from release tag)
-- README Release Information section update (between delimiters)
-
-**Branch:** `pr-to-main/rX.Y` created from main.
-
-**Merge policy:** Human approval required (no auto-merge).
-
----
-
-### 2.13 Common Cache Sync
+### 2.12 Common Cache Sync
 
 Keeps `code/common/` in sync with the Commonalities release declared under `dependencies.commonalities_release` in `release-plan.yaml`. The handler runs on every `update-issue` pass. For repositories declaring `commonalities_release >= r4.2` it checks the cache and acts on drift; for earlier releases (which don't consume common files via `$ref`) it reports `common_cache_status = ""` (unchecked) and exits without action.
 
@@ -715,10 +695,6 @@ Synchronizes Release Issue with current derived state. Creates issues when none 
 ### 4.5 create-snapshot
 
 Orchestrates the full snapshot creation flow: validate release plan, calculate API versions, create snapshot branch with transformations, generate release-metadata.yaml, create release-review branch with README + CHANGELOG commits, create Release PR.
-
-### 4.6 update-readme-release-info
-
-Shared action wrapping `readme_updater.py`. Used by both release automation (during `/create-snapshot`) and the campaign workflow (`campaign-release-info.yml` in project-administration).
 
 ---
 
