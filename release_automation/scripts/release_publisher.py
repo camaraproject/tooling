@@ -289,8 +289,9 @@ class ReleasePublisher:
     ) -> Dict[str, str]:
         """Clean up branches after publication.
 
-        Deletes the snapshot branch and renames the release-review branch
-        to indicate it has been published.
+        Deletes both the snapshot and release-review branches. The release tag
+        preserves the published commit, so the release-review branch carries
+        no information not already in the tag list.
 
         Args:
             snapshot_branch: e.g., "release-snapshot/r4.1-abc1234"
@@ -299,7 +300,7 @@ class ReleasePublisher:
         Returns:
             Dict with status for each operation:
             - "snapshot_deleted": "deleted", "not_found", or "error"
-            - "review_renamed": "renamed", "not_found", or "error"
+            - "review_deleted": "deleted", "not_found", or "error"
         """
         result: Dict[str, str] = {}
 
@@ -315,17 +316,16 @@ class ReleasePublisher:
             logger.error(f"Failed to delete {snapshot_branch}: {e}")
             result["snapshot_deleted"] = "error"
 
-        # Rename release-review branch to -published
-        new_review_branch = f"{release_review_branch}-published"
+        # Delete release-review branch
         try:
-            renamed = self.gh.rename_branch(release_review_branch, new_review_branch)
-            result["review_renamed"] = "renamed" if renamed else "not_found"
-            if renamed:
-                logger.info(f"Renamed {release_review_branch} to {new_review_branch}")
+            deleted = self.gh.delete_branch(release_review_branch)
+            result["review_deleted"] = "deleted" if deleted else "not_found"
+            if deleted:
+                logger.info(f"Deleted branch {release_review_branch}")
             else:
-                logger.warning(f"Branch {release_review_branch} not found (already renamed)")
+                logger.warning(f"Branch {release_review_branch} not found (already deleted)")
         except GitHubClientError as e:
-            logger.error(f"Failed to rename {release_review_branch}: {e}")
-            result["review_renamed"] = "error"
+            logger.error(f"Failed to delete {release_review_branch}: {e}")
+            result["review_deleted"] = "error"
 
         return result
