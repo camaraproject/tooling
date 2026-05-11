@@ -81,7 +81,6 @@ Reusable GitHub Actions for cross-repository use.
   * `run-validation` — invoke the v1-rc validation framework
   * `sync-release-issue` — synchronize release issue state and body
   * `update-issue-section` — update marked sections in issue bodies
-  * `update-readme-release-info` — update README release information block
 
 ## Repository Structure
 
@@ -121,7 +120,6 @@ tooling/
 │   ├── run-validation/
 │   ├── sync-release-issue/
 │   ├── update-issue-section/
-│   ├── update-readme-release-info/
 │   └── validate-release-plan/
 ├── tooling_lib/                      # Shared Python library
 │   └── tests/
