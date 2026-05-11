@@ -1,0 +1,9 @@
+# Python runtime dependencies for the CAMARA tooling pipelines.
+# Compatible-release pins (~=) keep majors locked while letting Dependabot
+# propose minor / patch bumps. All shared-actions and workflow steps install
+# from this file so a bump touches one place.
+pyyaml~=6.0
+pystache~=0.6
+jsonschema~=4.26
+yamllint~=1.38
+requests~=2.32

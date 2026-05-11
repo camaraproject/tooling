@@ -83,7 +83,7 @@ runs:
 
     - name: Install dependencies
       shell: bash
-      run: pip install --quiet pyyaml pystache
+      run: pip install --quiet -r "${{ github.action_path }}/../../requirements.txt"
 
     - name: Sync Release Issue
       id: sync

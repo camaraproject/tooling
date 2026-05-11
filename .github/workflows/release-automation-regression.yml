@@ -55,7 +55,7 @@ jobs:
       - name: Install runner dependencies
         run: |
           pip install --upgrade pip
-          pip install pyyaml
+          pip install --quiet -r requirements.txt
 
       - name: Mint validation app token
         id: app-token

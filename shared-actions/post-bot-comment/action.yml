@@ -48,7 +48,7 @@ runs:
 
     - name: Install dependencies
       shell: bash
-      run: pip install --quiet pystache
+      run: pip install --quiet -r "${{ github.action_path }}/../../requirements.txt"
 
     - name: Render Template
       id: render

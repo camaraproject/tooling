@@ -1016,7 +1016,7 @@ jobs:
       - name: Validate central settings against schema
         shell: bash
         run: |
-          pip install --quiet pyyaml==6.0.3 jsonschema==4.26.0
+          pip install --quiet -r _tooling/requirements.txt
           python3 - <<'PY'
           import sys
           from pathlib import Path
@@ -1458,7 +1458,7 @@ jobs:
           python-version: "3.11"
 
       - name: Install dependencies
-        run: pip install pyyaml pystache requests
+        run: pip install --quiet -r _tooling/requirements.txt
 
       - name: Generate App Token
         id: app-token

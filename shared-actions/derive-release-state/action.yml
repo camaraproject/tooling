@@ -76,7 +76,7 @@ runs:
 
     - name: Install dependencies
       shell: bash
-      run: pip install --quiet pyyaml
+      run: pip install --quiet -r "${{ github.action_path }}/../../requirements.txt"
 
     - name: Derive Release State
       id: derive
