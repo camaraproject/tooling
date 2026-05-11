@@ -31,7 +31,6 @@ def mock_github_client():
     client.create_tag.return_value = {"ref": "refs/tags/source/r4.1"}
     # Branch cleanup methods
     client.delete_branch.return_value = True
-    client.rename_branch.return_value = True
     return client
 
 
@@ -381,7 +380,6 @@ class TestCleanupBranches:
     def test_cleanup_branches_success(self, publisher, mock_github_client):
         """Both operations succeed."""
         mock_github_client.delete_branch.return_value = True
-        mock_github_client.rename_branch.return_value = True
 
         result = publisher.cleanup_branches(
             "release-snapshot/r4.1-abc1234",
@@ -389,17 +387,14 @@ class TestCleanupBranches:
         )
 
         assert result["snapshot_deleted"] == "deleted"
-        assert result["review_renamed"] == "renamed"
-        mock_github_client.delete_branch.assert_called_once_with("release-snapshot/r4.1-abc1234")
-        mock_github_client.rename_branch.assert_called_once_with(
-            "release-review/r4.1-abc1234",
-            "release-review/r4.1-abc1234-published"
-        )
+        assert result["review_deleted"] == "deleted"
+        assert mock_github_client.delete_branch.call_count == 2
+        mock_github_client.delete_branch.assert_any_call("release-snapshot/r4.1-abc1234")
+        mock_github_client.delete_branch.assert_any_call("release-review/r4.1-abc1234")
 
     def test_cleanup_snapshot_already_deleted(self, publisher, mock_github_client):
         """Snapshot branch already deleted - reports not_found."""
-        mock_github_client.delete_branch.return_value = False
-        mock_github_client.rename_branch.return_value = True
+        mock_github_client.delete_branch.side_effect = [False, True]
 
         result = publisher.cleanup_branches(
             "release-snapshot/r4.1-abc1234",
@@ -407,12 +402,11 @@ class TestCleanupBranches:
         )
 
         assert result["snapshot_deleted"] == "not_found"
-        assert result["review_renamed"] == "renamed"
+        assert result["review_deleted"] == "deleted"
 
-    def test_cleanup_review_already_renamed(self, publisher, mock_github_client):
-        """Review branch already renamed - reports not_found."""
-        mock_github_client.delete_branch.return_value = True
-        mock_github_client.rename_branch.return_value = False
+    def test_cleanup_review_already_deleted(self, publisher, mock_github_client):
+        """Review branch already deleted - reports not_found."""
+        mock_github_client.delete_branch.side_effect = [True, False]
 
         result = publisher.cleanup_branches(
             "release-snapshot/r4.1-abc1234",
@@ -420,12 +414,11 @@ class TestCleanupBranches:
         )
 
         assert result["snapshot_deleted"] == "deleted"
-        assert result["review_renamed"] == "not_found"
+        assert result["review_deleted"] == "not_found"
 
     def test_cleanup_partial_failure(self, publisher, mock_github_client):
         """One operation fails - continues with other."""
-        mock_github_client.delete_branch.side_effect = GitHubClientError("API error")
-        mock_github_client.rename_branch.return_value = True
+        mock_github_client.delete_branch.side_effect = [GitHubClientError("API error"), True]
 
         result = publisher.cleanup_branches(
             "release-snapshot/r4.1-abc1234",
@@ -433,12 +426,11 @@ class TestCleanupBranches:
         )
 
         assert result["snapshot_deleted"] == "error"
-        assert result["review_renamed"] == "renamed"
+        assert result["review_deleted"] == "deleted"
 
     def test_cleanup_both_not_found(self, publisher, mock_github_client):
         """Both branches not found - idempotent behavior."""
         mock_github_client.delete_branch.return_value = False
-        mock_github_client.rename_branch.return_value = False
 
         result = publisher.cleanup_branches(
             "release-snapshot/r4.1-abc1234",
@@ -446,7 +438,7 @@ class TestCleanupBranches:
         )
 
         assert result["snapshot_deleted"] == "not_found"
-        assert result["review_renamed"] == "not_found"
+        assert result["review_deleted"] == "not_found"
 
 
 class TestCreatePointerBranch:
