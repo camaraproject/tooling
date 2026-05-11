@@ -32,7 +32,7 @@ on:
 
 concurrency:
   group: release-automation-regression-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 permissions:
   contents: read
