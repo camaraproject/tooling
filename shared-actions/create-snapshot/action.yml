@@ -78,7 +78,7 @@ runs:
 
     - name: Install Python dependencies
       shell: bash
-      run: pip install --quiet pyyaml pystache
+      run: pip install --quiet -r "${{ github.action_path }}/../../requirements.txt"
 
     - name: Create Snapshot
       id: create

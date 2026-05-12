@@ -28,3 +28,16 @@ updates:
       - "dependencies"
       - "javascript"
     open-pull-requests-limit: 5
+
+  # pip (requirements.txt at repo root, consumed by shared-actions and workflows)
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    commit-message:
+      prefix: "chore(deps)"
+    labels:
+      - "dependencies"
+      - "python"
+    open-pull-requests-limit: 5
