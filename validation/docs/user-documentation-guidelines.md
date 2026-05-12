@@ -226,7 +226,7 @@ Purpose: explain how and when to inspect bundled API definitions with resolved r
 
 Cover:
 
-- if bundled APIs are produced, the workflow exposes a `validation-bundled-specs` artifact containing the bundled files
+- if a source spec uses external `$ref`s, the workflow produces bundled files and exposes them as a `validation-bundled-specs` artifact
 - bundled files are useful to preview the resolved API definition that a reader or release artifact may show
 - validation problems are produced before the bundling step, based on source files
 - a problem message already contains the source file path, for example an API definition file or `code/common/CAMARA_event_common.yaml`
@@ -236,7 +236,7 @@ Cover:
 
 Key message:
 
-> Bundled API definitions are for previewing resolved `$ref`s, not for tracing validation problem provenance.
+> Bundled API definitions are for previewing resolved `$ref`s, not for finding the source of a validation problem.
 
 ### `problem-messages.md`
 
