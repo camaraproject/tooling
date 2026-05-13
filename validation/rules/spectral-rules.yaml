@@ -201,6 +201,12 @@
   engine_rule: camara-parameter-name-casing-convention
   short_title: "Parameter names (path/query) must be lowerCamelCase"
 
+- id: S-037
+  engine: spectral
+  engine_rule: camara-no-numeric-resource-ids
+  short_title: "Use non-numeric resource IDs"
+  suggestion: "Use non-numeric (e.g. string) resource identifiers to prevent enumeration attacks."
+
 # ===== Built-in OAS rules (S-200+) =====
 
 - id: S-200
@@ -352,12 +358,9 @@
   short_title: "enum value does not match schema type"
 
 # ===== OWASP API Security Top 10 2023 (S-300+) =====
-
-- id: S-300
-  engine: spectral
-  engine_rule: "owasp:api1:2023-no-numeric-ids"
-  short_title: "Use non-numeric resource IDs"
-  suggestion: "Use non-numeric (e.g. string) resource identifiers to prevent enumeration attacks."
+# S-300 (owasp:api1:2023-no-numeric-ids) retired — replaced by S-037
+# (camara-no-numeric-resource-ids) in the custom-rule range. See tooling#282
+# for the OWASP rule's false-positive on allOf-wrapped $ref schemas.
 
 - id: S-301
   engine: spectral

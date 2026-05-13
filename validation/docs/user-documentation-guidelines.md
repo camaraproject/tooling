@@ -315,7 +315,7 @@ Recommended first FAQ entries:
 | `[P-023]` | Why does CAMARA Validation say a dependency tag was not found? |
 | `[S-024]`, `[S-307]` | Why do operations need standard error responses? |
 | `[S-211]` | Why is an unused component only a hint? |
-| `[S-300]` | Why should resource identifiers not be numeric? |
+| `[S-037]` | Why should resource identifiers not be numeric? |
 | `[S-309]` to `[S-313]` | Why do arrays, integers, and strings need limits? |
 
 ## Minimum documentation set for pilot

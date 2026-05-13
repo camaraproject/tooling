@@ -640,3 +640,130 @@ class TestGroupD:
             if "ListSchema" in str(f.get("path", []))
         ]
         assert len(items_findings) == 0
+
+
+# ---------------------------------------------------------------------------
+# S-037: camara-no-numeric-resource-ids
+# ---------------------------------------------------------------------------
+# Replaces stock owasp:api1:2023-no-numeric-ids. Walks allOf / anyOf / oneOf
+# branches and only fires when the chain terminates at type: integer.
+
+_RULE = "camara-no-numeric-resource-ids"
+
+
+def _spec_with_id_param(schema_block: str, *, name: str = "widgetId") -> str:
+    """Build a minimal spec where /widgets/{name} parameter has the given schema.
+
+    Injects the new path before the `components:` section so it parses under
+    `paths`, not `components`. Extra schemas can be appended to the result.
+    """
+    new_path = (
+        f"  /widgets/{{{name}}}:\n"
+        "    parameters:\n"
+        f"      - name: {name}\n"
+        "        in: path\n"
+        "        required: true\n"
+        "        description: widget id\n"
+        f"{schema_block}"
+        "    get:\n"
+        "      tags:\n"
+        "        - Test API\n"
+        "      summary: Get widget\n"
+        "      description: Get widget description\n"
+        "      operationId: getWidget\n"
+        "      responses:\n"
+        '        "200":\n'
+        "          description: OK\n"
+    )
+    return _VALID_SPEC.replace("components:\n", new_path + "components:\n", 1)
+
+
+class TestS037NoNumericResourceIds:
+    """S-037: replaces owasp:api1:2023-no-numeric-ids."""
+
+    def test_owasp_passthrough_muted(self, valid_findings):
+        """The stock OWASP rule must not surface — replaced by camara-no-numeric-resource-ids."""
+        assert "owasp:api1:2023-no-numeric-ids" not in _codes(valid_findings)
+
+    def test_inline_string_passes(self):
+        schema = (
+            "        schema:\n"
+            "          type: string\n"
+            "          format: uuid\n"
+        )
+        findings = _run_spectral(_spec_with_id_param(schema))
+        assert _RULE not in _codes(findings)
+
+    def test_inline_integer_fires(self):
+        schema = (
+            "        schema:\n"
+            "          type: integer\n"
+            "          format: int64\n"
+        )
+        findings = _run_spectral(_spec_with_id_param(schema))
+        assert _RULE in _codes(findings)
+
+    def test_ref_to_string_passes(self):
+        """Bare $ref alias resolving to type: string — the common pattern."""
+        schema = (
+            "        schema:\n"
+            '          $ref: "#/components/schemas/UUID"\n'
+        )
+        components = (
+            "    UUID:\n"
+            "      type: string\n"
+            "      format: uuid\n"
+            "      pattern: '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'\n"
+        )
+        findings = _run_spectral(_spec_with_id_param(schema) + components)
+        assert _RULE not in _codes(findings)
+
+    def test_allof_wrapped_string_passes(self):
+        """The bug case: allOf wrapper around a $ref to type: string must pass.
+
+        Reproduced from camaraproject/NetworkAccessManagement#137: the stock
+        OWASP rule fires here because its JSON Schema check vacuously matches
+        a schema with no top-level `type`. The replacement walks combiners
+        and recognises the chain terminates at `type: string`.
+        """
+        schema = (
+            "        schema:\n"
+            '          $ref: "#/components/schemas/ServiceId"\n'
+        )
+        components = (
+            "    UUID:\n"
+            "      type: string\n"
+            "      format: uuid\n"
+            "    ServiceId:\n"
+            "      allOf:\n"
+            '        - $ref: "#/components/schemas/UUID"\n'
+            "      description: |\n"
+            "        A unique identifier for a service. Must be a valid UUID.\n"
+        )
+        findings = _run_spectral(_spec_with_id_param(schema) + components)
+        assert _RULE not in _codes(findings)
+
+    def test_allof_wrapped_integer_fires(self):
+        """allOf wrapping type: integer must still fire — chain terminates at integer."""
+        schema = (
+            "        schema:\n"
+            '          $ref: "#/components/schemas/NumericId"\n'
+        )
+        components = (
+            "    NumericId:\n"
+            "      allOf:\n"
+            "        - type: integer\n"
+            "          format: int64\n"
+            "      description: numeric id\n"
+        )
+        findings = _run_spectral(_spec_with_id_param(schema) + components)
+        assert _RULE in _codes(findings)
+
+    def test_non_id_parameter_ignored(self):
+        """Parameters whose name does not match the id pattern are ignored."""
+        schema = (
+            "        schema:\n"
+            "          type: integer\n"
+        )
+        findings = _run_spectral(_spec_with_id_param(schema, name="category"))
+        assert _RULE not in _codes(findings)

@@ -33,6 +33,7 @@ functions:
   - camara-required-properties-exist
   - camara-array-items-description
   - camara-notification-content-type
+  - camara-no-numeric-resource-ids
 functionsDir: "./lint_function"
 rules:
   #  Built-in OpenAPI Specification ruleset. Each rule then can be enabled individually.
@@ -523,13 +524,27 @@ rules:
       function: camara-array-items-description
     recommended: true
 
+  # S-037: replaces owasp:api1:2023-no-numeric-ids (muted below).
+  # The OWASP rule's then-schema (`not: {properties: {type: {const: integer}}}`)
+  # vacuously matches schemas with no top-level `type` — including allOf-wrapped
+  # $ref aliases, which is the only OAS-3.0.3-legal way to attach a sibling
+  # description to a $ref. See tooling#282.
+  camara-no-numeric-resource-ids:
+    description: "Use random IDs that cannot be guessed. UUIDs are preferred but any other random string will do."
+    message: "{{error}}"
+    severity: error
+    given: '$.paths..parameters[*][?(@property === "name" && (@ === "id" || @.match(/(_id|Id|-id)$/)))]^.schema'
+    then:
+      function: camara-no-numeric-resource-ids
+    recommended: true
+
   # ===== OWASP API Security Top 10 2023 =====
   # Source: Commonalities Linting-rules.md section 5
   # Severity overrides per CAMARA agreement (Commonalities #539, #548, #551, #552)
   # Target severity escalation for API4 resource consumption rules: warn → error in 2027
 
   # --- API1: Broken Object Level Authorization ---
-  owasp:api1:2023-no-numeric-ids: error
+  owasp:api1:2023-no-numeric-ids: off              # Replaced by camara-no-numeric-resource-ids (S-037) — tooling#282
 
   # --- API2: Broken Authentication ---
   owasp:api2:2023-auth-insecure-schemes: off      # OpenID used exclusively
