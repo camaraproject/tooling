@@ -284,6 +284,8 @@ proposed_changes:
 
 pending_rules:
   # OWASP rules (tooling#95) implemented in WS07 Phase 1b — see spectral-rules.yaml S-300..S-319
+  # S-300 (owasp:api1:2023-no-numeric-ids) retired — replaced by S-037 in the
+  # custom-rule range. See tooling#282.
 
 # ---------------------------------------------------------------------------
 # Manual rules — require human judgment
@@ -359,7 +361,7 @@ tested_rules:
   S-223: [regression/r4.2-broken-spec-descriptions]
   S-225: [regression/r4.2-broken-spec-routing]
   S-227: [regression/r4.2-broken-spec-routing]
-  S-300: [regression/r4.2-broken-spec-schema-constraints]
+  S-037: [regression/r4.2-broken-spec-schema-constraints]
   S-303: [regression/r4.2-broken-spec-schema-constraints]
   S-306: [regression/r4.2-broken-spec-routing]
   S-307: [regression/r4.2-broken-spec-error-handling]
