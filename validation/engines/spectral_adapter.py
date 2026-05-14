@@ -41,6 +41,10 @@ SEVERITY_MAP: dict[int, str] = {
 
 DEFAULT_SPEC_GLOB = "code/API_definitions/*.yaml"
 
+# File-path prefixes whose findings are treated as non-actionable for the
+# API developer (Commonalities cache, synced from external repo).
+EXTERNAL_PATH_PREFIXES: tuple[str, ...] = ("code/common/",)
+
 # Fallback ruleset when version-specific file is not found.
 DEFAULT_RULESET = ".spectral.yaml"
 
@@ -188,9 +192,13 @@ def normalize_finding(raw: dict, repo_root: Optional[str] = None) -> dict:
     - ``raw["range"]["start"]["line"]`` is 0-indexed; add 1 for the framework.
     - ``raw["range"]["start"]["character"]`` is 0-indexed; add 1.
 
-    Findings on external files (e.g. ``code/common/CAMARA_common.yaml``)
-    that Spectral followed via ``$ref`` are downgraded to ``hint`` level
+    Findings whose ``source`` path falls under one of
+    :data:`EXTERNAL_PATH_PREFIXES` (the Commonalities cache, e.g.
+    ``code/common/CAMARA_common.yaml``) are downgraded to ``hint`` level
     since they are not directly actionable by the API developer.
+    Findings on repo-owned files reached via ``$ref`` (e.g. schema
+    fragments under ``code/modules/<Module>/<Module>.yaml`` in repos that
+    use that layout) keep their native Spectral severity.
 
     Args:
         raw: Single finding dict from Spectral JSON output.
@@ -199,10 +207,11 @@ def normalize_finding(raw: dict, repo_root: Optional[str] = None) -> dict:
     """
     source = _normalize_path(raw.get("source", ""), repo_root)
 
-    # Findings from external files that Spectral followed via $ref
-    # (e.g. code/common/CAMARA_common.yaml) are downgraded to hint —
-    # they are not directly actionable by the API developer.
-    from_external = bool(source and "API_definitions" not in source)
+    # Findings whose source falls under the Commonalities cache prefix
+    # (code/common/) are downgraded to hint — they are not directly
+    # actionable by the API developer.  Repo-owned files reached via $ref
+    # (e.g. schema fragments under code/modules/) keep native severity.
+    from_external = bool(source) and source.startswith(EXTERNAL_PATH_PREFIXES)
 
     start = raw.get("range", {}).get("start", {})
 

@@ -328,6 +328,40 @@ class TestNormalizeFinding:
         assert finding["level"] == "error"
         assert finding["path"] == ""
 
+    def test_module_file_keeps_severity(self):
+        """Findings on repo-owned schema fragments (e.g. NAM-style
+        code/modules/<Module>/<Module>.yaml reached via $ref) keep their
+        native Spectral severity — they are actionable by the API developer."""
+        raw = {
+            **SAMPLE_SPECTRAL_FINDING,
+            "source": "code/modules/Services/Services.yaml",
+        }
+        finding = normalize_finding(raw)
+        assert finding["level"] == "error"
+        assert finding["path"] == "code/modules/Services/Services.yaml"
+
+    def test_repo_owned_top_level_file_keeps_severity(self):
+        """Any path outside the Commonalities cache prefix keeps native
+        severity, regardless of whether it sits under code/API_definitions/."""
+        raw = {
+            **SAMPLE_SPECTRAL_WARN,
+            "source": "docs/foo.yaml",
+        }
+        finding = normalize_finding(raw)
+        assert finding["level"] == "warn"
+        assert finding["path"] == "docs/foo.yaml"
+
+    def test_external_absolute_path_demotes_after_normalisation(self):
+        """The cache-prefix check runs against the repo-relative path, so
+        absolute Spectral paths that resolve under code/common/ still demote."""
+        raw = {
+            **SAMPLE_SPECTRAL_FINDING,
+            "source": "/home/runner/work/R/R/code/common/CAMARA_event_common.yaml",
+        }
+        finding = normalize_finding(raw, repo_root="/home/runner/work/R/R")
+        assert finding["level"] == "hint"
+        assert finding["path"] == "code/common/CAMARA_event_common.yaml"
+
 
 # ---------------------------------------------------------------------------
 # TestParseSpectralOutput
@@ -413,6 +447,21 @@ class TestParseSpectralOutput:
         assert len(findings) == 2
         assert findings[0]["level"] == "error"  # original API finding
         assert findings[1]["level"] == "hint"   # external finding downgraded
+
+    def test_module_finding_not_downgraded(self):
+        """Findings on repo-owned schema fragments under code/modules/
+        (e.g. NAM-style layouts reached via $ref) keep native severity
+        end-to-end through the parse pipeline."""
+        module_finding = {
+            **SAMPLE_SPECTRAL_FINDING,
+            "source": "code/modules/Services/Services.yaml",
+            "code": "owasp:api1:2023-no-numeric-ids",
+        }
+        raw = json.dumps([module_finding])
+        findings = parse_spectral_output(raw)
+        assert len(findings) == 1
+        assert findings[0]["level"] == "error"
+        assert findings[0]["path"] == "code/modules/Services/Services.yaml"
 
 
 # ---------------------------------------------------------------------------
