@@ -129,7 +129,8 @@ jobs:
               // and tidiness only — it does NOT sanitise shell metacharacters
               // such as backticks or $(). Downstream shell steps that consume
               // command_args (e.g. post-result's Resolve Reason) must pass it
-              // via env: rather than ${{ ... }} interpolation.
+              // through step-level env: rather than via GitHub Actions
+              // expression interpolation.
               const firstLine = body.split(/\r?\n/, 1)[0];
 
               if (/^\/create-snapshot(?:\s|$)/.test(body)) {
@@ -2653,9 +2654,10 @@ jobs:
           COMMAND: ${{ needs.check-trigger.outputs.command }}
           COMMAND_ARGS: ${{ needs.check-trigger.outputs.command_args }}
         run: |
-          # Pass user-supplied reason text via env (not ${{ ... }}) so backticks,
-          # $(), and other shell metacharacters in slash-command arguments are
-          # treated as opaque text, not expanded by bash.
+          # Pass user-supplied reason text via env (not via GitHub Actions
+          # expression interpolation) so backticks, $(), and other shell
+          # metacharacters in slash-command arguments are treated as opaque
+          # text, not expanded by bash.
           ARGS="$COMMAND_ARGS"
 
           # Default reason for discard/delete commands when none provided
