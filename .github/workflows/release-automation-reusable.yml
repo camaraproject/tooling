@@ -125,11 +125,11 @@ jobs:
               //
               // commandArgs is clamped to what follows on the SAME line as
               // the command. Anything after the first newline is treated
-              // as free-form context and ignored. No command consumes more
-              // than a single-token reason or a '--confirm <tag>' flag, so
-              // this also blocks shell-injection via backticks in multi-line
-              // bodies when command_args flows into downstream shell steps
-              // (e.g. post-result's Resolve Reason).
+              // as free-form context and ignored. This clamp is for length
+              // and tidiness only — it does NOT sanitise shell metacharacters
+              // such as backticks or $(). Downstream shell steps that consume
+              // command_args (e.g. post-result's Resolve Reason) must pass it
+              // via env: rather than ${{ ... }} interpolation.
               const firstLine = body.split(/\r?\n/, 1)[0];
 
               if (/^\/create-snapshot(?:\s|$)/.test(body)) {
@@ -2649,9 +2649,14 @@ jobs:
 
       - name: Resolve Reason
         id: reason
+        env:
+          COMMAND: ${{ needs.check-trigger.outputs.command }}
+          COMMAND_ARGS: ${{ needs.check-trigger.outputs.command_args }}
         run: |
-          COMMAND="${{ needs.check-trigger.outputs.command }}"
-          ARGS="${{ needs.check-trigger.outputs.command_args }}"
+          # Pass user-supplied reason text via env (not ${{ ... }}) so backticks,
+          # $(), and other shell metacharacters in slash-command arguments are
+          # treated as opaque text, not expanded by bash.
+          ARGS="$COMMAND_ARGS"
 
           # Default reason for discard/delete commands when none provided
           if [ -z "$ARGS" ] && { [ "$COMMAND" = "discard-snapshot" ] || [ "$COMMAND" = "delete-draft" ]; }; then
@@ -2662,10 +2667,13 @@ jobs:
 
       - name: Build Result Context
         id: context
+        env:
+          REASON: ${{ steps.reason.outputs.reason }}
         run: |
-          # Build delta context
+          # Build delta context — pass REASON via env to avoid shell-interpolating
+          # user-supplied text (same rationale as Resolve Reason above).
           CONTEXT=$(jq -n \
-            --arg reason "${{ steps.reason.outputs.reason }}" \
+            --arg reason "$REASON" \
             '{
               reason: $reason
             }')
