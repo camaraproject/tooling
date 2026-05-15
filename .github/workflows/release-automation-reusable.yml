@@ -26,10 +26,17 @@ on:
         required: false
         default: ""
       tooling_ref_override:
-        description: "Optional tooling checkout ref override (40-char SHA)"
+        description: >-
+          Optional tooling checkout ref override. Accepts a 40-char SHA or one
+          of the refs listed in env.ALLOWED_TOOLING_REFS (workflow-level).
         type: string
         required: false
         default: ""
+
+env:
+  # Allowlist for tooling_ref_override beyond a 40-char SHA. Comma-separated.
+  # Each consuming caller's override input must match a SHA or one of these.
+  ALLOWED_TOOLING_REFS: "main,v1-rc,hotfix"
 
 permissions:
   contents: write
@@ -288,10 +295,15 @@ jobs:
         uses: actions/github-script@v9
         env:
           TOOLING_REF_OVERRIDE: ${{ inputs.tooling_ref_override }}
+          ALLOWED_TOOLING_REFS: ${{ env.ALLOWED_TOOLING_REFS }}
         with:
           script: |
             const overrideRef = (process.env.TOOLING_REF_OVERRIDE || '').trim();
             const shaPattern = /^[0-9a-f]{40}$/i;
+            const allowedRefs = new Set(
+              (process.env.ALLOWED_TOOLING_REFS || '')
+                .split(',').map(s => s.trim()).filter(Boolean)
+            );
             const workflowRefPattern =
               /^([^/]+\/[^/]+)\/\.github\/workflows\/release-automation-reusable\.yml@.+$/;
 
@@ -330,11 +342,16 @@ jobs:
             let checkoutRefSource = 'oidc_job_workflow_sha';
 
             if (overrideRef !== '') {
-              if (!shaPattern.test(overrideRef)) {
-                core.setFailed('tooling_ref_override must be a full 40-character SHA');
+              const isSha = shaPattern.test(overrideRef);
+              const isAllowedRef = allowedRefs.has(overrideRef);
+              if (!isSha && !isAllowedRef) {
+                const allowedList = [...allowedRefs].join(', ');
+                core.setFailed(
+                  `tooling_ref_override must be a 40-character SHA or one of: ${allowedList}`
+                );
                 return;
               }
-              checkoutRef = overrideRef.toLowerCase();
+              checkoutRef = isSha ? overrideRef.toLowerCase() : overrideRef;
               checkoutRefSource = 'override';
             }
 

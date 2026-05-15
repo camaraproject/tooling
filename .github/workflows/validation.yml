@@ -14,8 +14,9 @@ on:
     inputs:
       tooling_ref_override:
         description: >-
-          40-character SHA to override the automatic tooling checkout ref.
-          Pilot / break-glass only.
+          Tooling checkout ref override. Accepts a 40-character SHA or one of
+          the refs listed in env.ALLOWED_TOOLING_REFS (workflow-level).
+          Pilot / break-glass / canary only.
         type: string
         required: false
         default: ""
@@ -33,6 +34,11 @@ on:
         type: string
         required: false
         default: ""
+
+env:
+  # Allowlist for tooling_ref_override beyond a 40-char SHA. Comma-separated.
+  # Each consuming caller's override input must match a SHA or one of these.
+  ALLOWED_TOOLING_REFS: "main,v1-rc,hotfix"
 
 permissions:
   checks: write
@@ -60,10 +66,15 @@ jobs:
         uses: actions/github-script@v9
         env:
           TOOLING_REF_OVERRIDE: ${{ inputs.tooling_ref_override }}
+          ALLOWED_TOOLING_REFS: ${{ env.ALLOWED_TOOLING_REFS }}
         with:
           script: |
             const overrideRef = (process.env.TOOLING_REF_OVERRIDE || '').trim();
             const shaPattern = /^[0-9a-f]{40}$/i;
+            const allowedRefs = new Set(
+              (process.env.ALLOWED_TOOLING_REFS || '')
+                .split(',').map(s => s.trim()).filter(Boolean)
+            );
             const workflowRefPattern =
               /^([^/]+\/[^/]+)\/\.github\/workflows\/validation\.yml@.+$/;
 
@@ -82,14 +93,20 @@ jobs:
 
             // Tier 1: Explicit override (highest priority)
             if (overrideRef) {
-              if (!shaPattern.test(overrideRef)) {
-                core.setFailed('tooling_ref_override must be a full 40-character SHA');
+              const isSha = shaPattern.test(overrideRef);
+              const isAllowedRef = allowedRefs.has(overrideRef);
+              if (!isSha && !isAllowedRef) {
+                const allowedList = [...allowedRefs].join(', ');
+                core.setFailed(
+                  `tooling_ref_override must be a 40-character SHA or one of: ${allowedList}`
+                );
                 return;
               }
+              const ref = isSha ? overrideRef.toLowerCase() : overrideRef;
               core.setOutput('tooling_checkout_repo', 'camaraproject/tooling');
-              core.setOutput('tooling_checkout_ref', overrideRef.toLowerCase());
+              core.setOutput('tooling_checkout_ref', ref);
               core.setOutput('tooling_ref_source', 'override');
-              core.info(`Tooling ref: override ${overrideRef.substring(0, 7)}`);
+              core.info(`Tooling ref: override ${isSha ? overrideRef.substring(0, 7) : overrideRef}`);
               return;
             }
 
