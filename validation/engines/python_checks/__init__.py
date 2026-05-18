@@ -6,7 +6,6 @@ from __future__ import annotations
 
 from ._types import CheckDescriptor, CheckScope
 
-from .changelog_checks import check_changelog_format
 from .error_code_checks import check_conflict_deprecated, check_contextcode_format
 from .filename_checks import check_filename_kebab_case, check_filename_matches_api_name
 from .metadata_checks import check_commonalities_version
@@ -59,7 +58,6 @@ CHECKS: list[CheckDescriptor] = [
     # --- Repo-level checks (run once) ---
     CheckDescriptor("check-test-directory-exists", CheckScope.REPO, check_test_directory_exists),
     CheckDescriptor("check-release-plan-semantics", CheckScope.REPO, check_release_plan_semantics),
-    CheckDescriptor("check-changelog-format", CheckScope.REPO, check_changelog_format),
     CheckDescriptor("check-readme-placeholder-removal", CheckScope.REPO, check_readme_placeholder_removal),
     CheckDescriptor("check-release-review-file-restriction", CheckScope.REPO, check_release_review_file_restriction),
     CheckDescriptor("check-orphan-api-definitions", CheckScope.REPO, check_orphan_api_definitions),
