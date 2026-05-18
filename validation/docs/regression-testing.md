@@ -334,8 +334,8 @@ Rules **not** covered by any broken-spec branch:
 - **Owned by the baseline fixture**: P-006, S-211, S-313, S-314, S-316.
   Broken-spec branches inherit these when captured, but do not own the
   pinning — they would double-count.
-- **Un-triggerable via spec edits**: P-009, P-010, P-011, P-012, P-013,
-  P-019 (release-plan / PR-context / fixture-dependent).
+- **Un-triggerable via spec edits**: P-009, P-011, P-012, P-013, P-019
+  (release-plan / PR-context / fixture-dependent).
 - **Branch-type dependent — silent on feature branches**: P-003
   (`check-info-version-format`) and P-007 (`check-test-file-version`)
   early-return unless `branch_type` is `main`, `release`, or

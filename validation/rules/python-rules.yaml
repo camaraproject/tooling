@@ -122,13 +122,9 @@
   conditional_level:
     default: error
 
-# P-010: check-changelog-format
-- id: P-010
-  engine: python
-  engine_rule: check-changelog-format
-  short_title: "CHANGELOG.md or CHANGELOG/ is required"
-  conditional_level:
-    default: warn
+# P-010 (check-changelog-format) retired — no Commonalities / Design Guide
+# foundation; the per-API CHANGELOG structure is now produced automatically by
+# the release-automation snapshot step. See tooling#208.
 
 # P-011: check-commonalities-version (DG-028 rewrite)
 # Validates info.x-camara-commonalities presence and version format.
