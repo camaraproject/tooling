@@ -205,9 +205,11 @@ Per-sample content:
 
 | Sample | Auth | §3.2.3 | §3.2.4 | Appendix A |
 |---|---|---|---|---|
-| `sample-service.yaml` | yes | yes | yes | `device` variant (illustrative) |
-| `sample-service-subscriptions.yaml` | yes | yes | yes | `device` variant |
-| `sample-implicit-events.yaml` | yes | yes | yes | none (event-only specification) |
+| `sample-service.yaml` | yes | yes | yes | `device` variant (the sample's `CreateResource` / `Resource` schemas reference the canonical `Device` schema) |
+| `sample-service-subscriptions.yaml` | yes | yes | yes | none (`SubscriptionRequest` takes sink / protocol / types / config; no `device` or `phoneNumber` subject identifier) |
+| `sample-implicit-events.yaml` | yes | yes | yes | `device` variant (the sample's `CreateResource` / `Resource` schemas reference the canonical `Device` schema) |
+
+Appendix A inclusion follows the sample's data model: a sample carries the device variant only when it actually models a `device` (or, in a future sample, `phoneNumber`) subject identifier; otherwise the block is omitted with a short note in the sample's `info.description` explaining why.
 
 ---
 
