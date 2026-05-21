@@ -353,3 +353,100 @@
   short_title: "Feature-step URL version segment wrong"
   conditional_level:
     default: error
+
+# P-026..P-030: mandatory info.description content validation.
+#
+# Five rules emitted by a single check function (check_info_description_templates)
+# in info_description_checks.py.  Only P-026's engine_rule is registered as a
+# CheckDescriptor — P-027..P-030 are satellite engine_rule values discovered
+# via emitted findings, same pattern as P-024 alongside P-007.
+#
+# Activation gated commonalities_release >= r4.3 at the rule-metadata layer.
+# Mechanism design: validation/docs/CAMARA-Validation-Framework-Info-Description-Design.md
+
+# P-026: a universal template's BEGIN/END pair is absent from info.description.
+- id: P-026
+  engine: python
+  engine_rule: check-info-description-mandatory-missing
+  short_title: "Mandatory info.description template missing"
+  applicability:
+    commonalities_release: ">=r4.3"
+  conditional_level:
+    default: warn
+    overrides:
+      - condition:
+          target_api_status: [alpha]
+        level: hint
+      - condition:
+          target_api_status: [public]
+        level: error
+  suggestion: >-
+    Paste the missing BEGIN..END block from
+    code/common/info-description-templates.yaml under the template name
+    reported in the message into info.description.
+
+# P-027: a template's delimiter pair is present but content has drifted
+# from canonical (paragraph-normalised diff).
+- id: P-027
+  engine: python
+  engine_rule: check-info-description-mandatory-drift
+  short_title: "info.description mandatory template content drift"
+  applicability:
+    commonalities_release: ">=r4.3"
+  conditional_level:
+    default: warn
+    overrides:
+      - condition:
+          target_api_status: [alpha]
+        level: hint
+      - condition:
+          target_api_status: [public]
+        level: error
+  suggestion: >-
+    Re-copy the BEGIN..END block from
+    code/common/info-description-templates.yaml to replace the drifted
+    content; the message identifies the first differing paragraph.
+
+# P-028: the same template name's BEGIN/END pair appears more than once
+# in info.description.  Always error — duplicate templates are a clear
+# authoring mistake regardless of API status.
+- id: P-028
+  engine: python
+  engine_rule: check-info-description-mandatory-duplicate
+  short_title: "Duplicate info.description mandatory template"
+  applicability:
+    commonalities_release: ">=r4.3"
+  conditional_level:
+    default: error
+  suggestion: >-
+    Remove the duplicate occurrences; each mandatory template appears at
+    most once in info.description.
+
+# P-029: a delimiter uses a template name not in the canonical catalog,
+# or marker pairs are unbalanced (BEGIN without END, etc.).  Warning —
+# the rule cannot infer whether the codeowner meant a different template
+# or intended a different mechanism entirely.
+- id: P-029
+  engine: python
+  engine_rule: check-info-description-mandatory-unknown-template-name
+  short_title: "Unknown info.description mandatory template name"
+  applicability:
+    commonalities_release: ">=r4.3"
+  conditional_level:
+    default: warn
+
+# P-030: info.description uses YAML folded scalar (>, >-, >+).  Folded
+# scalars collapse line breaks into spaces, flattening the BEGIN/END
+# markers into paragraphs and silencing the other four rules.  Warning,
+# always — independent of target_api_status.
+- id: P-030
+  engine: python
+  engine_rule: check-info-description-folded-scalar
+  short_title: "info.description uses YAML folded scalar"
+  applicability:
+    commonalities_release: ">=r4.3"
+  conditional_level:
+    default: warn
+  suggestion: >-
+    Change 'description: >' to 'description: |' so line-anchored
+    mandatory-template markers survive YAML parsing.

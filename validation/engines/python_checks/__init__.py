@@ -8,6 +8,7 @@ from ._types import CheckDescriptor, CheckScope
 
 from .error_code_checks import check_conflict_deprecated, check_contextcode_format
 from .filename_checks import check_filename_kebab_case, check_filename_matches_api_name
+from .info_description_checks import check_info_description_templates
 from .metadata_checks import check_commonalities_version
 from .readme_checks import check_readme_placeholder_removal
 from .common_cache_checks import check_common_cache_sync
@@ -55,6 +56,11 @@ CHECKS: list[CheckDescriptor] = [
     CheckDescriptor("check-cloudevent-via-ref", CheckScope.API, check_cloudevent_via_ref),
     CheckDescriptor("check-conflict-deprecated", CheckScope.API, check_conflict_deprecated),
     CheckDescriptor("check-contextcode-format", CheckScope.API, check_contextcode_format),
+    CheckDescriptor(
+        "check-info-description-mandatory-missing",
+        CheckScope.API,
+        check_info_description_templates,
+    ),
     # --- Repo-level checks (run once) ---
     CheckDescriptor("check-test-directory-exists", CheckScope.REPO, check_test_directory_exists),
     CheckDescriptor("check-release-plan-semantics", CheckScope.REPO, check_release_plan_semantics),
