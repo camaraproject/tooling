@@ -197,6 +197,15 @@
 
 # P-016: check-sinkcredential-not-in-response (DG-092)
 # sinkCredential must not appear in subscription 2xx response schemas.
+#
+# 2026-05-23 MUTED pending Commonalities#638. r4.3 introduced a
+# partial-disclosure model for sinkCredential in Commonalities#633 —
+# secret fields are kept out of responses via per-field `writeOnly: true`,
+# non-secret client-configuration fields are exchanged bidirectionally.
+# The current blanket-ban shape is too broad. Re-enable (drop the muted
+# default) if §2.2.3 is restored, or replace with a per-field writeOnly
+# check if §4.3.1 wins. Tracked in tooling#297. Same mute pattern as
+# S-314 / S-316 vs Commonalities#615.
 - id: P-016
   engine: python
   engine_rule: check-sinkcredential-not-in-response
@@ -204,7 +213,7 @@
   applicability:
     api_pattern: [explicit-subscription]
   conditional_level:
-    default: error
+    default: muted
 
 # P-017: check-conflict-deprecated (DG-018)
 # CONFLICT error code is deprecated in Commonalities r4.x.
