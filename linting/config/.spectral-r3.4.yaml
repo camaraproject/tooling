@@ -196,7 +196,7 @@ rules:
     description: |
       This Spectral rule ensures that each propoerty within objects in the API specification has a descriptive and meaningful description.
     given:
-      - "$.components.*.*"
+      - "$.components[examples,headers,links,parameters,pathItems,requestBodies,responses,schemas,securitySchemes].*"
       - "$.components.*.*.properties.*"
     then:
       field: description
