@@ -18,7 +18,7 @@ summary:
   total_gap: 0
   total_manual: 25
   total_pending: 0
-  total_tested: 84
+  total_tested: 89
   by_engine:
     spectral: 85
     gherkin: 25
@@ -316,6 +316,11 @@ tested_rules:
   P-015: [regression/r4.2-broken-spec-subscriptions]
   P-016: [regression/r4.2-broken-spec-subscriptions]
   P-020: [regression/r4.2-broken-spec-subscriptions]
+  P-026: [regression/r4.3-broken-spec-info-description-mandatory]
+  P-027: [regression/r4.3-broken-spec-info-description-mandatory]
+  P-028: [regression/r4.3-broken-spec-info-description-mandatory]
+  P-029: [regression/r4.3-broken-spec-info-description-mandatory]
+  P-030: [regression/r4.3-broken-spec-info-description-mandatory]
   S-002: [regression/r4.2-broken-spec-routing]
   S-003: [regression/r4.2-broken-spec-routing]
   S-005: [regression/r4.2-broken-spec-yaml-fundamentals]
