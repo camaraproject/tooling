@@ -2,7 +2,7 @@
 #
 # Complete inventory of all known validation rules across all sources.
 # Core set rules have metadata entries in *-rules.yaml files.
-# Gap and manual rules are tracked here for WS07 implementation.
+# Gap and manual rules are tracked here for follow-up implementation.
 #
 # Status values:
 #   implemented — metadata in *-rules.yaml, engine check active
@@ -33,12 +33,12 @@ summary:
 #      yamllint-rules.yaml
 
 # ---------------------------------------------------------------------------
-# Gap rules — documented but not implemented (WS07 scope)
+# Gap rules — documented but not yet implemented
 # ---------------------------------------------------------------------------
-# Source: private-dev-docs/validation-framework/reviews/commonalities-design-guide-audit.md
+# Source: https://github.com/camaraproject/ReleaseManagement/blob/main/documentation/SupportingDocuments/CAMARA-Validation-Framework-Design-Guide-Audit.md
 
 gap_rules:
-  # Spectral gaps — implemented in Phase 2a
+  # Spectral gaps — implemented
   - audit_id: DG-003
     description: date-time description RFC 3339 format
     target_engine: spectral
@@ -135,7 +135,7 @@ gap_rules:
     status: implemented
     rule_id: S-035
 
-  # Python gaps — implemented in Phase 2b
+  # Python gaps — implemented
   - audit_id: DG-011
     description: contextCode SCREAMING_SNAKE_CASE format (r4.x)
     target_engine: python
@@ -283,17 +283,17 @@ proposed_changes:
 # ---------------------------------------------------------------------------
 
 pending_rules:
-  # OWASP rules (tooling#95) implemented in WS07 Phase 1b — see spectral-rules.yaml S-300..S-319
+  # OWASP rules (tooling#95) implemented — see spectral-rules.yaml S-300..S-319
   # S-300 (owasp:api1:2023-no-numeric-ids) retired — replaced by S-037 in the
   # custom-rule range. See tooling#282.
 
 # ---------------------------------------------------------------------------
 # Manual rules — require human judgment
 # ---------------------------------------------------------------------------
-# Source: private-dev-docs/validation-framework/reviews/testing-guidelines-audit.md
+# Source: https://github.com/camaraproject/ReleaseManagement/blob/main/documentation/SupportingDocuments/CAMARA-Validation-Framework-Testing-Guidelines-Audit.md
 
 # ---------------------------------------------------------------------------
-# Tested rules — verified via regression branches (WS07 Phase 3)
+# Tested rules — verified via regression branches
 # ---------------------------------------------------------------------------
 # Updated as regression branches verify rules. Each rule lists the branches
 # where its expected behaviour is pinned by a regression-expected.yaml
