@@ -142,7 +142,7 @@ tooling/
 ## Release Information
 
 * **`v1-rc`** — lightweight tag covering the validation and release automation framework v1 release candidate; promoted to `v1` (release 1.0.0) at GA
-* **`v0`** — floating tag tracking the latest v0.x release ([v0.3.0](https://github.com/camaraproject/tooling/releases/tag/v0.3.0))
+* **`v0`** — floating tag tracking the latest v0.x release
 * **`main`** — active development; carries both the v0 linting line and the v1-rc framework
 
 ## Contributing
