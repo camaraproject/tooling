@@ -2352,40 +2352,48 @@ jobs:
           git config user.name "${{ steps.sync-bot-identity.outputs.bot_name }}"
           git config user.email "${{ steps.sync-bot-identity.outputs.bot_email }}"
 
-          # Check if branch already exists on remote
-          if git ls-remote --heads origin "$SYNC_BRANCH" | grep -q .; then
-            # Existing branch — update it
-            git fetch origin "$SYNC_BRANCH"
-            git checkout "$SYNC_BRANCH"
-            git add code/common/
-            if git diff --cached --quiet; then
-              echo "No changes to commit on existing sync branch"
-              EXISTING_PR=$(gh pr list --head "$SYNC_BRANCH" --state open --json url --jq '.[0].url' 2>/dev/null || true)
-              echo "sync_pr_url=$EXISTING_PR" >> $GITHUB_OUTPUT
-              echo "sync_pr_number=" >> $GITHUB_OUTPUT
-              echo "sync_status=up_to_date" >> $GITHUB_OUTPUT
-              exit 0
-            fi
-            git commit -m "chore: update common file cache for Commonalities ${COMMONALITIES_RELEASE}"
-            git push origin "$SYNC_BRANCH"
-            EXISTING_PR=$(gh pr list --head "$SYNC_BRANCH" --state open --json url --jq '.[0].url' 2>/dev/null || true)
-            echo "sync_pr_url=$EXISTING_PR" >> $GITHUB_OUTPUT
-            echo "sync_status=updated" >> $GITHUB_OUTPUT
-          else
-            # New branch
-            git checkout -b "$SYNC_BRANCH"
-            git add code/common/
-            if git diff --cached --quiet; then
-              echo "No changes to commit"
-              echo "sync_status=no_changes" >> $GITHUB_OUTPUT
-              exit 0
-            fi
-            git commit -m "chore: sync common files from Commonalities ${COMMONALITIES_RELEASE}"
-            git push origin "$SYNC_BRANCH"
+          # Release Automation owns the sync-common branch: rebuild it from the
+          # current main HEAD on every run (dependabot model), carrying the
+          # freshly-synced code/common content already staged in the working tree.
+          # -B resets the branch ref at HEAD and keeps those working-tree changes,
+          # avoiding the overwrite abort that a plain checkout of an existing
+          # branch hits against the already-modified files.
+          git checkout -B "$SYNC_BRANCH"
 
-            # Create PR. Body assembled via heredoc so markdown has no
-            # YAML-run-block indent leaking into the rendered PR description.
-            PR_BODY=$(cat <<EOF
+          git add code/common/
+          if git diff --cached --quiet; then
+            echo "code/common already matches Commonalities ${COMMONALITIES_RELEASE}; nothing to sync"
+            echo "sync_pr_url=" >> $GITHUB_OUTPUT
+            echo "sync_pr_number=" >> $GITHUB_OUTPUT
+            echo "sync_status=no_changes" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          git commit -m "chore: sync common files from Commonalities ${COMMONALITIES_RELEASE}"
+
+          # Force-push: the branch is reset to main HEAD each run, so it is not a
+          # fast-forward of any pre-existing remote branch. RA is the sole owner.
+          git push --force origin "$SYNC_BRANCH"
+
+          # Ensure exactly one open sync PR. The branch may have pre-existed with
+          # its PR already closed (e.g. a codeowner closed it but left the branch),
+          # so reuse an open PR if present, otherwise (re)create one.
+          EXISTING_PR=$(gh pr list --head "$SYNC_BRANCH" --state open --json url --jq '.[0].url' 2>/dev/null || true)
+          if [ -n "$EXISTING_PR" ]; then
+            echo "Reusing open sync PR: $EXISTING_PR"
+            echo "sync_pr_url=$EXISTING_PR" >> $GITHUB_OUTPUT
+            echo "sync_pr_number=$(echo "$EXISTING_PR" | grep -oE '[0-9]+$')" >> $GITHUB_OUTPUT
+            echo "sync_status=updated" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # Create PR. Body assembled via heredoc so markdown has no
+          # YAML-run-block indent leaking into the rendered PR description.
+          PR_BODY=$(cat <<EOF
+          > [!WARNING]
+          > This branch is owned by Release Automation and is rebuilt from \`main\` on every run.
+          > **Do not commit fixes to this branch** — any commits here are overwritten the next time the sync runs.
+
           Automated sync of \`code/common/\` files from \`camaraproject/Commonalities\` at release tag \`${COMMONALITIES_RELEASE}\`.
 
           This PR was created by release automation because the cached Commonalities files were out of sync with the declared dependency in \`release-plan.yaml\`.
@@ -2394,27 +2402,34 @@ jobs:
           - Updated files in \`code/common/\` to match Commonalities ${COMMONALITIES_RELEASE}
           - Added/updated \`.sync-manifest.yaml\` with file integrity hashes
 
-          **Action required:** Review and merge this PR. The \`/create-snapshot\` command will be blocked until common files are in sync.
+          **How to handle this PR:**
+          - **Validation green** — review and merge.
+          - **Validation red** — choose one:
+            - *(recommended)* fix the errors on \`main\`, then re-trigger the sync; this PR is rebuilt from the new \`main\` HEAD with the corrected content.
+            - merge this PR with the errors and fix them on \`main\` afterwards.
+
+          To re-trigger the sync, run the **CAMARA Release Automation** workflow from the repository's **Actions** tab.
+
+          \`/create-snapshot\` is blocked until common files are in sync.
           EOF
           )
-            PR_URL=$(gh pr create \
-              --title "Sync common files from Commonalities ${COMMONALITIES_RELEASE}" \
-              --body "$PR_BODY" \
-              --head "$SYNC_BRANCH" \
-              --base main) || {
-              echo "::error::Failed to create sync PR"
-              echo "sync_status=failed" >> $GITHUB_OUTPUT
-              exit 0
-            }
+          PR_URL=$(gh pr create \
+            --title "Sync common files from Commonalities ${COMMONALITIES_RELEASE}" \
+            --body "$PR_BODY" \
+            --head "$SYNC_BRANCH" \
+            --base main) || {
+            echo "::error::Failed to create sync PR"
+            echo "sync_status=failed" >> $GITHUB_OUTPUT
+            exit 0
+          }
 
-            PR_NUMBER=$(echo "$PR_URL" | grep -oE '[0-9]+$')
-            gh pr edit "$PR_NUMBER" --add-label "common-sync" --add-label "automated" 2>/dev/null || true
+          PR_NUMBER=$(echo "$PR_URL" | grep -oE '[0-9]+$')
+          gh pr edit "$PR_NUMBER" --add-label "common-sync" --add-label "automated" 2>/dev/null || true
 
-            echo "sync_pr_url=$PR_URL" >> $GITHUB_OUTPUT
-            echo "sync_pr_number=$PR_NUMBER" >> $GITHUB_OUTPUT
-            echo "sync_status=created" >> $GITHUB_OUTPUT
-            echo "Sync PR created: $PR_URL"
-          fi
+          echo "sync_pr_url=$PR_URL" >> $GITHUB_OUTPUT
+          echo "sync_pr_number=$PR_NUMBER" >> $GITHUB_OUTPUT
+          echo "sync_status=created" >> $GITHUB_OUTPUT
+          echo "Sync PR created: $PR_URL"
 
       # ── End common file cache sync ────────────────────────────────────────
 
