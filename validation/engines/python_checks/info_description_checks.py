@@ -1,4 +1,4 @@
-"""Mandatory ``info.description`` content validation (P-026..P-030).
+"""Mandatory ``info.description`` content validation (P-026..P-031).
 
 Enforces the BEGIN/END marker mechanism described in
 ``validation/docs/CAMARA-Validation-Framework-Info-Description-Design.md``.
@@ -10,13 +10,14 @@ the mandatory text that an API spec MUST embed verbatim between
 ``<!-- CAMARA:MANDATORY:<template-name>:END -->`` markers inside its
 ``info.description``.
 
-A single function emits findings under five distinct ``engine_rule`` values:
+A single function emits findings under six distinct ``engine_rule`` values:
 
 * ``check-info-description-mandatory-missing`` (P-026, universal templates only)
 * ``check-info-description-mandatory-drift`` (P-027)
 * ``check-info-description-mandatory-duplicate`` (P-028)
 * ``check-info-description-mandatory-unknown-template-name`` (P-029)
 * ``check-info-description-folded-scalar`` (P-030)
+* ``check-info-description-canonical-missing`` (P-031)
 
 Only the first is registered as a :class:`CheckDescriptor` — the others are
 satellite ``engine_rule`` values that the post-filter maps to their own
@@ -65,6 +66,7 @@ _RULE_DRIFT = "check-info-description-mandatory-drift"
 _RULE_DUPLICATE = "check-info-description-mandatory-duplicate"
 _RULE_UNKNOWN = "check-info-description-mandatory-unknown-template-name"
 _RULE_FOLDED = "check-info-description-folded-scalar"
+_RULE_CANONICAL_MISSING = "check-info-description-canonical-missing"
 
 
 # ---------------------------------------------------------------------------
@@ -337,15 +339,15 @@ def check_info_description_templates(
     API-scoped (one invocation per API in ``context.apis``; the adapter
     narrows ``context.apis`` to a single API before calling).
 
-    Returns findings tagged with five distinct ``engine_rule`` values
+    Returns findings tagged with six distinct ``engine_rule`` values
     (see module docstring).  Returns ``[]`` when:
 
-    * the canonical file is absent (resolver safety; the
-      ``commonalities_release >= r4.3`` applicability gate in rule metadata
-      is the primary scope filter)
     * the spec file is absent
     * the spec lacks ``info.description`` entirely (covered by built-in
       OAS rule S-201 ``info-description``)
+
+    When the canonical file is absent or unreadable, emits a warning so
+    r4.3+ branches do not silently skip the template validation family.
     """
     if not context.apis:
         return []
@@ -356,7 +358,22 @@ def check_info_description_templates(
 
     canonical = _load_canonical(repo_path)
     if canonical is None:
-        return []
+        return [
+            make_finding(
+                engine_rule=_RULE_CANONICAL_MISSING,
+                level="warn",
+                message=(
+                    f"Cannot validate mandatory info.description templates "
+                    f"because {_CANONICAL_REL_PATH!r} is missing or "
+                    f"unreadable. The common-file sync must provide this "
+                    f"file before P-026..P-030 can check mandatory "
+                    f"info.description blocks."
+                ),
+                path=api.spec_file,
+                line=1,
+                api_name=api.api_name,
+            )
+        ]
 
     try:
         spec = yaml.safe_load(spec_path.read_text(encoding="utf-8"))
