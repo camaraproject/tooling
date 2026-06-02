@@ -22,7 +22,15 @@ from validation.postfilter.engine import PostFilterResult
 from .formatting import count_findings, format_rule_label
 
 # TSV columns (header row + per-finding rows).
-_TSV_COLUMNS = ("rule", "file", "line", "level", "message", "suggestion")
+_TSV_COLUMNS = (
+    "rule",
+    "file",
+    "line",
+    "level",
+    "message",
+    "suggestion",
+    "documentation_url",
+)
 
 logger = logging.getLogger(__name__)
 
@@ -138,6 +146,7 @@ def _write_findings_tsv(findings: List[dict], path: Path) -> None:
             f.get("level", "") or "",
             f.get("message", "") or "",
             f.get("suggestion", "") or "",
+            f.get("documentation_url", "") or "",
         )
         lines.append("\t".join(_sanitize_tsv_field(v) for v in row))
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")

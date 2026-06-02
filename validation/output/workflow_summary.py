@@ -167,7 +167,8 @@ def _group_by_rule(findings: List[dict]) -> "Dict[str, List[dict]]":
 
 
 def _render_rule_block(rule_id: str, findings: List[dict]) -> str:
-    """Render one rule's block: bold subject line, bullets, suggestion.
+    """Render one rule's block: bold subject line, bullets, suggestion,
+    and an optional documentation link.
 
     Spacing is intentional: no blank lines inside the block, so the
     bullet list stays tight in the GitHub-flavoured Markdown renderer.
@@ -189,6 +190,14 @@ def _render_rule_block(rule_id: str, findings: List[dict]) -> str:
         out.append(f"> Suggestion: {suggestion_lines[0]}")
         for cont in suggestion_lines[1:]:
             out.append(f"> {cont}")
+
+    # Documentation link rendered once per rule block (all findings in the
+    # block share the rule, so the URL is identical).  Deliberately kept
+    # out of annotations, where Markdown/HTML links do not render as short
+    # clickable text — see issue 015.
+    documentation_url = (findings[0].get("documentation_url") or "").strip()
+    if documentation_url:
+        out.append(f"> Details: [Validation FAQ]({documentation_url})")
 
     return "\n".join(out)
 

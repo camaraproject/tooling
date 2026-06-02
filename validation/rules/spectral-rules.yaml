@@ -15,6 +15,7 @@
   engine: spectral
   engine_rule: camara-get-no-request-body
   short_title: "GET / DELETE must not have a request body"
+  documentation_url: "https://github.com/camaraproject/tooling/blob/main/documentation/validation/faq.md#s-002-get-delete-request-body"
 
 - id: S-003
   engine: spectral
@@ -269,6 +270,7 @@
   engine_rule: oas3-unused-component
   short_title: "Component may be unused"
   suggestion: "Spectral does not follow discriminator mappings — verify the schema is truly unused."
+  documentation_url: "https://github.com/camaraproject/tooling/blob/main/documentation/validation/faq.md#s-211-unused-component"
   conditional_level:
     default: hint
 
@@ -326,6 +328,7 @@
   engine: spectral
   engine_rule: operation-tag-defined
   short_title: "Operation tag not defined in tags list"
+  documentation_url: "https://github.com/camaraproject/tooling/blob/main/documentation/validation/faq.md#s-222-operation-tag"
 
 - id: S-223
   engine: spectral

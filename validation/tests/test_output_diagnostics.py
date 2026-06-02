@@ -156,7 +156,9 @@ class TestFindingsTsv:
         write_diagnostics(_make_result(), _make_context(), out)
         text = (out / "findings.tsv").read_text(encoding="utf-8")
         first_line = text.splitlines()[0]
-        assert first_line == "rule\tfile\tline\tlevel\tmessage\tsuggestion"
+        assert first_line == (
+            "rule\tfile\tline\tlevel\tmessage\tsuggestion\tdocumentation_url"
+        )
 
     def test_row_per_finding(self, tmp_path: Path):
         findings = [
@@ -210,9 +212,9 @@ class TestFindingsTsv:
         write_diagnostics(_make_result(findings), _make_context(), out)
         text = (out / "findings.tsv").read_text(encoding="utf-8")
         # Tab inside the message must be flattened to a single space —
-        # the row must still split into exactly 6 columns on `\t`.
+        # the row must still split into exactly 7 columns on `\t`.
         data_row = text.splitlines()[1]
-        assert data_row.count("\t") == 5
+        assert data_row.count("\t") == 6
         assert "left right" in data_row
 
     def test_newline_in_field_sanitized(self, tmp_path: Path):
@@ -244,7 +246,9 @@ class TestFindingsTsv:
         # Header only.
         rows = [line for line in text.splitlines() if line.strip()]
         assert len(rows) == 1
-        assert rows[0] == "rule\tfile\tline\tlevel\tmessage\tsuggestion"
+        assert rows[0] == (
+            "rule\tfile\tline\tlevel\tmessage\tsuggestion\tdocumentation_url"
+        )
 
     def test_missing_optional_fields(self, tmp_path: Path):
         # Finding without `suggestion` field — TSV row writes empty string.
@@ -264,6 +268,33 @@ class TestFindingsTsv:
         write_diagnostics(_make_result(findings), _make_context(), out)
         text = (out / "findings.tsv").read_text(encoding="utf-8")
         data_row = text.splitlines()[1]
-        # 5 tabs → 6 columns, last column (suggestion) is empty.
-        assert data_row.count("\t") == 5
-        assert data_row.endswith("msg\t")
+        # 6 tabs → 7 columns; suggestion and documentation_url both empty.
+        assert data_row.count("\t") == 6
+        assert data_row.endswith("msg\t\t")
+
+    def test_documentation_url_column(self, tmp_path: Path):
+        url = (
+            "https://github.com/camaraproject/tooling/blob/main/"
+            "documentation/validation/faq.md#s-042-example"
+        )
+        findings = [
+            {
+                "engine": "spectral",
+                "engine_rule": "camara-x",
+                "rule_id": "S-042",
+                "level": "error",
+                "message": "Bad path",
+                "path": "spec.yaml",
+                "line": 47,
+                "api_name": None,
+                "blocks": True,
+                "suggestion": "Use kebab-case",
+                "documentation_url": url,
+            }
+        ]
+        out = tmp_path / "output"
+        write_diagnostics(_make_result(findings), _make_context(), out)
+        text = (out / "findings.tsv").read_text(encoding="utf-8")
+        data_row = text.splitlines()[1]
+        assert data_row.endswith(f"\t{url}")
+        assert data_row.count("\t") == 6

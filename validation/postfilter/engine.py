@@ -111,7 +111,8 @@ def _enrich_finding(
     When *message_override* is set, the finding's message is replaced.
     When *suggestion* is set, it is added to the finding as additional
     guidance.  When neither is set, the engine's original message is
-    preserved and no suggestion is added.
+    preserved and no suggestion is added.  When *documentation_url* is
+    set, it is added so downstream surfaces can link to deeper guidance.
     """
     enriched = dict(finding)
     enriched["rule_id"] = rule.id
@@ -123,6 +124,8 @@ def _enrich_finding(
         enriched["suggestion"] = rule.suggestion
     if rule.short_title is not None:
         enriched["short_title"] = rule.short_title
+    if rule.documentation_url is not None:
+        enriched["documentation_url"] = rule.documentation_url
     return enriched
 
 
