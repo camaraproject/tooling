@@ -193,8 +193,9 @@ def _render_rule_block(rule_id: str, findings: List[dict]) -> str:
 
     # Documentation link rendered once per rule block (all findings in the
     # block share the rule, so the URL is identical).  Deliberately kept
-    # out of annotations, where Markdown/HTML links do not render as short
-    # clickable text — see issue 015.
+    # out of annotations: a GitHub Actions annotation-rendering probe
+    # showed Markdown/HTML links there do not render as short clickable
+    # text (see ReleaseManagement#555).
     documentation_url = (findings[0].get("documentation_url") or "").strip()
     if documentation_url:
         out.append(f"> Details: [Validation FAQ]({documentation_url})")
