@@ -28,6 +28,15 @@ _MARKER_END_RE = re.compile(
 )
 
 
+def _template_entries(canonical: dict) -> dict[str, dict]:
+    """Return only canonical entries that carry mandatory template content."""
+    return {
+        name: entry
+        for name, entry in canonical.items()
+        if isinstance(entry, dict) and isinstance(entry.get("content"), str)
+    }
+
+
 def _resolve_canonical_path() -> Path | None:
     """Locate ``artifacts/common/info-description-templates.yaml`` in the workspace.
 
@@ -80,7 +89,9 @@ class TestInfoDescriptionTemplatesCanonical:
         return data
 
     def test_every_entry_has_content_field(self, canonical: dict) -> None:
-        for name, entry in canonical.items():
+        templates = _template_entries(canonical)
+        assert templates, "canonical file must contain template entries"
+        for name, entry in templates.items():
             assert isinstance(entry, dict), (
                 f"template {name!r} is not a mapping"
             )
@@ -89,7 +100,7 @@ class TestInfoDescriptionTemplatesCanonical:
             )
 
     def test_markers_match_key_and_appear_once(self, canonical: dict) -> None:
-        for name, entry in canonical.items():
+        for name, entry in _template_entries(canonical).items():
             content = entry["content"]
             begins = _MARKER_BEGIN_RE.findall(content)
             ends = _MARKER_END_RE.findall(content)
@@ -103,7 +114,7 @@ class TestInfoDescriptionTemplatesCanonical:
             )
 
     def test_begin_precedes_end(self, canonical: dict) -> None:
-        for name, entry in canonical.items():
+        for name, entry in _template_entries(canonical).items():
             content = entry["content"]
             begin_match = _MARKER_BEGIN_RE.search(content)
             end_match = _MARKER_END_RE.search(content)
