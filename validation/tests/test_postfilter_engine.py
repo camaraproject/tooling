@@ -116,6 +116,7 @@ def _minimal_rule(
     applicability: dict | None = None,
     overrides: list[dict] | None = None,
     short_title: str | None = None,
+    documentation_url: str | None = None,
 ) -> dict:
     """Build a rule with conditional_level (full behavior)."""
     rule: dict = {
@@ -134,6 +135,8 @@ def _minimal_rule(
         rule["conditional_level"]["overrides"] = overrides
     if short_title is not None:
         rule["short_title"] = short_title
+    if documentation_url is not None:
+        rule["documentation_url"] = documentation_url
     return rule
 
 
@@ -294,6 +297,37 @@ class TestRunPostFilter:
         assert f["short_title"] == "Path must be kebab-case"
         # Message is untouched — short_title supplements, never replaces.
         assert f["message"] == "Original msg"
+
+    def test_documentation_url_propagated_to_finding(self, tmp_path: Path):
+        """documentation_url in metadata is copied onto the enriched finding."""
+        url = (
+            "https://github.com/camaraproject/tooling/blob/main/"
+            "documentation/validation/faq.md#s-001-example"
+        )
+        _write_rules(tmp_path, [
+            _minimal_rule(
+                id="S-001",
+                engine_rule="some-rule",
+                documentation_url=url,
+            )
+        ])
+        ctx = _make_context(profile="standard")
+        findings = [_make_finding(message="Original msg")]
+        result = run_post_filter(findings, ctx, tmp_path)
+
+        f = result.findings[0]
+        assert f["documentation_url"] == url
+
+    def test_no_documentation_url_when_unset(self, tmp_path: Path):
+        """A rule without documentation_url leaves the field off the finding."""
+        _write_rules(tmp_path, [
+            _minimal_rule(id="S-001", engine_rule="some-rule")
+        ])
+        ctx = _make_context(profile="standard")
+        findings = [_make_finding(message="Original msg")]
+        result = run_post_filter(findings, ctx, tmp_path)
+
+        assert "documentation_url" not in result.findings[0]
 
     def test_applicability_filters_finding(self, tmp_path: Path):
         """Non-applicable findings are silently removed."""

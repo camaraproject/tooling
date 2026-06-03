@@ -53,6 +53,7 @@ def _make_finding(
     rule_id: str | None = None,
     engine_rule: str = "some-rule",
     suggestion: str | None = None,
+    documentation_url: str | None = None,
 ) -> dict:
     f: dict = {
         "engine": "spectral",
@@ -68,6 +69,8 @@ def _make_finding(
         f["rule_id"] = rule_id
     if suggestion is not None:
         f["suggestion"] = suggestion
+    if documentation_url is not None:
+        f["documentation_url"] = documentation_url
     return f
 
 
@@ -400,6 +403,41 @@ class TestFindingsSection:
         assert "> Suggestion: first line" in sr.markdown
         assert "> second line" in sr.markdown
         assert "> third line" in sr.markdown
+
+    def test_documentation_url_renders_details_link(self):
+        url = (
+            "https://github.com/camaraproject/tooling/blob/main/"
+            "documentation/validation/faq.md#s-001-example"
+        )
+        findings = [
+            _make_finding(level="error", rule_id="S-001", documentation_url=url)
+        ]
+        sr = generate_workflow_summary(_make_result(findings), _make_context())
+        assert f"]({url})" in sr.markdown
+
+    def test_documentation_url_rendered_once_per_rule_block(self):
+        url = (
+            "https://github.com/camaraproject/tooling/blob/main/"
+            "documentation/validation/faq.md#s-001-example"
+        )
+        findings = [
+            _make_finding(
+                level="error", rule_id="S-001", line=10, documentation_url=url
+            ),
+            _make_finding(
+                level="error", rule_id="S-001", line=20, documentation_url=url
+            ),
+        ]
+        sr = generate_workflow_summary(_make_result(findings), _make_context())
+        # One rule block (same rule) → exactly one details link.
+        assert sr.markdown.count(f"]({url})") == 1
+
+    def test_no_documentation_link_when_url_absent(self):
+        findings = [
+            _make_finding(level="error", rule_id="S-001", documentation_url=None)
+        ]
+        sr = generate_workflow_summary(_make_result(findings), _make_context())
+        assert "documentation/validation/faq.md" not in sr.markdown
 
     def test_newline_in_message_flattened(self):
         findings = [

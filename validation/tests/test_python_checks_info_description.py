@@ -1,4 +1,4 @@
-"""Unit tests for mandatory info.description content checks (P-026..P-030)."""
+"""Unit tests for mandatory info.description content checks (P-026..P-031)."""
 
 from __future__ import annotations
 
@@ -198,7 +198,7 @@ def _codes(findings: list[dict]) -> list[str]:
 
 
 class TestNS27InfoDescriptionMandatory:
-    """Behavioural tests for the five P-026..P-030 rules."""
+    """Behavioural tests for the P-026..P-031 rules."""
 
     def test_valid_spec_no_findings(self, tmp_path: Path) -> None:
         _write_canonical(tmp_path)
@@ -345,13 +345,14 @@ class TestNS27InfoDescriptionMandatory:
         findings = check_info_description_templates(tmp_path, _make_context())
         assert "check-info-description-folded-scalar" not in _codes(findings)
 
-    def test_canonical_absent_no_findings(self, tmp_path: Path) -> None:
-        """No canonical file present — all five rules are quiet."""
+    def test_canonical_absent_fires_p031(self, tmp_path: Path) -> None:
+        """No canonical file present — warn that template validation is skipped."""
         # Note: do NOT call _write_canonical.
         body = "\n\n".join([_BLOCK_AUTH, _BLOCK_ERRORS, _BLOCK_STRICTNESS])
         _write_spec(tmp_path, "sample-service", body)
         findings = check_info_description_templates(tmp_path, _make_context())
-        assert findings == [], _codes(findings)
+        assert _codes(findings) == ["check-info-description-canonical-missing"]
+        assert "info-description-templates.yaml" in findings[0]["message"]
 
     def test_appendix_a_drift_fires_when_present(self, tmp_path: Path) -> None:
         """Opt-in template absent = no finding; opt-in template drifted = drift fires."""

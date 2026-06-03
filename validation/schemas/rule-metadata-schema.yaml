@@ -69,6 +69,21 @@ properties:
       summary).  Optional — only set when there is "how to fix"
       guidance beyond what the message already says.
 
+  documentation_url:
+    type: string
+    pattern: "^https://github\\.com/camaraproject/tooling/blob/main/documentation/validation/[^#]+#.+$"
+    description: >
+      Canonical public documentation URL pointing to a deeper explanation
+      and fix guidance for this rule — usually a `faq.md` entry anchor.
+      Rendered as a details link in the workflow summary and carried into
+      the `findings.json` / `findings.tsv` diagnostics; deliberately left
+      out of GitHub Actions annotation bodies because Markdown/HTML links
+      do not render as short clickable text there.  Optional and
+      selective — set only for rules that benefit from extra explanation;
+      self-explanatory rules leave it unset.  Must be a full absolute URL
+      under `documentation/validation/` with an anchor fragment so the
+      target FAQ section resolves.
+
   applicability:
     type: object
     description: >

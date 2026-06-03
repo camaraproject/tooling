@@ -27,6 +27,16 @@ from validation.postfilter.metadata_loader import (
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 _RULES_DIR = _REPO_ROOT / "validation" / "rules"
 _LINTING_DIR = _REPO_ROOT / "linting" / "config"
+_DOC_VALIDATION_DIR = _REPO_ROOT / "documentation" / "validation"
+
+# Canonical public documentation URL: a file under
+# documentation/validation/ on the tooling repo's main branch, with an
+# anchor fragment so the target section resolves.
+_DOCUMENTATION_URL_PATTERN = re.compile(
+    r"^https://github\.com/camaraproject/tooling/blob/main/"
+    r"documentation/validation/(?P<file>[A-Za-z0-9._-]+\.md)"
+    r"#(?P<fragment>[a-z0-9-]+)$"
+)
 
 _SPECTRAL_CONFIG = _LINTING_DIR / ".spectral.yaml"
 _SPECTRAL_R34_CONFIG = _LINTING_DIR / ".spectral-r3.4.yaml"
@@ -77,7 +87,7 @@ class TestStructuralIntegrity:
         counts = {}
         for r in all_rules:
             counts[r.engine] = counts.get(r.engine, 0) + 1
-        assert counts["python"] == 29
+        assert counts["python"] == 30
         assert counts["spectral"] == 85
         assert counts["gherkin"] == 25
         assert counts["yamllint"] == 13
@@ -307,8 +317,8 @@ class TestMetadataQuality:
         """
         with_suggestions = [r.id for r in all_rules if r.suggestion is not None]
         with_overrides = [r.id for r in all_rules if r.message_override is not None]
-        assert len(with_suggestions) == 20, (
-            f"Expected 20 explicit suggestions (update test if adding "
+        assert len(with_suggestions) == 21, (
+            f"Expected 21 explicit suggestions (update test if adding "
             f"suggestions): {with_suggestions}"
         )
         assert len(with_overrides) == 0, (
@@ -392,3 +402,77 @@ class TestShortTitleConvention:
     def test_short_titles_are_non_empty(self, all_rules):
         empty = [r.id for r in all_rules if r.short_title == ""]
         assert not empty, f"Rules with empty short_title: {empty}"
+
+
+# ---------------------------------------------------------------------------
+# documentation_url convention
+# ---------------------------------------------------------------------------
+
+
+def _extract_faq_anchors(text: str) -> set[str]:
+    """Return the set of explicit ``<a name="...">`` anchors in a doc page."""
+    return set(re.findall(r'<a\s+name="([^"]+)"\s*>', text))
+
+
+class TestDocumentationUrl:
+    """Verify documentation links are selective, canonical, and resolvable.
+
+    ``documentation_url`` is optional by design (links are selective), so
+    absence is never an error.  When present, the URL must be a canonical
+    public documentation URL and its anchor fragment must resolve to an
+    explicit anchor in the referenced ``documentation/validation/`` page.
+    """
+
+    def test_missing_documentation_url_is_valid(self, all_rules):
+        """Most rules carry no documentation_url — that is expected."""
+        without = [r.id for r in all_rules if r.documentation_url is None]
+        # The field is selective; the overwhelming majority opt out.
+        assert without, "Expected most rules to omit documentation_url"
+
+    def test_present_urls_are_canonical(self, all_rules):
+        """Every present documentation_url is a canonical public doc URL."""
+        bad = [
+            (r.id, r.documentation_url)
+            for r in all_rules
+            if r.documentation_url is not None
+            and not _DOCUMENTATION_URL_PATTERN.match(r.documentation_url)
+        ]
+        assert not bad, (
+            f"Non-canonical documentation_url values "
+            f"(expected {_DOCUMENTATION_URL_PATTERN.pattern}): {bad}"
+        )
+
+    def test_fragments_resolve_to_explicit_anchors(self, all_rules):
+        """Each documentation_url fragment resolves to an explicit anchor.
+
+        The referenced page must exist under documentation/validation/ and
+        contain a matching ``<a name="...">`` anchor.
+        """
+        linked = [r for r in all_rules if r.documentation_url is not None]
+        if not linked:
+            pytest.skip("No rules define documentation_url yet")
+
+        anchors_by_file: dict[str, set[str]] = {}
+        unresolved = []
+        for r in linked:
+            m = _DOCUMENTATION_URL_PATTERN.match(r.documentation_url)
+            assert m, f"{r.id}: non-canonical URL {r.documentation_url}"
+            filename = m.group("file")
+            fragment = m.group("fragment")
+            if filename not in anchors_by_file:
+                doc_path = _DOC_VALIDATION_DIR / filename
+                if not doc_path.is_file():
+                    unresolved.append(
+                        f"{r.id}: doc page missing ({filename})"
+                    )
+                    continue
+                anchors_by_file[filename] = _extract_faq_anchors(
+                    doc_path.read_text(encoding="utf-8")
+                )
+            if fragment not in anchors_by_file.get(filename, set()):
+                unresolved.append(
+                    f"{r.id}: anchor #{fragment} not found in {filename}"
+                )
+        assert not unresolved, (
+            f"documentation_url fragments without anchors: {unresolved}"
+        )

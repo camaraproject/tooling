@@ -88,3 +88,11 @@ properties:
     description: >
       Actionable fix guidance from rule metadata.  Only present when
       the rule metadata explicitly provides a hint.
+
+  documentation_url:
+    type: string
+    description: >
+      Canonical public documentation URL for this rule, copied from rule
+      metadata by the post-filter when present.  Surfaced in the workflow
+      summary and the findings.tsv / findings.json diagnostics.  Optional
+      and selective — absent for rules without a documentation link.
