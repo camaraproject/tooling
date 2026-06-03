@@ -69,6 +69,7 @@ class TestParseRuleMetadata:
         assert rule.engine_rule == "camara-test-rule"
         assert rule.message_override is None
         assert rule.suggestion is None
+        assert rule.documentation_url is None
         assert rule.applicability == {}
         assert rule.conditional_level is None
 
@@ -98,6 +99,7 @@ class TestParseRuleMetadata:
         rule = parse_rule_metadata(raw)
         assert rule.message_override is None
         assert rule.suggestion is None
+        assert rule.documentation_url is None
         assert rule.suppress_schema_paths == ()
 
     def test_suppress_schema_paths_parsed(self):
@@ -149,6 +151,19 @@ class TestParseRuleMetadata:
         raw = _minimal_rule_dict(suggestion="Do this instead.")
         rule = parse_rule_metadata(raw)
         assert rule.suggestion == "Do this instead."
+
+    def test_explicit_documentation_url(self):
+        raw = _minimal_rule_dict(
+            documentation_url=(
+                "https://github.com/camaraproject/tooling/blob/main/"
+                "documentation/validation/faq.md#s-001-example"
+            )
+        )
+        rule = parse_rule_metadata(raw)
+        assert rule.documentation_url == (
+            "https://github.com/camaraproject/tooling/blob/main/"
+            "documentation/validation/faq.md#s-001-example"
+        )
 
     def test_both_message_override_and_suggestion(self):
         raw = _minimal_rule_dict(

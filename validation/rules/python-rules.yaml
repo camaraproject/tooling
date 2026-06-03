@@ -22,6 +22,7 @@
   engine: python
   engine_rule: check-filename-matches-api-name
   short_title: "API definition file must match release-plan api_name"
+  documentation_url: "https://github.com/camaraproject/tooling/blob/main/documentation/validation/faq.md#p-002-api-file-exists"
   conditional_level:
     default: error
     overrides:
@@ -66,6 +67,7 @@
   engine: python
   engine_rule: check-test-files-exist
   short_title: "Missing test definition file for API"
+  documentation_url: "https://github.com/camaraproject/tooling/blob/main/documentation/validation/faq.md#p-006-missing-test-files"
   conditional_level:
     default: hint
     overrides:
@@ -259,6 +261,7 @@
   engine: python
   engine_rule: check-cloudevent-via-ref
   short_title: "CloudEvent should be $ref, not inline"
+  documentation_url: "https://github.com/camaraproject/tooling/blob/main/documentation/validation/faq.md#p-020-cloudevent-ref"
   applicability:
     api_pattern: [explicit-subscription, implicit-subscription]
     commonalities_release: ">=r4.2"
@@ -281,6 +284,7 @@
   engine: python
   engine_rule: check-common-cache-sync
   short_title: "code/common/ is missing or out of sync"
+  documentation_url: "https://github.com/camaraproject/tooling/blob/main/documentation/validation/faq.md#p-021-common-cache-sync"
   applicability:
     release_plan_changed: false
     commonalities_release: ">=r4.2"
@@ -307,6 +311,7 @@
   engine: python
   engine_rule: check-release-plan-exclusivity
   short_title: "release-plan.yaml must change in its own PR"
+  documentation_url: "https://github.com/camaraproject/tooling/blob/main/documentation/validation/faq.md#p-022-release-plan-exclusivity"
   applicability:
     release_plan_changed: true
   conditional_level:

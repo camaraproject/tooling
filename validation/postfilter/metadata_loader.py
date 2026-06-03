@@ -77,6 +77,11 @@ class RuleMetadata:
         suggestion: Additional fix guidance shown alongside the message
             (rendered under a ``Suggestion:`` label).  ``None`` means
             no extra guidance.
+        documentation_url: Canonical public documentation URL with a deeper
+            explanation and fix guidance (usually a ``faq.md`` anchor).
+            Rendered as a details link in the workflow summary and carried
+            into diagnostics; deliberately omitted from annotations.
+            ``None`` means no documentation link (selective by design).
         applicability: Condition dict — omitted fields are unconstrained.
         conditional_level: Severity specification, or ``None`` to preserve
             engine-reported severity (identity mapping).
@@ -96,6 +101,7 @@ class RuleMetadata:
     conditional_level: Optional[ConditionalLevel]
     short_title: Optional[str] = None
     suppress_schema_paths: Tuple[str, ...] = ()
+    documentation_url: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------
@@ -170,6 +176,7 @@ def parse_rule_metadata(raw: dict) -> RuleMetadata:
         conditional_level=conditional_level,
         short_title=raw.get("short_title"),
         suppress_schema_paths=suppress_schema_paths,
+        documentation_url=raw.get("documentation_url"),
     )
 
 
