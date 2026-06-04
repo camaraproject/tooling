@@ -131,17 +131,17 @@ This rule is a warning by default, and an error during release automation runs.
 
 Applies to: `[P-026] Mandatory info.description template missing`, `[P-027] info.description mandatory template content drift`
 
-CAMARA API specifications must include mandatory `info.description` text blocks from the API Design Guide and the Identity and Consent Management profile. Starting with Commonalities r4.3, the canonical text is synchronized into each API repository as `code/common/info-description-templates.yaml`. The API definition marks each mandatory block with `<!-- BEGIN: ... -->` and `<!-- END: ... -->` delimiters, and validation compares the delimited content with the canonical file.
+CAMARA API specifications must include mandatory `info.description` text blocks from the API Design Guide and the Identity and Consent Management profile. Starting with Commonalities r4.3, the mandatory text blocks are synchronized into each API repository as `code/common/info-description-templates.yaml`. The API definition marks each mandatory text block with `<!-- BEGIN: ... -->` and `<!-- END: ... -->` delimiters, and validation compares the delimited content with that synced `code/common/info-description-templates.yaml` file.
 
 The severity depends on the API status in `release-plan.yaml`:
 
 - `target_api_status: alpha`: P-026/P-027 are hints. The blocks should be added or corrected before the API progresses to rc.
-- `target_api_status: rc`: P-026/P-027 are warnings. The API can still use the r4.3 sync PR to receive the canonical file, but codeowners should fix the warnings before the rc pre-release.
-- `target_api_status: public`: P-026/P-027 are errors. The API is expected to contain the mandatory blocks verbatim; validation fails and would block the release until they are fixed.
+- `target_api_status: rc`: P-026/P-027 are warnings. The API can still use the r4.3 sync PR to receive the `code/common/info-description-templates.yaml` file, but codeowners should fix the warnings before the rc pre-release.
+- `target_api_status: public`: P-026/P-027 are errors. The API is expected to contain the mandatory blocks verbatim; validation fails and will block the release until they are fixed.
 
-**What you do:** copy the reported template from `code/common/info-description-templates.yaml` into the affected API file's `info.description`, keeping the BEGIN/END delimiters and the canonical text unchanged. For P-027, replace the whole drifted delimited block with the matching block from the canonical file.
+**What you do:** on main, copy the reported template from `code/common/info-description-templates.yaml` into the affected API file's `info.description`, keeping the BEGIN/END delimiters and the copied text unchanged. For P-027, replace the whole drifted delimited block with the matching block from the local `code/common/info-description-templates.yaml` file.
 
-If the finding appears on the automated Commonalities r4.3 sync pull request itself, first check the API status. For alpha or rc APIs, merge the sync PR so the repository receives `code/common/info-description-templates.yaml`, then open a follow-up API PR to copy the canonical blocks into `info.description`. For APIs already marked `public`, change the release plan only if the API is actually still preparing an rc release; otherwise fix the missing or drifted blocks before release.
+If the finding appears when merging the automated Commonalities r4.3 sync PR itself, first check the API status in `release-plan.yaml`. For alpha or rc APIs, merge the sync PR so the repository receives the required `code/common/info-description-templates.yaml`, then open a follow-up API PR to copy the common mandatory blocks into the API's `info.description`. For an API already declared `public`, P-026/P-027 are reported as errors and block the release. Fix the missing or drifted blocks before the release. If the API is in fact not yet ready for a public release, one option is to set `target_api_status` back to `rc` in `release-plan.yaml`, which lowers the findings to warnings.
 
 Do not edit `code/common/info-description-templates.yaml` in the API repository. That file is owned by Commonalities and updated by the common-file synchronization.
 
