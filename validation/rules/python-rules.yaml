@@ -383,6 +383,7 @@
   engine: python
   engine_rule: check-info-description-mandatory-missing
   short_title: "Mandatory info.description template missing"
+  documentation_url: "https://github.com/camaraproject/tooling/blob/main/documentation/validation/faq.md#p-026-p-027-info-description-mandatory"
   applicability:
     commonalities_release: ">=r4.3"
   conditional_level:
@@ -405,6 +406,7 @@
   engine: python
   engine_rule: check-info-description-mandatory-drift
   short_title: "info.description mandatory template content drift"
+  documentation_url: "https://github.com/camaraproject/tooling/blob/main/documentation/validation/faq.md#p-026-p-027-info-description-mandatory"
   applicability:
     commonalities_release: ">=r4.3"
   conditional_level:
