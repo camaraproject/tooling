@@ -86,6 +86,12 @@
   engine: spectral
   engine_rule: camara-schema-type-check
   short_title: "Schema must declare a type or combiner"
+  conditional_level:
+    default: error
+    overrides:
+      - condition:
+          target_api_status: [alpha, rc]
+        level: warn
 
 - id: S-017
   engine: spectral
