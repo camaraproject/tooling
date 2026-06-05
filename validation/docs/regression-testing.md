@@ -95,7 +95,7 @@ camaraproject/tooling                       camaraproject/ReleaseTest
 validation/                                 main
 ├── docs/                                   ├── code/API_definitions/...
 │   └── regression-testing.md   ◄── this    │
-├── schemas/                                regression/r4.1-main-baseline
+├── schemas/                                regression/r4.3-main-baseline
 │   └── regression-expected-schema.yaml     ├── code/API_definitions/...   (frozen)
 ├── scripts/                                └── .regression/
 │   ├── regression_runner.py                    ├── REGRESSION.md          (purpose)
@@ -219,7 +219,7 @@ Expected output for a clean run:
 
 | Branch | Result | Matched | Missing | Unexpected | Summary |
 |---|---|---:|---:|---:|---|
-| `regression/r4.1-main-baseline` | PASS | 27 | 0 | 0 | - |
+| `regression/r4.3-main-baseline` | PASS | 27 | 0 | 0 | - |
 PASS: 1/1 branches
 ```
 
@@ -249,7 +249,7 @@ When a change is intentional, refresh the fixture:
 ```
 python3 validation/scripts/regression_runner.py \
     --repo camaraproject/ReleaseTest \
-    --capture regression/r4.1-main-baseline \
+    --capture regression/r4.3-main-baseline \
     --out /tmp/expected.yaml \
     --capture-description "baseline - ReleaseTest main, unmodified"
 ```
@@ -292,11 +292,11 @@ are pinned by which regression branches:
 
 ```yaml
 tested_rules:
-  P-006: [regression/r4.1-main-baseline]
-  S-211: [regression/r4.1-main-baseline]
-  S-313: [regression/r4.1-main-baseline]
-  S-314: [regression/r4.1-main-baseline]
-  S-316: [regression/r4.1-main-baseline]
+  P-006: [regression/r4.3-main-baseline]
+  S-211: [regression/r4.3-main-baseline]
+  S-313: [regression/r4.3-main-baseline]
+  S-314: [regression/r4.3-main-baseline]
+  S-316: [regression/r4.3-main-baseline]
 ```
 
 Always list-valued for uniformity when a rule is covered by multiple
@@ -314,20 +314,20 @@ can reasonably be exercised from the spec side.
 
 ### Target themes
 
-The r4.1 rule set partitions cleanly into seven themes (plus an optional
+The r4.3 rule set partitions cleanly into seven themes (plus an optional
 eighth for test-file quality). The table records the current plan; each
-theme becomes one `regression/r4.1-broken-spec-<theme>` branch.
+theme becomes one `regression/r4.3-broken-spec-<theme>` branch.
 
 | # | Branch | Theme / target files | Rules covered | Rebase risk on minor bump |
 |---|---|---|---|---|
-| 1 | `regression/r4.1-broken-spec-api-metadata` | `sample-service.yaml` — `info`, `servers`, `tags` block | S-018, S-019, S-020, S-021, S-022, S-023, S-024, S-201, S-210 | LOW |
-| 2 | `regression/r4.1-broken-spec-yaml-fundamentals` | `sample-service.yaml` YAML-level defects + `openapi:` version + schema type | Y-001…Y-013, S-005, S-016 | LOW |
-| 3 | `regression/r4.1-broken-spec-error-handling` | `sample-service.yaml` — error responses + error codes | S-025, S-026, S-027, S-221, S-307, S-318 | LOW |
-| 4 | `regression/r4.1-broken-spec-descriptions` | `sample-service.yaml` — descriptions on operations / parameters / properties / responses / array items | S-006, S-009, S-011, S-013, S-014, S-028, S-029, S-031, S-215, S-216, S-223 | MEDIUM |
-| 5 | `regression/r4.1-broken-spec-schema-constraints` | `sample-service.yaml` components (not common files — avoid baseline collision) | S-012, S-017, S-030, S-037, S-303, S-308, S-309, S-310, S-311, S-312 | MEDIUM |
-| 6 | `regression/r4.1-broken-spec-routing` | `sample-service.yaml` — paths, operationIds, HTTP methods, servers | S-002, S-003, S-007, S-008, S-010, S-204, S-214, S-217, S-218, S-220, S-222, S-224, S-225, S-226, S-227, S-301, S-306 | HIGH |
-| 7 | `regression/r4.1-broken-spec-subscriptions` | `sample-service-subscriptions.yaml` + `sample-implicit-events.yaml` — CloudEvent / Protocol / sink / notifications + Python subscription checks | S-032, S-033, S-034, S-035, P-014, P-015, P-016, P-020 | HIGH |
-| 8 (optional) | `regression/r4.1-broken-spec-test-files` | `release-plan.yaml` synthetic API + `sample-service.yaml` server URL + `sample-service-createResource.feature` gherkin defects | P-001, P-002, P-004, P-005, G-002, G-014, G-016, G-019, G-021, G-024, G-025 | LOW |
+| 1 | `regression/r4.3-broken-spec-api-metadata` | `sample-service.yaml` — `info`, `servers`, `tags` block | S-018, S-019, S-020, S-021, S-022, S-023, S-024, S-201, S-210 | LOW |
+| 2 | `regression/r4.3-broken-spec-yaml-fundamentals` | `sample-service.yaml` YAML-level defects + `openapi:` version + schema type | Y-001…Y-013, S-005, S-016 | LOW |
+| 3 | `regression/r4.3-broken-spec-error-handling` | `sample-service.yaml` — error responses + error codes | S-025, S-026, S-027, S-221, S-307, S-318 | LOW |
+| 4 | `regression/r4.3-broken-spec-descriptions` | `sample-service.yaml` — descriptions on operations / parameters / properties / responses / array items | S-006, S-009, S-011, S-013, S-014, S-028, S-029, S-031, S-215, S-216, S-223 | MEDIUM |
+| 5 | `regression/r4.3-broken-spec-schema-constraints` | `sample-service.yaml` components (not common files — avoid baseline collision) | S-012, S-017, S-030, S-037, S-303, S-308, S-309, S-310, S-311, S-312 | MEDIUM |
+| 6 | `regression/r4.3-broken-spec-routing` | `sample-service.yaml` — paths, operationIds, HTTP methods, servers | S-002, S-003, S-007, S-008, S-010, S-204, S-214, S-217, S-218, S-220, S-222, S-224, S-225, S-226, S-227, S-301, S-306 | HIGH |
+| 7 | `regression/r4.3-broken-spec-subscriptions` | `sample-service-subscriptions.yaml` + `sample-implicit-events.yaml` — CloudEvent / Protocol / sink / notifications + Python subscription checks | S-032, S-033, S-034, S-035, P-014, P-015, P-016, P-020 | HIGH |
+| 8 (optional) | `regression/r4.3-broken-spec-test-files` | `release-plan.yaml` synthetic API + `sample-service.yaml` server URL + `sample-service-createResource.feature` gherkin defects | P-001, P-002, P-004, P-005, G-002, G-014, G-016, G-019, G-021, G-024, G-025 | LOW |
 
 Rules **not** covered by any broken-spec branch:
 
@@ -367,10 +367,10 @@ it to a different file or pick a different rule.
 The `rX.Y` prefix records the Commonalities minor release the branch
 was captured against. Two separate lifecycles apply:
 
-- **Minor bump** (e.g. r4.1 → r4.2): rebase each broken-spec branch onto
-  the updated ReleaseTest `main`, rename the prefix (`r4.1-broken-spec-*`
-  → `r4.2-broken-spec-*`), recapture the fixture, force-push. Delete the
-  old `r4.1-*` branch. Rationale: r4.2 is the current surface, and the
+- **Minor bump** (e.g. r4.2 → r4.3): rebase each broken-spec branch onto
+  the updated ReleaseTest `main`, rename the prefix (`r4.2-broken-spec-*`
+  → `r4.3-broken-spec-*`), recapture the fixture, force-push. Delete the
+  old `r4.2-*` branch. Rationale: r4.3 is the current surface, and the
   broken-spec predicate ("info.description missing", "license.name
   wrong", etc.) is preserved by rebase for the LOW-risk themes. MEDIUM
   and HIGH risk themes may need the edits re-applied manually after the
