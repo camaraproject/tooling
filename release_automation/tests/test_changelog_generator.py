@@ -150,7 +150,8 @@ class TestApiSectionFormatting:
         assert "### Changed" in result
         assert "### Fixed" in result
         assert "### Removed" in result
-        assert "_To be filled during release review_" in result
+        assert "* N/A" in result
+        assert "_To be filled during release review_" not in result
 
     def test_format_api_section_url_patterns(self):
         api = {
@@ -185,6 +186,54 @@ class TestApiSectionFormatting:
         }
         result = ChangelogGenerator.format_api_section(api, "r1.1", "TestRepo")
         assert "## fallback-api v1.0.0" in result
+
+
+class TestVersionSentence:
+    """Tests for the generated first sentence per version + release_type.
+
+    Sentence shape: ``**{api_name} {version} is {descriptor} of this API.**``
+    Descriptor table agreed on ReleaseManagement#552.
+    """
+
+    @staticmethod
+    def _sentence(version, release_type):
+        api = {
+            "api_name": "demo-api",
+            "api_version": version,
+            "api_file_name": "demo-api",
+        }
+        return ChangelogGenerator.format_api_section(
+            api, "r1.1", "TestRepo", release_type=release_type
+        )
+
+    @pytest.mark.parametrize(
+        "version,release_type,descriptor",
+        [
+            ("v0.1.0-alpha.1", "pre-release-alpha", "the first alpha version"),
+            ("v0.2.0-alpha.1", "pre-release-alpha", "an alpha version"),
+            ("v0.1.0-alpha.2", "pre-release-alpha", "an alpha version"),
+            ("v0.1.0-rc.1", "pre-release-rc", "the first release-candidate version"),
+            ("v0.2.0-rc.1", "pre-release-rc", "a release-candidate version"),
+            ("v0.1.0-rc.2", "pre-release-rc", "a release-candidate version"),
+            ("v0.2.0", "public-release", "an initial public version"),
+            ("v1.0.0", "public-release", "the first stable version"),
+            ("v2.0.0", "public-release", "a new major version"),
+            ("v1.1.0", "public-release", "a minor update"),
+            ("v1.0.1", "maintenance-release", "a patch update"),
+        ],
+    )
+    def test_descriptor(self, version, release_type, descriptor):
+        result = self._sentence(version, release_type)
+        assert f"**demo-api {version} is {descriptor} of this API.**" in result
+        assert "is ...**" not in result
+
+    def test_unknown_release_type_falls_back_to_placeholder(self):
+        result = self._sentence("v1.0.0", "")
+        assert "**demo-api v1.0.0 is ...**" in result
+
+    def test_unparseable_version_falls_back_to_placeholder(self):
+        result = self._sentence("wip", "pre-release-alpha")
+        assert "**demo-api wip is ...**" in result
 
 
 # --- Draft Generation ---

@@ -114,11 +114,17 @@ class ChangelogGenerator:
             for api in apis
         ]
 
+        # Release type drives both the section heading description and the
+        # generated per-API first sentence.
+        release_type = metadata.get("repository", {}).get("release_type", "")
+
         # Pre-format API sections
         formatted_sections = []
         for api in apis:
             formatted_sections.append(
-                self.format_api_section(api, release_tag, repo_name)
+                self.format_api_section(
+                    api, release_tag, repo_name, release_type=release_type
+                )
             )
         formatted_api_sections = "\n\n".join(formatted_sections)
 
@@ -126,9 +132,6 @@ class ChangelogGenerator:
         deps = metadata.get("dependencies", {})
         commonalities = deps.get("commonalities_release", "")
         icm = deps.get("identity_consent_management_release", "")
-
-        # Get release type description
-        release_type = metadata.get("repository", {}).get("release_type", "")
         release_type_description = self._get_release_type_description(release_type)
 
         # Split candidate changes to extract Full Changelog link
@@ -441,11 +444,84 @@ class ChangelogGenerator:
         filepath.write_text(new_content)
 
     @staticmethod
+    def _parse_version(version: str) -> Tuple[Optional[Tuple[int, int, int]], Optional[int]]:
+        """Parse a CAMARA version string into numeric parts.
+
+        Accepts the ``v``-prefixed form used in CHANGELOG headings, e.g.
+        ``v1.1.0`` or ``v0.1.0-alpha.1``.
+
+        Returns:
+            Tuple of ((major, minor, patch), pre_release_number). Either
+            element is None when it cannot be determined: the numeric triple
+            is None for unparseable versions (e.g. ``wip``); the pre-release
+            number is None when there is no ``-alpha.N`` / ``-rc.N`` suffix.
+        """
+        core = version[1:] if version[:1] in ("v", "V") else version
+        base, _, suffix = core.partition("-")
+        parts = base.split(".")
+        if len(parts) != 3:
+            return None, None
+        try:
+            major, minor, patch = (int(p) for p in parts)
+        except ValueError:
+            return None, None
+        pre_num = None
+        if suffix:
+            match = re.search(r"(\d+)", suffix)
+            if match:
+                pre_num = int(match.group(1))
+        return (major, minor, patch), pre_num
+
+    @classmethod
+    def _version_descriptor(cls, version: str, release_type: str) -> Optional[str]:
+        """Describe a release in one phrase, from its version and type.
+
+        Returns a descriptor that slots into
+        ``{api} {version} is {descriptor} of this API.`` Ordinality ("first")
+        is claimed only where the version alone proves it
+        (``v0.1.0-alpha.1``, ``v0.1.0-rc.1``, ``v1.0.0``). Returns None when
+        no descriptor applies (unknown release type or unparseable version),
+        so the caller keeps the ``...`` placeholder.
+
+        Descriptor table agreed on ReleaseManagement#552.
+        """
+        nums, pre_num = cls._parse_version(version)
+        if nums is None:
+            return None
+        major, minor, patch = nums
+        is_first_010 = nums == (0, 1, 0) and pre_num == 1
+
+        if release_type == "pre-release-alpha":
+            return "the first alpha version" if is_first_010 else "an alpha version"
+        if release_type == "pre-release-rc":
+            return (
+                "the first release-candidate version"
+                if is_first_010
+                else "a release-candidate version"
+            )
+        if release_type == "maintenance-release":
+            return "a patch update"
+        if release_type == "public-release":
+            if major == 0:
+                return "an initial public version"
+            if nums == (1, 0, 0):
+                return "the first stable version"
+            if major >= 2 and minor == 0 and patch == 0:
+                return "a new major version"
+            if patch >= 1:
+                return "a patch update"
+            if minor >= 1:
+                return "a minor update"
+        return None
+
+    @classmethod
     def format_api_section(
+        cls,
         api: Dict[str, str],
         release_tag: str,
         repo_name: str,
         org: str = "camaraproject",
+        release_type: str = "",
     ) -> str:
         """Format a single API's CHANGELOG section with links.
 
@@ -457,6 +533,9 @@ class ChangelogGenerator:
             release_tag: For URL construction
             repo_name: For URL construction
             org: GitHub organization
+            release_type: Release type from metadata (e.g.
+                "pre-release-alpha"); drives the generated first sentence.
+                When empty or unrecognised, the ``...`` placeholder is kept.
 
         Returns:
             Formatted markdown section for this API
@@ -469,10 +548,16 @@ class ChangelogGenerator:
         base_url = f"https://github.com/{org}/{repo_name}"
         raw_url = f"https://raw.githubusercontent.com/{org}/{repo_name}"
 
+        descriptor = cls._version_descriptor(version, release_type)
+        if descriptor:
+            first_sentence = f"**{title} {version} is {descriptor} of this API.**"
+        else:
+            first_sentence = f"**{title} {version} is ...**"
+
         lines = [
             f"## {title} {version}",
             "",
-            f"**{title} {version} is ...**",
+            first_sentence,
             "",
             "- API definition **with inline documentation**:",
             f"  - [View it on ReDoc](https://redocly.github.io/redoc/"
@@ -483,19 +568,19 @@ class ChangelogGenerator:
             "",
             "### Added",
             "",
-            "* _To be filled during release review_",
+            "* N/A",
             "",
             "### Changed",
             "",
-            "* _To be filled during release review_",
+            "* N/A",
             "",
             "### Fixed",
             "",
-            "* _To be filled during release review_",
+            "* N/A",
             "",
             "### Removed",
             "",
-            "* _To be filled during release review_",
+            "* N/A",
         ]
 
         return "\n".join(lines)
