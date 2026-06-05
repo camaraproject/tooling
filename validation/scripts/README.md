@@ -40,7 +40,7 @@ This file is the CLI reference only.
 ```
 python3 validation/scripts/regression_runner.py \
     --repo camaraproject/ReleaseTest \
-    [--branch-filter 'regression/r4.1-*'] \
+    [--branch-filter 'regression/r4.3-*'] \
     [--workflow-file camara-validation.yml] \
     [--poll-interval 15] [--poll-timeout 1800] \
     [--summary-file regression-summary.md] \
@@ -55,7 +55,7 @@ Default `--branch-filter` is `regression/*`. Default `--workflow-file` is
 ```
 python3 validation/scripts/regression_runner.py \
     --repo camaraproject/ReleaseTest \
-    --capture regression/r4.1-main-baseline \
+    --capture regression/r4.3-main-baseline \
     --out /tmp/expected.yaml \
     [--capture-description "baseline - ReleaseTest main, unmodified"]
 ```
