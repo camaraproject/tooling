@@ -78,6 +78,12 @@ class OrchestratorArgs:
     # When empty, falls back to the in-tree copy at the pinned ref.
     config_path: str
 
+    # Optional path to an info-description-templates.yaml fetched by the
+    # workflow from Commonalities source at commonalities_release.  Injected
+    # only in the release-review / snapshot context (code/common/ stripped);
+    # empty everywhere else, keeping local/main/working-branch runs offline.
+    fallback_canonical_path: str
+
     repo_name: str  # e.g. "camaraproject/QualityOnDemand"
     repo_owner: str  # e.g. "camaraproject"
     event_name: str  # e.g. "pull_request", "workflow_dispatch"
@@ -162,6 +168,7 @@ def parse_args() -> OrchestratorArgs:
         tooling_path=Path(_env("TOOLING_PATH", ".tooling")),
         output_dir=Path(_env("OUTPUT_DIR", "validation-output")),
         config_path=_env("CONFIG_PATH"),
+        fallback_canonical_path=_env("FALLBACK_CANONICAL_PATH"),
         repo_name=_env("REPO_NAME"),
         repo_owner=_env("REPO_OWNER"),
         event_name=_env("EVENT_NAME"),
@@ -531,6 +538,7 @@ def main() -> int:
         commonalities_tag_exists=args.commonalities_tag_exists,
         icm_tag_exists=args.icm_tag_exists,
         non_release_plan_files_changed=args.non_release_plan_files_changed,
+        fallback_canonical_path=args.fallback_canonical_path or None,
     )
     logger.info(
         "Context: branch=%s trigger=%s profile=%s release_review=%s apis=%d",

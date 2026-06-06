@@ -139,6 +139,55 @@ runs:
           fi
         fi
 
+    - name: Fetch canonical info.description templates (release-review only)
+      id: fetch-canonical-fallback
+      if: startsWith(github.base_ref, 'release-snapshot/')
+      shell: bash
+      env:
+        REPO_PATH: ${{ inputs.repo_path }}
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        # On the Release Review PR (snapshot branch) code/common/ has been
+        # stripped after bundling, so the info.description family cannot read
+        # the canonical templates locally and P-031 would false-fire. Fetch the
+        # matching version from Commonalities source at the pinned
+        # commonalities_release and inject its path; the engine uses it as the
+        # canonical fallback so P-026..P-030 evaluate and the codeowner sees
+        # real warnings. release-plan.yaml is gone on the snapshot, so read the
+        # tag from release-metadata.yaml. Fetch failure is tolerated: no inject
+        # means the engine degrades to a single P-031 warn (not a block).
+        META_FILE="${REPO_PATH}/release-metadata.yaml"
+        if [ ! -f "$META_FILE" ]; then
+          echo "No release-metadata.yaml; skipping canonical fallback fetch."
+          exit 0
+        fi
+        # release-metadata.yaml carries the enriched string form
+        # "r4.2 (1.2.0-rc.1)"; take the leading rX.Y tag (mirrors
+        # release_metadata_parser._extract_release_tag).
+        RELEASE_TAG=$(python3 -c "
+        import re, yaml
+        try:
+            meta = yaml.safe_load(open('${META_FILE}'))
+            dep = meta.get('dependencies', {}).get('commonalities_release', '')
+            m = re.match(r'^(r\d+\.\d+)', str(dep).strip())
+            print(m.group(1) if m else '')
+        except Exception:
+            print('')
+        ")
+        if [ -z "$RELEASE_TAG" ]; then
+          echo "No commonalities_release in release-metadata.yaml; skipping."
+          exit 0
+        fi
+        DEST="${RUNNER_TEMP}/info-description-templates.fallback.yaml"
+        if gh api "repos/camaraproject/Commonalities/contents/artifacts/common/info-description-templates.yaml?ref=${RELEASE_TAG}" \
+             --jq '.content' 2>/dev/null | base64 -d > "$DEST" 2>/dev/null && [ -s "$DEST" ]; then
+          echo "VALIDATION_FALLBACK_CANONICAL_PATH=${DEST}" >> "$GITHUB_ENV"
+          echo "Fetched canonical templates from Commonalities ${RELEASE_TAG} -> ${DEST}"
+        else
+          rm -f "$DEST"
+          echo "Could not fetch canonical templates at ${RELEASE_TAG}; P-031 will warn."
+        fi
+
     - name: Run validation orchestrator
       id: run
       shell: bash
