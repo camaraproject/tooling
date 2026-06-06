@@ -118,6 +118,7 @@ def _make_context(
     api_name: str = "sample-service",
     target_api_status: str = "rc",
     commonalities_release: str = "r4.3",
+    fallback_canonical_path: str | None = None,
 ) -> ValidationContext:
     api = ApiContext(
         api_name=api_name,
@@ -144,6 +145,7 @@ def _make_context(
         apis=(api,),
         workflow_run_url="",
         tooling_ref="",
+        fallback_canonical_path=fallback_canonical_path,
     )
 
 
@@ -353,6 +355,63 @@ class TestNS27InfoDescriptionMandatory:
         findings = check_info_description_templates(tmp_path, _make_context())
         assert _codes(findings) == ["check-info-description-canonical-missing"]
         assert "info-description-templates.yaml" in findings[0]["message"]
+
+    def test_local_absent_fallback_present_evaluates_no_p031(
+        self, tmp_path: Path
+    ) -> None:
+        """Release-review context: code/common/ stripped but the workflow has
+        injected the source-fetched canonical. P-026..P-030 must evaluate
+        against it and P-031 must NOT fire."""
+        # No _write_canonical: the repo-local copy is absent (snapshot strip).
+        fallback = tmp_path / "fallback" / "info-description-templates.yaml"
+        fallback.parent.mkdir(parents=True, exist_ok=True)
+        fallback.write_text(_CANONICAL_YAML, encoding="utf-8")
+        # A valid spec carrying all universal blocks → no findings at all.
+        body = "\n\n".join([_BLOCK_AUTH, _BLOCK_ERRORS, _BLOCK_STRICTNESS])
+        _write_spec(tmp_path, "sample-service", body)
+        ctx = _make_context(fallback_canonical_path=str(fallback))
+        findings = check_info_description_templates(tmp_path, ctx)
+        assert "check-info-description-canonical-missing" not in _codes(findings)
+        assert findings == []
+
+    def test_local_absent_fallback_present_surfaces_real_finding(
+        self, tmp_path: Path
+    ) -> None:
+        """The injected fallback drives a genuine P-026, not a P-031, when a
+        mandatory block is missing on the snapshot."""
+        fallback = tmp_path / "fallback" / "info-description-templates.yaml"
+        fallback.parent.mkdir(parents=True, exist_ok=True)
+        fallback.write_text(_CANONICAL_YAML, encoding="utf-8")
+        # Omit the authorization block → P-026 should fire via the fallback.
+        body = "\n\n".join([_BLOCK_ERRORS, _BLOCK_STRICTNESS])
+        _write_spec(tmp_path, "sample-service", body)
+        ctx = _make_context(fallback_canonical_path=str(fallback))
+        codes = _codes(check_info_description_templates(tmp_path, ctx))
+        assert "check-info-description-mandatory-missing" in codes
+        assert "check-info-description-canonical-missing" not in codes
+
+    def test_local_present_wins_over_fallback(self, tmp_path: Path) -> None:
+        """Local copy always wins, even when a fallback path is also set —
+        local validation stays offline and unchanged on working branches."""
+        _write_canonical(tmp_path)
+        # Point the fallback at a deliberately broken file; it must be ignored.
+        bad_fallback = tmp_path / "fallback" / "info-description-templates.yaml"
+        bad_fallback.parent.mkdir(parents=True, exist_ok=True)
+        bad_fallback.write_text("not: [a, valid, catalog", encoding="utf-8")
+        body = "\n\n".join([_BLOCK_AUTH, _BLOCK_ERRORS, _BLOCK_STRICTNESS])
+        _write_spec(tmp_path, "sample-service", body)
+        ctx = _make_context(fallback_canonical_path=str(bad_fallback))
+        findings = check_info_description_templates(tmp_path, ctx)
+        assert findings == []
+
+    def test_local_absent_no_fallback_fires_p031(self, tmp_path: Path) -> None:
+        """Main / working-branch contract: no local copy and no injected
+        fallback → exactly one P-031 (offline, fires truthfully)."""
+        body = "\n\n".join([_BLOCK_AUTH, _BLOCK_ERRORS, _BLOCK_STRICTNESS])
+        _write_spec(tmp_path, "sample-service", body)
+        ctx = _make_context(fallback_canonical_path=None)
+        findings = check_info_description_templates(tmp_path, ctx)
+        assert _codes(findings) == ["check-info-description-canonical-missing"]
 
     def test_appendix_a_drift_fires_when_present(self, tmp_path: Path) -> None:
         """Opt-in template absent = no finding; opt-in template drifted = drift fires."""

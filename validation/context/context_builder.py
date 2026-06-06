@@ -141,6 +141,15 @@ class ValidationContext:
     icm_tag_exists: Optional[bool] = None
     non_release_plan_files_changed: Tuple[str, ...] = ()
 
+    # fallback_canonical_path: absolute path to an info-description-templates.yaml
+    # fetched by the workflow from Commonalities source at commonalities_release.
+    # Injected ONLY in the release-review / snapshot context, where code/common/
+    # has been stripped after bundling; empty everywhere else (working-branch PRs,
+    # main, local runs stay offline).  The info.description family uses it as the
+    # second canonical-resolution tier so the codeowner sees real P-026..P-030
+    # warnings on the Release Review PR instead of a P-031 false positive.
+    fallback_canonical_path: Optional[str] = None
+
     def to_dict(self) -> dict:
         """Serialize to dict with all keys present.
 
@@ -288,6 +297,7 @@ def build_validation_context(
     commonalities_tag_exists: Optional[bool] = None,
     icm_tag_exists: Optional[bool] = None,
     non_release_plan_files_changed: Tuple[str, ...] = (),
+    fallback_canonical_path: Optional[str] = None,
 ) -> ValidationContext:
     """Assemble the unified validation context.
 
@@ -378,4 +388,5 @@ def build_validation_context(
         commonalities_tag_exists=commonalities_tag_exists,
         icm_tag_exists=icm_tag_exists,
         non_release_plan_files_changed=non_release_plan_files_changed,
+        fallback_canonical_path=fallback_canonical_path,
     )

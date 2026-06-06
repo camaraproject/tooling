@@ -244,6 +244,7 @@ class TestValidationContextToDict:
             "release_plan_check_only",
             "commonalities_tag_exists", "icm_tag_exists",
             "non_release_plan_files_changed",
+            "fallback_canonical_path",
         }
         assert set(d.keys()) == expected_keys
 

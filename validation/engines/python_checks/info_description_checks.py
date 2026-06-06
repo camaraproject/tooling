@@ -78,17 +78,44 @@ _RULE_CANONICAL_MISSING = "check-info-description-canonical-missing"
 _canonical_cache: Dict[Path, Tuple[int, Dict[str, List[str]]]] = {}
 
 
-def _load_canonical(repo_path: Path) -> Optional[Dict[str, List[str]]]:
+def _load_canonical(
+    repo_path: Path, fallback_path: Optional[str] = None
+) -> Optional[Dict[str, List[str]]]:
     """Load and paragraph-normalise the canonical templates.
 
-    Returns ``{template_name: [normalised_paragraph, ...]}`` or ``None`` if
-    the canonical file does not exist (e.g. r4.2 repo, or a release-review
-    branch after the snapshot bundling step has cleared ``code/common/``).
+    Resolution is two-tier:
 
-    Cached by (path, mtime_ns) so the file is read at most once per
+    1. **Local** — repo-local ``code/common/info-description-templates.yaml``.
+       Always wins when present, even if stale: the spec's blocks were copied
+       from it and P-021 already warns when it is out of sync.
+    2. **Fallback** — only when the local file is absent and *fallback_path* is
+       set.  The workflow injects this path (a copy of the templates file
+       fetched from Commonalities source at ``commonalities_release``) **only in
+       the release-review / snapshot context**, where bundling has cleared
+       ``code/common/``.  On main / working-branch / local runs no fallback is
+       injected, so resolution falls through to ``None`` and P-031 fires.
+
+    Returns ``{template_name: [normalised_paragraph, ...]}`` or ``None`` when
+    neither source resolves.
+
+    Cached by (path, mtime_ns) so each file is read at most once per
     validation run regardless of how many specs the repo contains.
     """
-    canonical_path = (repo_path / _CANONICAL_REL_PATH).resolve()
+    result = _load_canonical_from((repo_path / _CANONICAL_REL_PATH).resolve())
+    if result is not None:
+        return result
+    if fallback_path:
+        return _load_canonical_from(Path(fallback_path).resolve())
+    return None
+
+
+def _load_canonical_from(
+    canonical_path: Path,
+) -> Optional[Dict[str, List[str]]]:
+    """Read and normalise one canonical templates file.
+
+    Returns ``None`` if the file does not exist or is not valid YAML mapping.
+    """
     try:
         mtime = canonical_path.stat().st_mtime_ns
     except FileNotFoundError:
@@ -356,18 +383,25 @@ def check_info_description_templates(
     if not spec_path.is_file():
         return []
 
-    canonical = _load_canonical(repo_path)
+    canonical = _load_canonical(repo_path, context.fallback_canonical_path)
     if canonical is None:
+        # P-031 fires only when the canonical is unresolvable from BOTH the
+        # repo-local copy AND the injected fallback (Commonalities source,
+        # release-review context only).  On the Release Review PR the workflow
+        # always injects the fallback, so this no longer false-fires there; on
+        # main / working branches no fallback is injected and a genuinely
+        # missing local copy still produces this warning.
         return [
             make_finding(
                 engine_rule=_RULE_CANONICAL_MISSING,
                 level="warn",
                 message=(
-                    f"Cannot validate mandatory info.description templates "
-                    f"because {_CANONICAL_REL_PATH!r} is missing or "
-                    f"unreadable. The common-file sync must provide this "
-                    f"file before P-026..P-030 can check mandatory "
-                    f"info.description blocks."
+                    f"Cannot validate mandatory info.description templates: "
+                    f"the canonical templates file is unresolvable from both "
+                    f"the repo-local {_CANONICAL_REL_PATH!r} and the "
+                    f"Commonalities source fallback. The common-file sync must "
+                    f"provide this file before P-026..P-030 can check "
+                    f"mandatory info.description blocks."
                 ),
                 path=api.spec_file,
                 line=1,
