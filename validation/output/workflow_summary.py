@@ -46,8 +46,9 @@ _DIAGNOSTICS_ARTIFACT = "validation-diagnostics"
 _WARNINGS_NOTE = (
     "> Warnings that will not be fixed immediately should be documented in one or "
     "more issues (with the validation summary line(s) and a reason for deferral). "
-    "Documenting warnings is required for rc pre-releases, and lets PR authors check "
-    "whether a warning is already known rather than newly introduced by their change."
+    "Documenting warnings is required for releases. "
+    "The documentation is also helpful for PR authors: they can check whether a "
+    "warning is already known or potentially introduced by their own change."
 )
 
 # ---------------------------------------------------------------------------
