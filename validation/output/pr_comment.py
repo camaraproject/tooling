@@ -15,7 +15,7 @@ import logging
 from validation.context import ValidationContext
 from validation.postfilter.engine import PostFilterResult
 
-from .formatting import count_findings
+from .formatting import count_findings, resolve_result_label
 
 logger = logging.getLogger(__name__)
 
@@ -24,13 +24,6 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 MARKER = "<!-- camara-validation -->"
-
-_RESULT_LABEL = {
-    "pass": "PASS",
-    "fail": "FAIL",
-    "error": "ERROR",
-    "advisory": "ADVISORY",
-}
 
 
 # ---------------------------------------------------------------------------
@@ -56,12 +49,8 @@ def generate_pr_comment(
     """
     result = post_filter_result.result
     findings = post_filter_result.findings
-    # Advisory profile: show ADVISORY instead of PASS when findings exist
-    if result == "pass" and context.profile == "advisory" and findings:
-        result_label = _RESULT_LABEL["advisory"]
-    else:
-        result_label = _RESULT_LABEL.get(result, result.upper())
     counts = count_findings(findings)
+    result_label = resolve_result_label(result, context.profile, counts)
 
     lines = [
         MARKER,
@@ -77,5 +66,21 @@ def generate_pr_comment(
         lines.append(f"[View full results]({context.workflow_run_url})")
     else:
         lines.append("See workflow summary for full results.")
+
+    # On the release-review PR, point the codeowner to the deferral workflow
+    # when warnings remain (MUST from rc onward, SHOULD at alpha).
+    if context.is_release_review_pr and counts.warnings > 0:
+        modal = (
+            "SHOULD"
+            if context.target_release_type == "pre-release-alpha"
+            else "MUST"
+        )
+        lines.extend([
+            "",
+            (
+                f"> Warnings {modal} be documented in one or more issues before "
+                "this release — see the Codeowner Actions in the PR description."
+            ),
+        ])
 
     return "\n".join(lines)
