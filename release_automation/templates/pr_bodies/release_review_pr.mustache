@@ -16,42 +16,39 @@ Edit and review this PR before merging it into the release snapshot. After Codeo
 
 ### Codeowner Actions
 
-#### 1. Update release notes
+_Tick each box once done. Release Management review starts when all three boxes are ticked._
 
-- [ ] CHANGELOG updated: copy all API-consumer-relevant changes into the appropriate Added / Changed / Fixed / Removed sections for each API as needed.
-      Do not copy administrative, tooling-only, or internal maintenance changes unless they affect API consumers.
+- [ ] **Update the release notes**
 
-#### 2. Confirm API release readiness
+      What to do:
+      - Copy all API-consumer-relevant changes into the appropriate Added / Changed / Fixed / Removed sections for each API.
+      - Do not copy administrative, tooling-only, or internal maintenance changes unless they affect API consumers.
+      - Check which kinds of changes must be listed for *this* release type — the rules are stated at the top of the CHANGELOG file and are easily overlooked.
 
-- [ ] API version(s) used in all files match `release-plan.yaml`
-{{#is_alpha}}
-- [ ] API documentation (`info.description`) is up to date with the API definition
-{{/is_alpha}}
-{{#is_rc}}
-- [ ] API definitions comply with declared Commonalities version
-- [ ] API documentation is complete
-- [ ] Basic test cases are present (sunny day + main error cases)
-{{/is_rc}}
-{{#is_initial_public}}
-- [ ] API definitions comply with declared Commonalities version
-- [ ] API documentation is complete
-- [ ] Basic test cases are present (sunny day + main error cases)
-- [ ] API Description is set for external visibility
-{{/is_initial_public}}
-{{#is_stable_public}}
-- [ ] API definitions comply with declared Commonalities version
-- [ ] API documentation is complete
-- [ ] Basic test cases are present (sunny day + main error cases)
-- [ ] Enhanced test cases cover rainy day scenarios
-- [ ] User stories are current for each API
-- [ ] API Description is up to date for the API(s)
-{{/is_stable_public}}
+- [ ] **Document deferred validation warnings (and hints)**
+
+      What to do:
+      - Check the CAMARA Validation comment on this PR for warnings and hints.
+      - For each warning you do not fix, document it in an issue: include a copy of the validation summary line(s) and the reason the fix is deferred.
+      - Document in the same way any validation hint that is applicable to the API and needs to be fixed later.
+      - You may group several findings into one issue or split them across issues — either is fine.
+      - List the documenting issue(s) in a comment on this PR.
+      - Note: documenting deferred warnings is optional but recommended for alpha pre-releases, and mandatory for rc pre-releases and public releases.
+
+- [ ] **The release is ready for Release Management review**
+
+      Check that:
+      - All mandatory release assets for the declared status(es) are present (see the release asset table below);
+      - API documentation and test cases are adequate for the target status.
+
+      Tick this box to confirm readiness and to start the Release Management review.
 
 ### Release Management Actions
 
 - [ ] CHANGELOG follows the release documentation rules
 - [ ] Breaking changes are documented and version updates follow SemVer rules
 - [ ] Mandatory release assets are present for each API according to its status
+- [ ] All remaining validation warnings are documented in issues and the reasons for deferral are defensible
 
 <details>
 <summary><b>Required release assets per API status</b></summary>
@@ -70,8 +67,6 @@ Edit and review this PR before merging it into the release snapshot. After Codeo
 M = Mandatory, O = Optional — [Full documentation](https://github.com/camaraproject/ReleaseManagement/blob/main/documentation/readiness/api-readiness-checklist.md)
 
 </details>
-
-_During the automation introduction phase, please also verify the snapshot content: that `release-metadata.yaml` is correct, that the generated API version numbers and server URLs (and other version fields and references) are right, and that the README update reflects the release tag and version handling._
 
 ### Valid next actions for codeowners
 
