@@ -13,9 +13,6 @@
     "postcss": "^8.5.10",
     "protobufjs": "^7.5.8",
     "fast-uri": "^3.1.2",
-    "fast-xml-builder": "~1.1.7",
-    "@redocly/cli": {
-      "brace-expansion": "^5.0.6"
-    }
+    "fast-xml-builder": "~1.1.7"
   }
 }
