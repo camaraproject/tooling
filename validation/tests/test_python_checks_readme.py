@@ -6,6 +6,7 @@ from pathlib import Path
 
 from validation.context import ValidationContext
 from validation.engines.python_checks.readme_checks import (
+    check_api_readiness_checklist_removal,
     check_readme_placeholder_removal,
 )
 
@@ -116,3 +117,74 @@ class TestCheckReadmePlaceholderRemoval:
     def test_no_api_defs_directory(self, tmp_path: Path):
         """No API_definitions directory → no finding."""
         assert check_readme_placeholder_removal(tmp_path, _make_context()) == []
+
+
+class TestCheckApiReadinessChecklistRemoval:
+    def test_detects_hyphenated_api_readiness_checklist(self, tmp_path: Path):
+        """Legacy per-API readiness checklist filenames are detected."""
+        doc_dir = tmp_path / "documentation" / "API_documentation"
+        doc_dir.mkdir(parents=True)
+        (doc_dir / "quality-on-demand-API-Readiness-Checklist.md").touch()
+
+        findings = check_api_readiness_checklist_removal(tmp_path, _make_context())
+
+        assert len(findings) == 1
+        assert findings[0]["level"] == "warn"
+        assert findings[0]["engine_rule"] == "check-api-readiness-checklist-removal"
+        assert findings[0]["path"] == (
+            "documentation/API_documentation/"
+            "quality-on-demand-API-Readiness-Checklist.md"
+        )
+        assert findings[0]["api_name"] is None
+
+    def test_detects_root_supporting_document_variant(self, tmp_path: Path):
+        """Generic API-Readiness-Checklist.md variants are detected."""
+        doc_dir = tmp_path / "documentation" / "SupportingDocuments"
+        doc_dir.mkdir(parents=True)
+        (doc_dir / "API-Readiness-Checklist.md").touch()
+
+        findings = check_api_readiness_checklist_removal(tmp_path, _make_context())
+
+        assert len(findings) == 1
+        assert findings[0]["path"] == (
+            "documentation/SupportingDocuments/API-Readiness-Checklist.md"
+        )
+
+    def test_detects_underscore_variant_case_insensitively(self, tmp_path: Path):
+        """Underscore-separated and mixed-case filenames are detected."""
+        doc_dir = tmp_path / "documentation" / "API_documentation"
+        doc_dir.mkdir(parents=True)
+        (doc_dir / "simple-edge-discovery_API_Readiness_Checklist.md").touch()
+
+        findings = check_api_readiness_checklist_removal(tmp_path, _make_context())
+
+        assert len(findings) == 1
+        assert findings[0]["path"].endswith(
+            "simple-edge-discovery_API_Readiness_Checklist.md"
+        )
+
+    def test_ignores_readiness_mentions_without_checklist_filename(
+        self, tmp_path: Path
+    ):
+        """Only filenames containing both readiness and checklist are flagged."""
+        doc_dir = tmp_path / "documentation" / "API_documentation"
+        doc_dir.mkdir(parents=True)
+        (doc_dir / "readiness-notes.md").touch()
+        (doc_dir / "release-checklist.md").touch()
+        (doc_dir / "api-readiness-checklist.txt").touch()
+
+        assert check_api_readiness_checklist_removal(tmp_path, _make_context()) == []
+
+    def test_multiple_files_produce_multiple_findings(self, tmp_path: Path):
+        """Multi-API repos get one finding per leftover checklist file."""
+        doc_dir = tmp_path / "documentation" / "API_documentation"
+        doc_dir.mkdir(parents=True)
+        (doc_dir / "one-API-Readiness-Checklist.md").touch()
+        (doc_dir / "two-API-Readiness-Checklist.md").touch()
+
+        findings = check_api_readiness_checklist_removal(tmp_path, _make_context())
+
+        assert [finding["path"] for finding in findings] == [
+            "documentation/API_documentation/one-API-Readiness-Checklist.md",
+            "documentation/API_documentation/two-API-Readiness-Checklist.md",
+        ]

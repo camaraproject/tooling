@@ -156,6 +156,25 @@
   conditional_level:
     default: warn
 
+# P-032: check-api-readiness-checklist-removal
+# API readiness checklist files moved to canonical ReleaseManagement
+# documentation; repo-local checklist files should be deleted from API repos.
+- id: P-032
+  engine: python
+  engine_rule: check-api-readiness-checklist-removal
+  short_title: "Remove API readiness checklist file from API repo"
+  applicability:
+    commonalities_release: ">=r4.3"
+  conditional_level:
+    default: error
+    overrides:
+      - condition:
+          target_release_type: [none, pre-release-alpha, pre-release-rc]
+        level: warn
+  suggestion: >-
+    Delete the repo-local API readiness checklist file and use the canonical
+    ReleaseManagement readiness documentation instead.
+
 # P-014: check-subscription-filename (DG-088)
 # Explicit subscription API names must end with '-subscriptions'.
 - id: P-014

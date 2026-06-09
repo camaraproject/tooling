@@ -87,7 +87,7 @@ class TestStructuralIntegrity:
         counts = {}
         for r in all_rules:
             counts[r.engine] = counts.get(r.engine, 0) + 1
-        assert counts["python"] == 30
+        assert counts["python"] == 31
         assert counts["spectral"] == 85
         assert counts["gherkin"] == 25
         assert counts["yamllint"] == 13
@@ -317,8 +317,8 @@ class TestMetadataQuality:
         """
         with_suggestions = [r.id for r in all_rules if r.suggestion is not None]
         with_overrides = [r.id for r in all_rules if r.message_override is not None]
-        assert len(with_suggestions) == 21, (
-            f"Expected 21 explicit suggestions (update test if adding "
+        assert len(with_suggestions) == 22, (
+            f"Expected 22 explicit suggestions (update test if adding "
             f"suggestions): {with_suggestions}"
         )
         assert len(with_overrides) == 0, (
@@ -362,6 +362,26 @@ class TestMetadataQuality:
         assert overrides[0].level == "warn"
         assert rule.suggestion is not None
         assert "Commonalities#608" in rule.suggestion
+
+    def test_p032_readiness_checklist_removal_levels(self, rule_index):
+        """P-032 warns for non-public release types and errors by default."""
+        rule = rule_index[("python", "check-api-readiness-checklist-removal")]
+        assert rule.id == "P-032"
+        assert rule.applicability == {"commonalities_release": ">=r4.3"}
+        assert rule.conditional_level is not None
+        assert rule.conditional_level.default == "error"
+        overrides = rule.conditional_level.overrides
+        assert len(overrides) == 1
+        assert overrides[0].condition == {
+            "target_release_type": [
+                "none",
+                "pre-release-alpha",
+                "pre-release-rc",
+            ],
+        }
+        assert overrides[0].level == "warn"
+        assert rule.suggestion is not None
+        assert "ReleaseManagement" in rule.suggestion
 
 
 # ---------------------------------------------------------------------------
