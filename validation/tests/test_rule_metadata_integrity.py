@@ -381,7 +381,7 @@ class TestMetadataQuality:
         }
         assert overrides[0].level == "warn"
         assert rule.suggestion is not None
-        assert "ReleaseManagement" in rule.suggestion
+        assert "Release process and API Readiness documentation" in rule.suggestion
 
 
 # ---------------------------------------------------------------------------

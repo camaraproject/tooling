@@ -172,8 +172,8 @@
           target_release_type: [none, pre-release-alpha, pre-release-rc]
         level: warn
   suggestion: >-
-    Delete the repo-local API readiness checklist file and use the canonical
-    ReleaseManagement readiness documentation instead.
+    Delete the obsolete API readiness checklist file(s). It is replaced by the
+    new Release process and API Readiness documentation.
 
 # P-014: check-subscription-filename (DG-088)
 # Explicit subscription API names must end with '-subscriptions'.
