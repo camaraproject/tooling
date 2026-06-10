@@ -450,6 +450,63 @@ class TestRunPostFilter:
         assert result_release.findings[0]["level"] == "error"
         assert result_release.findings[0]["blocks"] is True
 
+    def test_repo_level_release_type_override_and_commonalities_gate(
+        self, tmp_path: Path
+    ):
+        """Repo-level findings use target_release_type, not per-API status."""
+        _write_rules(tmp_path, [
+            _minimal_rule(
+                id="P-032",
+                engine="python",
+                engine_rule="check-api-readiness-checklist-removal",
+                default_level="error",
+                applicability={"commonalities_release": ">=r4.3"},
+                overrides=[
+                    {
+                        "condition": {
+                            "target_release_type": [
+                                "none",
+                                "pre-release-alpha",
+                                "pre-release-rc",
+                            ],
+                        },
+                        "level": "warn",
+                    }
+                ],
+            )
+        ], filename="python-rules.yaml")
+        finding = _make_finding(
+            engine="python",
+            engine_rule="check-api-readiness-checklist-removal",
+            api_name=None,
+        )
+
+        draft_ctx = _make_context(
+            commonalities_release="r4.3",
+            target_release_type="none",
+            profile="standard",
+        )
+        draft_result = run_post_filter([finding], draft_ctx, tmp_path)
+        assert draft_result.findings[0]["level"] == "warn"
+        assert draft_result.findings[0]["blocks"] is False
+
+        public_ctx = _make_context(
+            commonalities_release="r4.3",
+            target_release_type="public-release",
+            profile="standard",
+        )
+        public_result = run_post_filter([finding], public_ctx, tmp_path)
+        assert public_result.findings[0]["level"] == "error"
+        assert public_result.findings[0]["blocks"] is True
+
+        old_commonalities_ctx = _make_context(
+            commonalities_release="r4.2",
+            target_release_type="public-release",
+            profile="standard",
+        )
+        old_result = run_post_filter([finding], old_commonalities_ctx, tmp_path)
+        assert old_result.findings == []
+
     def test_engine_error_finding(self, tmp_path: Path):
         """Engine execution errors pass through and set result to 'error'."""
         ctx = _make_context()

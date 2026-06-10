@@ -14,15 +14,15 @@ version: 1
 generated: 2026-04-07
 
 summary:
-  total_implemented: 144
+  total_implemented: 145
   total_gap: 0
   total_manual: 25
   total_pending: 0
-  total_tested: 91
+  total_tested: 92
   by_engine:
     spectral: 85
     gherkin: 25
-    python: 21
+    python: 22
     yamllint: 13
 
 # ---------------------------------------------------------------------------
@@ -211,6 +211,12 @@ gap_rules:
     status: implemented
     rule_id: P-021
 
+  - audit_id: NEW-005
+    description: "API readiness checklist files must be removed from API repositories"
+    target_engine: python
+    status: implemented
+    rule_id: P-032
+
 # ---------------------------------------------------------------------------
 # Fixes needed — implemented rules with incorrect behavior
 # ---------------------------------------------------------------------------
@@ -323,6 +329,7 @@ tested_rules:
   P-029: [regression/r4.3-broken-spec-info-description-mandatory]
   P-030: [regression/r4.3-broken-spec-info-description-mandatory]
   P-031: [regression/r4.3-broken-spec-info-description-missing-canonical]
+  P-032: [regression/r4.3-broken-spec-test-files]
   S-002: [regression/r4.3-broken-spec-routing]
   S-003: [regression/r4.3-broken-spec-routing]
   S-005: [regression/r4.3-broken-spec-yaml-fundamentals]
