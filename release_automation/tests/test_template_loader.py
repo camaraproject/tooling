@@ -33,7 +33,7 @@ class TestRenderTemplate:
         assert "### Codeowner Actions" in result
         assert "### Release Management Actions" in result
         # Three status-independent codeowner actions
-        assert "**Update the release notes**" in result
+        assert "**Update the CHANGELOG**" in result
         assert "**Document deferred validation warnings (and hints)**" in result
         assert "**The release is ready for Release Management review**" in result
         # API Readiness Checklist link lives once, in the asset-table footer
