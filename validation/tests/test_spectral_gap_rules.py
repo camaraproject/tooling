@@ -767,3 +767,73 @@ class TestS037NoNumericResourceIds:
         )
         findings = _run_spectral(_spec_with_id_param(schema, name="category"))
         assert _RULE not in _codes(findings)
+
+
+# ---------------------------------------------------------------------------
+# Regression: camara-security-no-secrets must not crash Spectral on null values
+#
+# The rule's `given` includes a recursive-descent filter
+# `$..parameters[?(@.in != 'header')]`.  Without a null-guard, nimma evaluates
+# the `@.in` predicate against `null` nodes anywhere in the document and throws
+# "Cannot read properties of null (reading 'in')", aborting the whole file
+# (Spectral exit 2).  See camaraproject/tooling#322.
+# ---------------------------------------------------------------------------
+
+_NO_SECRETS_RULE = "camara-security-no-secrets-in-path-or-query-parameters"
+
+
+def _run_spectral_raw(yaml_content: str) -> subprocess.CompletedProcess:
+    """Run Spectral and return the raw CompletedProcess (to inspect exit code)."""
+    with tempfile.NamedTemporaryFile(suffix=".yaml", mode="w", delete=False) as f:
+        f.write(yaml_content)
+        f.flush()
+        tmp_path = f.name
+    env = {
+        "PATH": subprocess.os.environ.get("PATH", ""),
+        "NODE_PATH": str(_NODE_MODULES),
+        "HOME": subprocess.os.environ.get("HOME", ""),
+    }
+    try:
+        return subprocess.run(
+            [
+                "node",
+                str(_NODE_MODULES / ".bin" / "spectral"),
+                "lint", tmp_path, "-r", str(_RULESET), "--format", "json",
+            ],
+            capture_output=True, text=True, env=env, timeout=30,
+        )
+    finally:
+        Path(tmp_path).unlink(missing_ok=True)
+
+
+# Spec with a non-header query parameter named `phoneNumber` (which the rule
+# must flag) AND a literal `null` example value (which previously crashed the
+# recursive given).  The param exercises the exact `given` under test.
+_NULL_VALUE_SPEC = _VALID_SPEC.replace(
+    "      operationId: getTest\n",
+    "      operationId: getTest\n"
+    "      parameters:\n"
+    "        - name: phoneNumber\n"
+    "          in: query\n"
+    "          schema:\n"
+    "            type: string\n"
+    "            example: null\n",
+)
+
+
+class TestNoSecretsNullValueRegression:
+    """camaraproject/tooling#322 — recursive given must tolerate null nodes."""
+
+    def test_spectral_does_not_crash_on_null_value(self):
+        """A spec containing a literal null must not abort Spectral (exit 2)."""
+        result = _run_spectral_raw(_NULL_VALUE_SPEC)
+        assert result.returncode != 2, (
+            "Spectral crashed (exit 2) on a spec containing a null value:\n"
+            f"{result.stderr.strip()}"
+        )
+        assert "Cannot read properties of null" not in result.stderr
+
+    def test_no_secrets_rule_fires_on_phone_number_query_param(self):
+        """Positive case: the rule still flags a non-header param named phoneNumber."""
+        findings = _run_spectral(_NULL_VALUE_SPEC)
+        assert _NO_SECRETS_RULE in _codes(findings)

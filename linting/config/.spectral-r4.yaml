@@ -124,7 +124,9 @@ rules:
       tokens in path strings or in path/query parameter names.
     given:
       - "$.paths"
-      - "$..parameters[?(@.in != 'header')]"
+      # `@ &&` guards the recursive descent: without it nimma evaluates `@.in`
+      # against null nodes anywhere in the doc and crashes Spectral (exit 2).
+      - "$..parameters[?(@ && @.in != 'header')]"
     then:
       function: camara-security-no-secrets-in-path-or-query-parameters
     recommended: true  # Set to true/false to enable/disable this rule
