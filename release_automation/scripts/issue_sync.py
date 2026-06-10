@@ -7,6 +7,7 @@ artifacts.
 """
 
 from dataclasses import dataclass
+import re
 from typing import Any, Dict, List, Optional
 
 from .github_client import GitHubClient
@@ -17,6 +18,9 @@ from .bot_responder import BotResponder
 
 # Marker to identify workflow-owned issues
 WORKFLOW_MARKER = "<!-- release-automation:workflow-owned -->"
+RELEASE_TAG_MARKER_RE = re.compile(
+    r"<!--\s*release-automation:release-tag:(?P<tag>.*?)\s*-->"
+)
 
 # Required labels for release automation
 # Format: (name, color_hex_without_hash, description)
@@ -198,6 +202,7 @@ class IssueSyncManager:
                     )
                     return self.gh.get_issue(new_issue["number"])
                 updated_issue = self.gh.retry_on_not_found(_post_create)
+                self.cleanup_stale_workflow_owned_issues(release_tag, updated_issue)
                 return SyncResult(action="created", issue=updated_issue)
             else:
                 return SyncResult(action="none", reason="no_planned_release")
@@ -217,8 +222,10 @@ class IssueSyncManager:
             )
             # Refetch issue after update
             updated_issue = self.gh.get_issue(issue["number"])
+            self.cleanup_stale_workflow_owned_issues(release_tag, updated_issue)
             return SyncResult(action="updated", issue=updated_issue)
 
+        self.cleanup_stale_workflow_owned_issues(release_tag, issue)
         return SyncResult(action="none", reason="up_to_date")
 
     def find_workflow_owned_issue(self, release_tag: str) -> Optional[Dict[str, Any]]:
@@ -254,6 +261,77 @@ class IssueSyncManager:
                 return issue
 
         return None
+
+    def cleanup_stale_workflow_owned_issues(
+        self,
+        release_tag: str,
+        current_issue: Dict[str, Any],
+    ) -> None:
+        """
+        Close older workflow-owned Release Issues for superseded release tags.
+
+        Current automation has one active Release Issue per repository. When
+        the target release tag changes, the old issue keeps its workflow and
+        release-tag markers but no longer matches the current tag lookup.
+        """
+        current_issue_number = current_issue["number"]
+        current_issue_url = current_issue.get("html_url", "")
+        issues = self.gh.search_issues(
+            labels=[self.RELEASE_ISSUE_LABEL],
+            state="open"
+        )
+
+        for issue in issues:
+            issue_number = issue.get("number")
+            if issue_number == current_issue_number:
+                continue
+
+            body = issue.get("body", "") or ""
+            if WORKFLOW_MARKER not in body:
+                continue
+
+            match = RELEASE_TAG_MARKER_RE.search(body)
+            if not match or match.group("tag") == release_tag:
+                continue
+
+            current_labels = [
+                label.get("name", "") if isinstance(label, dict) else label
+                for label in issue.get("labels", [])
+            ]
+            state_labels = [
+                label for label in current_labels
+                if isinstance(label, str) and label.startswith(self.STATE_LABEL_PREFIX)
+            ]
+            if state_labels:
+                self.gh.remove_labels(issue_number, state_labels)
+
+            self.gh.add_issue_comment(
+                issue_number,
+                self._stale_issue_comment(
+                    release_tag,
+                    current_issue_number,
+                    current_issue_url,
+                )
+            )
+            self.gh.close_issue(issue_number, state_reason="not_planned")
+
+    def _stale_issue_comment(
+        self,
+        release_tag: str,
+        current_issue_number: int,
+        current_issue_url: str,
+    ) -> str:
+        """Build the comment posted before closing a superseded Release Issue."""
+        current_issue_ref = (
+            f"#{current_issue_number}"
+            if not current_issue_url
+            else f"#{current_issue_number} ({current_issue_url})"
+        )
+        return (
+            "This workflow-owned Release Issue has been superseded by "
+            f"{current_issue_ref} for release tag `{release_tag}`.\n\n"
+            "Removing the release-state label and closing this stale issue."
+        )
 
     def create_release_issue(
         self,
