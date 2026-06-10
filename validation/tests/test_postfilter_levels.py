@@ -212,3 +212,59 @@ class TestApplyProfileBlocking:
     # Unknown profile — safe default
     def test_unknown_profile(self):
         assert apply_profile_blocking("error", "unknown") is False
+
+
+# ---------------------------------------------------------------------------
+# Regression: real S-016 / S-307 metadata must grade monotonically by maturity
+#
+# Both are completeness rules graded `warn` for draft/alpha/rc and `error` for
+# public. The draft cell must not be stricter than alpha (no severity decrease
+# draft -> alpha). See camaraproject/tooling#324 and the S-016 draft-cell fix.
+# ---------------------------------------------------------------------------
+
+from pathlib import Path  # noqa: E402
+
+from validation.postfilter.metadata_loader import load_all_rules  # noqa: E402
+
+_RULES_DIR = Path(__file__).resolve().parent.parent / "rules"
+_SEVERITY_ORDER = {"muted": 0, "hint": 1, "warn": 2, "error": 3}
+
+
+def _rule_by_id(rule_id: str) -> RuleMetadata:
+    for r in load_all_rules(_RULES_DIR):
+        if r.id == rule_id:
+            return r
+    raise AssertionError(f"rule {rule_id} not found")
+
+
+class TestCompletenessRuleMaturityGrading:
+    """S-016 and S-307 grade warn pre-public, error at public — monotonically."""
+
+    @pytest.mark.parametrize("rule_id", ["S-016", "S-307"])
+    def test_warn_for_pre_public(self, rule_id):
+        rule = _rule_by_id(rule_id)
+        ctx = _make_context()
+        for status in ("draft", "alpha", "rc"):
+            api = _make_api(target_api_status=status)
+            assert resolve_level(rule, ctx, api) == "warn", (
+                f"{rule_id} at {status} should be warn"
+            )
+
+    @pytest.mark.parametrize("rule_id", ["S-016", "S-307"])
+    def test_error_at_public(self, rule_id):
+        rule = _rule_by_id(rule_id)
+        api = _make_api(target_api_status="public")
+        assert resolve_level(rule, _make_context(), api) == "error"
+
+    @pytest.mark.parametrize("rule_id", ["S-016", "S-307"])
+    def test_monotonic_non_decreasing(self, rule_id):
+        """Severity must not decrease as maturity increases (draft cell guard)."""
+        rule = _rule_by_id(rule_id)
+        ctx = _make_context()
+        levels = [
+            _SEVERITY_ORDER[
+                resolve_level(rule, ctx, _make_api(target_api_status=s))
+            ]
+            for s in ("draft", "alpha", "rc", "public")
+        ]
+        assert levels == sorted(levels), f"{rule_id} severity decreases: {levels}"

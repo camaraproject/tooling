@@ -90,7 +90,7 @@
     default: error
     overrides:
       - condition:
-          target_api_status: [alpha, rc]
+          target_api_status: [draft, alpha, rc]
         level: warn
 
 - id: S-017
@@ -406,6 +406,14 @@
   engine_rule: "owasp:api8:2023-define-error-responses-401"
   short_title: "Operation must document a 401 response"
   suggestion: "All secured operations must document a 401 Unauthorized response (CAMARA Design Guide section 3.2)."
+  # Documenting 401 is a completeness requirement; defer to public maturity
+  # (warn for draft/alpha/rc), consistent with S-016.
+  conditional_level:
+    default: error
+    overrides:
+      - condition:
+          target_api_status: [draft, alpha, rc]
+        level: warn
 
 - id: S-308
   engine: spectral
