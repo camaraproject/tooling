@@ -119,6 +119,27 @@ class TestHeader:
         assert "release" in sr.markdown
         assert "dispatch" in sr.markdown
 
+    def test_pass_with_warnings_label(self):
+        findings = [_make_finding(level="warn")]
+        sr = generate_workflow_summary(_make_result(findings, result="pass"), _make_context())
+        assert "## CAMARA Validation — PASS (with warnings)" in sr.markdown
+
+    def test_hints_only_keeps_plain_pass(self):
+        findings = [_make_finding(level="hint")]
+        sr = generate_workflow_summary(_make_result(findings, result="pass"), _make_context())
+        assert "## CAMARA Validation — PASS\n" in sr.markdown
+        assert "(with warnings)" not in sr.markdown
+
+    def test_warnings_note_present_when_warnings(self):
+        findings = [_make_finding(level="warn")]
+        sr = generate_workflow_summary(_make_result(findings, result="pass"), _make_context())
+        assert "should be documented in one or more issues" in sr.markdown
+        assert "required for releases" in sr.markdown
+
+    def test_warnings_note_absent_when_no_warnings(self):
+        sr = generate_workflow_summary(_make_result(), _make_context())
+        assert "should be documented in one or more issues" not in sr.markdown
+
 
 # ---------------------------------------------------------------------------
 # Engine summary table

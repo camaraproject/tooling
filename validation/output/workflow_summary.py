@@ -28,6 +28,7 @@ from .formatting import (
     format_finding_location,
     format_rule_label,
     resolve_annotation_title,
+    resolve_result_label,
     sort_findings_by_priority,
 )
 
@@ -39,14 +40,16 @@ logger = logging.getLogger(__name__)
 
 SUMMARY_SIZE_LIMIT = 900 * 1024  # 900 KB (GitHub limit is 1 MB)
 
-_RESULT_LABEL = {
-    "pass": "PASS",
-    "fail": "FAIL",
-    "error": "ERROR",
-    "advisory": "ADVISORY",
-}
-
 _DIAGNOSTICS_ARTIFACT = "validation-diagnostics"
+
+# Recommendation shown after the header whenever warnings are present.
+_WARNINGS_NOTE = (
+    "> Warnings that will not be fixed immediately should be documented in one or "
+    "more issues (with the validation summary line(s) and a reason for deferral). "
+    "Documenting warnings is required for releases. "
+    "The documentation is also helpful for PR authors: they can check whether a "
+    "warning is already known or potentially introduced by their own change."
+)
 
 # ---------------------------------------------------------------------------
 # Result type
@@ -74,39 +77,23 @@ class SummaryResult:
 # ---------------------------------------------------------------------------
 
 
-def _resolve_result_label(
-    result: str,
-    context: ValidationContext,
-    findings: List[dict],
-) -> str:
-    """Map result string to display label, with advisory override.
-
-    Advisory profile never blocks, so the post-filter always returns
-    ``"pass"``.  Showing **PASS** when there are errors is misleading;
-    **ADVISORY** signals that findings exist but nothing was blocked.
-    """
-    if (
-        result == "pass"
-        and context.profile == "advisory"
-        and findings
-    ):
-        return _RESULT_LABEL["advisory"]
-    return _RESULT_LABEL.get(result, result.upper())
-
-
 def _render_header(
     result: str,
     context: ValidationContext,
     findings: List[dict],
 ) -> str:
     """Render the summary header with result and metadata."""
-    label = _resolve_result_label(result, context, findings)
-    return (
+    counts = count_findings(findings)
+    label = resolve_result_label(result, context.profile, counts)
+    header = (
         f"## CAMARA Validation — {label}\n\n"
         f"**Profile**: {context.profile} | "
         f"**Branch**: {context.branch_type} | "
         f"**Trigger**: {context.trigger_type}\n"
     )
+    if counts.warnings > 0:
+        header += f"\n{_WARNINGS_NOTE}\n"
+    return header
 
 
 def _render_engine_summary_table(

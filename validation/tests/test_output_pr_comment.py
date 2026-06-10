@@ -15,6 +15,8 @@ from validation.postfilter.engine import PostFilterResult
 def _make_context(
     profile: str = "standard",
     workflow_run_url: str = "https://github.com/test/run/1",
+    is_release_review_pr: bool = False,
+    target_release_type: str | None = None,
 ) -> ValidationContext:
     return ValidationContext(
         repository="TestRepo",
@@ -22,12 +24,12 @@ def _make_context(
         trigger_type="pr",
         profile=profile,
         stage="enabled",
-        target_release_type=None,
+        target_release_type=target_release_type,
         commonalities_release=None,
         commonalities_version=None,
         icm_release=None,
         base_ref=None,
-        is_release_review_pr=False,
+        is_release_review_pr=is_release_review_pr,
         release_plan_changed=None,
         pr_number=None,
         apis=(),
@@ -121,3 +123,43 @@ class TestGeneratePrComment:
     def test_empty_findings(self):
         comment = generate_pr_comment(_make_result([]), _make_context())
         assert "0 errors, 0 warnings, 0 hints" in comment
+
+    def test_pass_with_warnings_label(self):
+        comment = generate_pr_comment(
+            _make_result([_make_finding(level="warn")]), _make_context()
+        )
+        assert "CAMARA Validation — PASS (with warnings)" in comment
+
+    def test_hints_only_keeps_plain_pass(self):
+        comment = generate_pr_comment(
+            _make_result([_make_finding(level="hint")]), _make_context()
+        )
+        assert "CAMARA Validation — PASS" in comment
+        assert "(with warnings)" not in comment
+
+    def test_review_pr_warning_note_must_for_rc(self):
+        ctx = _make_context(
+            is_release_review_pr=True, target_release_type="pre-release-rc"
+        )
+        comment = generate_pr_comment(_make_result([_make_finding(level="warn")]), ctx)
+        assert "Warnings MUST be documented in one or more issues" in comment
+
+    def test_review_pr_warning_note_should_for_alpha(self):
+        ctx = _make_context(
+            is_release_review_pr=True, target_release_type="pre-release-alpha"
+        )
+        comment = generate_pr_comment(_make_result([_make_finding(level="warn")]), ctx)
+        assert "Warnings SHOULD be documented in one or more issues" in comment
+
+    def test_no_review_note_on_normal_pr(self):
+        comment = generate_pr_comment(
+            _make_result([_make_finding(level="warn")]), _make_context()
+        )
+        assert "be documented in one or more issues before" not in comment
+
+    def test_no_review_note_when_no_warnings(self):
+        ctx = _make_context(
+            is_release_review_pr=True, target_release_type="pre-release-rc"
+        )
+        comment = generate_pr_comment(_make_result([_make_finding(level="hint")]), ctx)
+        assert "be documented in one or more issues before" not in comment

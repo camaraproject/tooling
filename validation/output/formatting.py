@@ -72,6 +72,36 @@ def count_findings(findings: List[dict]) -> FindingCounts:
     )
 
 
+# ---------------------------------------------------------------------------
+# Result label
+# ---------------------------------------------------------------------------
+
+_RESULT_LABEL = {
+    "pass": "PASS",
+    "fail": "FAIL",
+    "error": "ERROR",
+    "advisory": "ADVISORY",
+}
+
+
+def resolve_result_label(result: str, profile: str, counts: FindingCounts) -> str:
+    """Map a post-filter result string to its display label.
+
+    Two refinements on a passing run:
+      * Advisory profile never blocks, so the post-filter always returns
+        ``"pass"``; show **ADVISORY** when any findings exist, since **PASS**
+        would hide them.
+      * Under a blocking profile, a pass with warnings present is genuine but
+        incomplete; show **PASS (with warnings)** so the warnings stay visible.
+        Hints alone never change the label.
+    """
+    if result == "pass" and profile == "advisory" and counts.total:
+        return _RESULT_LABEL["advisory"]
+    if result == "pass" and counts.warnings > 0:
+        return f"{_RESULT_LABEL['pass']} (with warnings)"
+    return _RESULT_LABEL.get(result, result.upper())
+
+
 def count_findings_by_api(
     findings: List[dict],
 ) -> Dict[str, FindingCounts]:

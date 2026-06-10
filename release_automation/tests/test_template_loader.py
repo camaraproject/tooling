@@ -9,14 +9,13 @@ from release_automation.scripts.template_loader import render_template, Template
 class TestRenderTemplate:
     """Tests for render_template function."""
 
-    def test_render_release_review_pr_rc_template(self):
-        """Test rendering the release review PR template for RC release."""
+    def test_render_release_review_pr_template(self):
+        """Test rendering the (status-independent) release review PR template."""
         context = {
             "release_tag": "r4.1",
             "snapshot_id": "r4.1-abc1234",
             "snapshot_branch_url": "https://github.com/org/repo/tree/release-snapshot/r4.1-abc1234",
             "short_type": "rc",
-            "is_rc": True,
             "apis": [
                 {"api_name": "QualityOnDemand", "api_version": "v1.0.0", "status_label": "rc"},
                 {"api_name": "DeviceLocation", "api_version": "v2.0.0", "status_label": "rc"},
@@ -33,85 +32,50 @@ class TestRenderTemplate:
         assert "| DeviceLocation | `v2.0.0` | rc |" in result
         assert "### Codeowner Actions" in result
         assert "### Release Management Actions" in result
-        assert "During the automation introduction phase" in result
-        assert "#### 1. Update release notes" in result
-        assert "#### 2. Confirm API release readiness" in result
-        assert "CHANGELOG updated: copy all API-consumer-relevant changes" in result
-        assert "declared Commonalities version" in result
+        # Three status-independent codeowner actions
+        assert "**Update the release notes**" in result
+        assert "**Document deferred validation warnings (and hints)**" in result
+        assert "**The release is ready for Release Management review**" in result
+        # API Readiness Checklist link lives once, in the asset-table footer
+        assert "documentation/readiness/api-readiness-checklist.md" in result
         assert "Commonalities r3.4" in result
         assert "Mandatory release assets are present for each API according to its status" in result
-        assert "README update reflects the release tag" in result
+        assert "All remaining validation warnings are documented in issues and the reasons for deferral are defensible" in result
         assert "### Valid next actions for codeowners" in result
         assert "Snapshot: [`r4.1-abc1234`]" in result
         assert "<details>" in result
         assert "Required release assets per API status" in result
+        # Removed in RM#554: status-conditional checklist, version-match box,
+        # and the automation-introduction-phase snapshot-content note
+        assert "Confirm API release readiness" not in result
+        assert "API version(s) used in all files match" not in result
+        assert "During the automation introduction phase" not in result
 
-    def test_render_release_review_pr_alpha_template(self):
-        """Test rendering the release review PR template for alpha release."""
-        context = {
-            "release_tag": "r3.2",
-            "snapshot_id": "r3.2-def5678",
-            "short_type": "alpha",
-            "is_alpha": True,
-            "apis": [
-                {"api_name": "NumberVerification", "api_version": "v0.3.0-alpha.1", "status_label": "alpha"},
-            ],
-        }
+    def test_render_release_review_pr_body_is_status_independent(self):
+        """The Codeowner/RM action blocks are identical regardless of release status."""
+        bodies = []
+        for short_type, status_label, version in [
+            ("alpha", "alpha", "v0.3.0-alpha.1"),
+            ("rc", "rc", "v1.0.0-rc.1"),
+            ("public", "initial public", "v0.5.0"),
+            ("maintenance", "stable public", "v1.0.0"),
+        ]:
+            result = render_template(
+                "release_review_pr",
+                {
+                    "release_tag": "r4.1",
+                    "snapshot_id": "r4.1-abc1234",
+                    "short_type": short_type,
+                    "apis": [
+                        {"api_name": "TestAPI", "api_version": version, "status_label": status_label},
+                    ],
+                },
+            )
+            # The slice between the actions heading and the asset table must not vary by status
+            actions = result[result.index("### Codeowner Actions"):result.index("<details>")]
+            bodies.append(actions)
 
-        result = render_template("release_review_pr", context)
-
-        assert "## Release Review: r3.2 alpha" in result
-        assert "| NumberVerification | `v0.3.0-alpha.1` | alpha |" in result
-        assert "API version(s) used in all files match" in result
-        assert "API documentation (`info.description`) is up to date with the API definition" in result
-        assert "CHANGELOG updated: copy all API-consumer-relevant changes" in result
-        # Alpha should NOT have rc/public-specific items
-        assert "Enhanced test cases" not in result
-
-    def test_render_release_review_pr_initial_public_template(self):
-        """Test rendering the release review PR template for initial public release."""
-        context = {
-            "release_tag": "r5.0",
-            "snapshot_id": "r5.0-xyz9999",
-            "short_type": "public",
-            "is_initial_public": True,
-            "apis": [
-                {"api_name": "TestAPI", "api_version": "v0.5.0", "status_label": "initial public"},
-            ],
-            "commonalities_release": "r4.0",
-        }
-
-        result = render_template("release_review_pr", context)
-
-        assert "## Release Review: r5.0 public" in result
-        assert "| TestAPI | `v0.5.0` | initial public |" in result
-        assert "API Description is set" in result
-        assert "Mandatory release assets are present for each API according to its status" in result
-        # Initial public should NOT have stable-public-only items
-        assert "Enhanced test cases" not in result
-        assert "User stories" not in result
-
-    def test_render_release_review_pr_stable_public_template(self):
-        """Test rendering the release review PR template for stable public release."""
-        context = {
-            "release_tag": "r6.1",
-            "snapshot_id": "r6.1-aaa1111",
-            "short_type": "maintenance",
-            "is_stable_public": True,
-            "apis": [
-                {"api_name": "TestAPI", "api_version": "v1.0.0", "status_label": "stable public"},
-            ],
-            "commonalities_release": "r5.0",
-        }
-
-        result = render_template("release_review_pr", context)
-
-        assert "## Release Review: r6.1 maintenance" in result
-        assert "| TestAPI | `v1.0.0` | stable public |" in result
-        assert "Enhanced test cases cover rainy day scenarios" in result
-        assert "User stories are current" in result
-        assert "API Description is up to date" in result
-        assert "Mandatory release assets are present for each API according to its status" in result
+        assert len(set(bodies)) == 1, "Codeowner/RM action blocks differ across release statuses"
 
     def test_render_release_review_pr_no_apis(self):
         """Test rendering with no APIs (edge case)."""
