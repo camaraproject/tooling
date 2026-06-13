@@ -44,8 +44,8 @@ This repository provides:
 
 The repository ships two consumption lines:
 
-* **v1-rc** — unified validation framework (linting, validation, release automation) in release candidate phase for volunteer repositories (to get onboarded, update your `release-plan.yaml` file with a planned next release (`target_release_type: pre-release-alpha` or `pre-release-rc`). If not yet onboarded you will receive a PR with the caller workflows at latest on the next working day.)
-* **v0** — legacy linting only, kept for repositories not yet onboarded to v1-rc
+* **v1-rc** — unified validation framework (linting, validation, release automation) in release candidate phase. All active CAMARA API repositories use v1-rc.
+* **v0** — deprecated legacy linting.
 
 ### v1-rc — CAMARA Validation and Release Automation V1
 
@@ -57,16 +57,9 @@ A single lightweight tag (`v1-rc`) covers:
 
 See the [release candidate documentation](https://github.com/camaraproject/tooling/blob/main/documentation/README.md) for linting and validation, and the [Release Process Guide](https://github.com/camaraproject/ReleaseManagement/blob/main/documentation/README.md) (in ReleaseManagement) for release automation.
 
-### v0 (legacy)
+### v0 (deprecated legacy)
 
-v0 ships linting only, kept available for repositories not yet onboarded to v1-rc. **There is no v0 release automation**, and Release Management no longer supports manual releases. Repositories that need to create a release must onboard to v1-rc.
-
-#### v0 Linting
-
-Spectral ruleset and MegaLinter invoked through `pr_validation.yml` and `spectral-oas.yml`.
-
-* **Configuration**: [.spectral.yaml](linting/config/.spectral.yaml)
-* **Caller templates**: [spectral-oas-caller.yml](linting/workflows/spectral-oas-caller.yml), [pr_validation_caller.yml](linting/workflows/pr_validation_caller.yml)
+v0 ships linting only and is deprecated. **There is no v0 release automation**, and Release Management no longer supports manual releases. Repositories that need to create a release must onboard to v1-rc.
 
 ### Shared Actions
 
@@ -104,7 +97,7 @@ tooling/
 ├── linting/
 │   ├── config/                       # Spectral rulesets (.spectral.yaml, .spectral-r3.4.yaml, .spectral-r4.yaml) and lint functions
 │   ├── docs/
-│   └── workflows/                    # Caller workflow templates
+│   └── workflows/                    # Caller workflow templates v0 (deprecated)
 ├── release_automation/
 │   ├── config/
 │   ├── docs/
@@ -142,7 +135,7 @@ tooling/
 ## Release Information
 
 * **`v1-rc`** — lightweight tag covering the validation and release automation framework v1 release candidate; promoted to `v1` (release 1.0.0) at GA
-* **`v0`** — floating tag tracking the latest v0.x release
+* **`v0`** — deprecated floating tag tracking the latest v0.x legacy linting release
 * **`main`** — active development; carries both the v0 linting line and the v1-rc framework
 
 ## Contributing

@@ -9,6 +9,7 @@
     "gherkin-lint": "^4.2.4"
   },
   "overrides": {
+    "@stoplight/spectral-rulesets": "1.22.2",
     "lodash": "^4.18.0",
     "postcss": "^8.5.10",
     "protobufjs": "^7.5.8",
