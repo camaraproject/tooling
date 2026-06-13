@@ -1,0 +1,462 @@
+name: Tooling CI
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: tooling-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  ACTIONLINT_VERSION: "1.7.12"
+  PYTHON_VERSION: "3.11"
+
+jobs:
+  changes:
+    name: Detect changed trust-chain paths
+    runs-on: ubuntu-latest
+    outputs:
+      npm: ${{ steps.plan.outputs.npm }}
+      javascript: ${{ steps.plan.outputs.javascript }}
+      validation: ${{ steps.plan.outputs.validation }}
+      release_automation: ${{ steps.plan.outputs.release_automation }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Plan gated checks
+        id: plan
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            printf '%s\n' "__all__" > changed-files.txt
+          elif [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            git diff --name-only "${{ github.event.pull_request.base.sha }}" HEAD > changed-files.txt
+          else
+            printf '%s\n' "__all__" > changed-files.txt
+          fi
+
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+
+          from tooling_lib.ci_plan import plan_for_changed_files
+
+          changed_files = [
+              line.strip()
+              for line in Path("changed-files.txt").read_text(encoding="utf-8").splitlines()
+              if line.strip()
+          ]
+          plan = plan_for_changed_files(changed_files)
+
+          outputs = {
+              "npm": plan.npm,
+              "javascript": plan.javascript,
+              "validation": plan.validation,
+              "release_automation": plan.release_automation,
+          }
+
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
+              for key, value in outputs.items():
+                  out.write(f"{key}={str(value).lower()}\n")
+
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary:
+              summary.write("### Planned Tooling CI checks\n\n")
+              summary.write("| Check | Planned | Trigger |\n")
+              summary.write("| --- | --- | --- |\n")
+              summary.write("| Actionlint | yes | every run |\n")
+              summary.write(f"| Validation npm install | {str(plan.npm).lower()} | validation package manifest or lockfile |\n")
+              summary.write(f"| JavaScript syntax | {str(plan.javascript).lower()} | Spectral custom functions |\n")
+              summary.write(f"| Validation pytest | {str(plan.validation).lower()} | validation, linting, validation shared actions, tooling_lib, or validation workflow paths |\n")
+              summary.write(f"| Release automation pytest | {str(plan.release_automation).lower()} | release_automation, RA shared actions, tooling_lib, or RA workflow paths |\n\n")
+              summary.write("<details><summary>Changed files</summary>\n\n")
+              for path in changed_files:
+                  summary.write(f"- `{path}`\n")
+              summary.write("\n</details>\n")
+          PY
+
+      - name: Upload changed file list
+        uses: actions/upload-artifact@v7
+        with:
+          name: tooling-ci-changed-files
+          path: changed-files.txt
+          if-no-files-found: error
+          retention-days: 14
+
+  actionlint:
+    name: Workflow semantics
+    runs-on: ubuntu-latest
+    needs: changes
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Install actionlint
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          install_dir="$RUNNER_TEMP/actionlint"
+          mkdir -p "$install_dir"
+          curl -fsSL \
+            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz" \
+            -o "$RUNNER_TEMP/actionlint.tar.gz"
+          tar -xzf "$RUNNER_TEMP/actionlint.tar.gz" -C "$install_dir" actionlint
+          echo "$install_dir" >> "$GITHUB_PATH"
+
+      - name: Run actionlint
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mkdir -p artifacts/actionlint
+          mapfile -t workflow_files < <(
+            find \
+              .github/workflows \
+              validation/workflows \
+              release_automation/workflows \
+              linting/workflows \
+              -maxdepth 1 \
+              -type f \
+              -name '*.yml' \
+              -print | sort
+          )
+
+          actionlint_args=(
+            -shellcheck=
+            -pyflakes=
+            -ignore 'missing input "app-id" which is required by action "actions/create-github-app-token@v3"'
+            -ignore 'input "client-id" is not defined in action "actions/create-github-app-token@v3"'
+            -format '{{json .}}'
+          )
+
+          set +e
+          actionlint "${actionlint_args[@]}" "${workflow_files[@]}" > artifacts/actionlint/actionlint.json
+          status=$?
+          set -e
+
+          if [[ ! -s artifacts/actionlint/actionlint.json ]]; then
+            printf '[]\n' > artifacts/actionlint/actionlint.json
+          fi
+
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          def escape(value: str) -> str:
+              return value.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+
+          issues = json.loads(Path("artifacts/actionlint/actionlint.json").read_text(encoding="utf-8"))
+          for issue in issues:
+              message = escape(issue.get("message", "actionlint issue"))
+              filepath = issue.get("filepath", "")
+              line = issue.get("line", 1)
+              column = issue.get("column", 1)
+              print(f"::error file={filepath},line={line},col={column}::{message}")
+          PY
+
+          {
+            echo "### Actionlint"
+            echo
+            echo "| Check | Result | Artifact |"
+            echo "| --- | --- | --- |"
+            if [[ "$status" -eq 0 ]]; then
+              echo "| Core workflow semantics | pass | tooling-ci-actionlint-json: artifacts/actionlint/actionlint.json |"
+            else
+              echo "| Core workflow semantics | fail | tooling-ci-actionlint-json: artifacts/actionlint/actionlint.json |"
+            fi
+            echo
+            echo "ShellCheck and pyflakes integrations are disabled for the first rollout; the current blocking check is core actionlint semantics."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          exit "$status"
+
+      - name: Upload actionlint JSON
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: tooling-ci-actionlint-json
+          path: artifacts/actionlint/actionlint.json
+          if-no-files-found: error
+          retention-days: 14
+
+  validation-npm:
+    name: Validation npm install
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.npm == 'true'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: validation/package-lock.json
+
+      - name: Run npm ci
+        shell: bash
+        working-directory: validation
+        run: |
+          set -euo pipefail
+
+          mkdir -p ../artifacts/npm
+          npm ci --ignore-scripts 2>&1 | tee ../artifacts/npm/npm-ci.log
+
+      - name: Summarize npm install
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "### Validation npm install"
+            echo
+            echo "| Check | Result | Artifact |"
+            echo "| --- | --- | --- |"
+            echo "| npm ci --ignore-scripts | ${{ job.status }} | tooling-ci-validation-npm-ci-log: artifacts/npm/npm-ci.log |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload npm install log
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: tooling-ci-validation-npm-ci-log
+          path: artifacts/npm/npm-ci.log
+          if-no-files-found: warn
+          retention-days: 14
+
+  javascript-syntax:
+    name: JavaScript syntax
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.javascript == 'true'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "20"
+
+      - name: Check custom Spectral functions
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mkdir -p artifacts/javascript
+          : > artifacts/javascript/node-check.log
+
+          find linting/config/lint_function -maxdepth 1 -type f -name '*.js' -print | sort | while read -r file; do
+            echo "node --check ${file}" | tee -a artifacts/javascript/node-check.log
+            node --check "$file" 2>&1 | tee -a artifacts/javascript/node-check.log
+          done
+
+      - name: Summarize JavaScript syntax
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "### JavaScript syntax"
+            echo
+            echo "| Check | Result | Artifact |"
+            echo "| --- | --- | --- |"
+            echo "| node --check linting/config/lint_function/*.js | ${{ job.status }} | tooling-ci-javascript-syntax-log: artifacts/javascript/node-check.log |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload JavaScript syntax log
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: tooling-ci-javascript-syntax-log
+          path: artifacts/javascript/node-check.log
+          if-no-files-found: warn
+          retention-days: 14
+
+  validation-tests:
+    name: Validation pytest
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.validation == 'true'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: validation/package-lock.json
+
+      - name: Install dependencies
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install --quiet -r requirements.txt pytest
+
+      - name: Install validation Node dependencies
+        working-directory: validation
+        run: npm ci --ignore-scripts
+
+      - name: Run validation tests
+        run: |
+          mkdir -p artifacts/pytest
+          python3 -m pytest validation/tests tooling_lib/tests \
+            --junitxml=artifacts/pytest/validation-junit.xml
+
+      - name: Summarize validation tests
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "### Validation pytest"
+            echo
+            echo "| Check | Result | Artifact |"
+            echo "| --- | --- | --- |"
+            echo "| validation/tests + tooling_lib/tests | ${{ job.status }} | tooling-ci-validation-pytest-junit: artifacts/pytest/validation-junit.xml |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload validation JUnit XML
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: tooling-ci-validation-pytest-junit
+          path: artifacts/pytest/validation-junit.xml
+          if-no-files-found: warn
+          retention-days: 14
+
+  release-automation-tests:
+    name: Release automation pytest
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.release_automation == 'true'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install --quiet -r requirements.txt pytest
+
+      - name: Run release automation tests
+        run: |
+          mkdir -p artifacts/pytest
+          python3 -m pytest release_automation/tests tooling_lib/tests \
+            --junitxml=artifacts/pytest/release-automation-junit.xml
+
+      - name: Summarize release automation tests
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "### Release automation pytest"
+            echo
+            echo "| Check | Result | Artifact |"
+            echo "| --- | --- | --- |"
+            echo "| release_automation/tests + tooling_lib/tests | ${{ job.status }} | tooling-ci-release-automation-pytest-junit: artifacts/pytest/release-automation-junit.xml |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload release automation JUnit XML
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: tooling-ci-release-automation-pytest-junit
+          path: artifacts/pytest/release-automation-junit.xml
+          if-no-files-found: warn
+          retention-days: 14
+
+  summary:
+    name: Tooling CI summary
+    runs-on: ubuntu-latest
+    needs:
+      - changes
+      - actionlint
+      - validation-npm
+      - javascript-syntax
+      - validation-tests
+      - release-automation-tests
+    if: always()
+    steps:
+      - name: Summarize check results
+        shell: bash
+        env:
+          CHANGES_RESULT: ${{ needs.changes.result }}
+          ACTIONLINT_RESULT: ${{ needs.actionlint.result }}
+          NPM_PLANNED: ${{ needs.changes.outputs.npm }}
+          NPM_RESULT: ${{ needs.validation-npm.result }}
+          JAVASCRIPT_PLANNED: ${{ needs.changes.outputs.javascript }}
+          JAVASCRIPT_RESULT: ${{ needs.javascript-syntax.result }}
+          VALIDATION_PLANNED: ${{ needs.changes.outputs.validation }}
+          VALIDATION_RESULT: ${{ needs.validation-tests.result }}
+          RELEASE_PLANNED: ${{ needs.changes.outputs.release_automation }}
+          RELEASE_RESULT: ${{ needs.release-automation-tests.result }}
+        run: |
+          set -euo pipefail
+
+          planned_label() {
+            if [[ "$1" == "true" ]]; then
+              printf 'yes'
+            else
+              printf 'no'
+            fi
+          }
+
+          {
+            echo "### Tooling CI summary"
+            echo
+            echo "| Check | Planned | Result | Artifact |"
+            echo "| --- | --- | --- | --- |"
+            echo "| Changed-path detection | yes | ${CHANGES_RESULT} | tooling-ci-changed-files: changed-files.txt |"
+            echo "| Actionlint | yes | ${ACTIONLINT_RESULT} | tooling-ci-actionlint-json: artifacts/actionlint/actionlint.json |"
+            echo "| Validation npm install | $(planned_label "$NPM_PLANNED") | ${NPM_RESULT} | tooling-ci-validation-npm-ci-log: artifacts/npm/npm-ci.log |"
+            echo "| JavaScript syntax | $(planned_label "$JAVASCRIPT_PLANNED") | ${JAVASCRIPT_RESULT} | tooling-ci-javascript-syntax-log: artifacts/javascript/node-check.log |"
+            echo "| Validation pytest | $(planned_label "$VALIDATION_PLANNED") | ${VALIDATION_RESULT} | tooling-ci-validation-pytest-junit: artifacts/pytest/validation-junit.xml |"
+            echo "| Release automation pytest | $(planned_label "$RELEASE_PLANNED") | ${RELEASE_RESULT} | tooling-ci-release-automation-pytest-junit: artifacts/pytest/release-automation-junit.xml |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          failed=0
+          for result in \
+            "$CHANGES_RESULT" \
+            "$ACTIONLINT_RESULT" \
+            "$NPM_RESULT" \
+            "$JAVASCRIPT_RESULT" \
+            "$VALIDATION_RESULT" \
+            "$RELEASE_RESULT"
+          do
+            if [[ "$result" == "failure" || "$result" == "cancelled" ]]; then
+              failed=1
+            fi
+          done
+
+          exit "$failed"
