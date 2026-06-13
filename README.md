@@ -45,7 +45,7 @@ This repository provides:
 The repository ships two consumption lines:
 
 * **v1-rc** — unified validation framework (linting, validation, release automation) in release candidate phase. All active CAMARA API repositories use v1-rc.
-* **v0** — deprecated legacy linting only, kept temporarily for inactive repositories that have not been onboarded to v1-rc.
+* **v0** — deprecated legacy linting.
 
 ### v1-rc — CAMARA Validation and Release Automation V1
 
@@ -59,14 +59,7 @@ See the [release candidate documentation](https://github.com/camaraproject/tooli
 
 ### v0 (deprecated legacy)
 
-v0 ships linting only and is deprecated. It remains available only as a compatibility line for inactive repositories that have not been onboarded to v1-rc. **There is no v0 release automation**, and Release Management no longer supports manual releases. Repositories that need to create a release must onboard to v1-rc.
-
-#### v0 Linting
-
-Spectral ruleset and MegaLinter invoked through `pr_validation.yml` and `spectral-oas.yml`.
-
-* **Configuration**: [.spectral.yaml](linting/config/.spectral.yaml)
-* **Caller templates**: [spectral-oas-caller.yml](linting/workflows/spectral-oas-caller.yml), [pr_validation_caller.yml](linting/workflows/pr_validation_caller.yml)
+v0 ships linting only and is deprecated. **There is no v0 release automation**, and Release Management no longer supports manual releases. Repositories that need to create a release must onboard to v1-rc.
 
 ### Shared Actions
 
@@ -104,7 +97,7 @@ tooling/
 ├── linting/
 │   ├── config/                       # Spectral rulesets (.spectral.yaml, .spectral-r3.4.yaml, .spectral-r4.yaml) and lint functions
 │   ├── docs/
-│   └── workflows/                    # Caller workflow templates
+│   └── workflows/                    # Caller workflow templates v0 (deprecated)
 ├── release_automation/
 │   ├── config/
 │   ├── docs/
