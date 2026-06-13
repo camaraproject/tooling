@@ -796,6 +796,24 @@ class GitHubClient:
                 # Label might not exist, continue
                 pass
 
+    def add_issue_comment(self, issue_number: int, body: str) -> None:
+        """
+        Add a comment to an issue.
+
+        Args:
+            issue_number: The issue number
+            body: Comment body
+
+        Raises:
+            GitHubClientError: If operation fails
+        """
+        self._run_gh([
+            "api",
+            f"repos/{self.repo}/issues/{issue_number}/comments",
+            "-X", "POST",
+            "-f", f"body={body}",
+        ])
+
     def set_labels(self, issue_number: int, labels: List[str]) -> None:
         """
         Replace all labels on an issue with the specified labels.

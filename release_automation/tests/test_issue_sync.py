@@ -260,6 +260,55 @@ class TestSyncReleaseIssue:
         gh.remove_labels.assert_called()
         gh.add_labels.assert_called()
 
+    def test_closes_stale_workflow_owned_issue_after_current_issue_exists(self):
+        """Test stale workflow-owned issues for old tags are de-stated and closed."""
+        manager, gh, state_manager, issue_manager, _ = self._create_manager()
+
+        release_plan = {
+            "repository": {
+                "target_release_tag": "r4.1",
+                "target_release_type": "pre-release-rc"
+            }
+        }
+
+        current_issue = {
+            "number": 2,
+            "title": "Release r4.1 (RC)",
+            "body": f"{WORKFLOW_MARKER}\n<!-- release-automation:release-tag:r4.1 -->",
+            "labels": [{"name": "release-state:planned"}],
+            "html_url": "https://github.com/test/repo/issues/2",
+        }
+        stale_issue = {
+            "number": 1,
+            "title": "Release r4.0 (RC)",
+            "body": f"{WORKFLOW_MARKER}\n<!-- release-automation:release-tag:r4.0 -->",
+            "labels": [
+                {"name": "release-issue"},
+                {"name": "release-state:planned"},
+            ],
+            "html_url": "https://github.com/test/repo/issues/1",
+        }
+
+        state_manager.derive_state.return_value = ReleaseInfoResult(
+            success=True, state=ReleaseState.PLANNED,
+            release_tag="r4.1", source="release-plan.yaml")
+        gh.search_issues.return_value = [stale_issue, current_issue]
+        gh.get_issue.return_value = current_issue
+        issue_manager.should_update_title.return_value = False
+        issue_manager.generate_state_section.return_value = "**State**: planned"
+        issue_manager.update_section.return_value = current_issue["body"]
+
+        result = manager.sync_release_issue(release_plan)
+
+        assert result.action == "updated"
+        gh.remove_labels.assert_any_call(1, ["release-state:planned"])
+        gh.add_issue_comment.assert_called_once()
+        comment_args = gh.add_issue_comment.call_args.args
+        assert comment_args[0] == 1
+        assert "#2" in comment_args[1]
+        assert "`r4.1`" in comment_args[1]
+        gh.close_issue.assert_called_once_with(1, state_reason="not_planned")
+
     def test_no_action_when_not_planned_and_no_issue(self):
         """Test no action when not PLANNED and no existing issue."""
         manager, gh, state_manager, _, _ = self._create_manager()
