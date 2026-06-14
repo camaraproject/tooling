@@ -27,9 +27,9 @@ class TestRenderTemplate:
         result = render_template("release_review_pr", context)
 
         assert "## Release Review: r4.1 rc" in result
-        assert "| API | Version | Status |" in result
-        assert "| QualityOnDemand | `v1.0.0` | rc |" in result
-        assert "| DeviceLocation | `v2.0.0` | rc |" in result
+        assert "| API | Version | Status | Changes compared to |" in result
+        assert "| QualityOnDemand | `v1.0.0` | rc | `N/A` |" in result
+        assert "| DeviceLocation | `v2.0.0` | rc | `N/A` |" in result
         assert "### Codeowner Actions" in result
         assert "### Release Management Actions" in result
         # Three status-independent codeowner actions
@@ -155,7 +155,33 @@ class TestTemplateLoader:
         result = loader.render("release_review_pr", context)
 
         assert "## Release Review: r4.2 rc" in result
-        assert "| TestAPI | `v1.0.0` | rc |" in result
+        assert "| TestAPI | `v1.0.0` | rc | `N/A` |" in result
+
+    def test_render_release_review_pr_includes_comparison_baseline_column(self):
+        context = {
+            "release_tag": "r4.2",
+            "snapshot_id": "r4.2-111222",
+            "short_type": "rc",
+            "apis": [
+                {
+                    "api_name": "TestAPI",
+                    "api_version": "v1.2.0-rc.2",
+                    "status_label": "rc",
+                    "comparison_baseline": "v1.2.0-rc.1",
+                },
+                {
+                    "api_name": "NewAPI",
+                    "api_version": "v0.1.0-alpha.1",
+                    "status_label": "alpha",
+                },
+            ],
+        }
+
+        result = render_template("release_review_pr", context)
+
+        assert "| API | Version | Status | Changes compared to |" in result
+        assert "| TestAPI | `v1.2.0-rc.2` | rc | `v1.2.0-rc.1` |" in result
+        assert "| NewAPI | `v0.1.0-alpha.1` | alpha | `N/A` |" in result
 
     def test_loader_render_sync_pr(self):
         """Test TemplateLoader.render for sync PR."""

@@ -554,11 +554,19 @@ class ChangelogGenerator:
         else:
             first_sentence = f"**{title} {version} is ...**"
 
+        comparison_baseline = api.get("comparison_baseline", "")
         lines = [
             f"## {title} {version}",
             "",
             first_sentence,
             "",
+        ]
+        if comparison_baseline:
+            lines.extend([
+                f"Changes documented below are compared to version {comparison_baseline}.",
+                "",
+            ])
+        lines.extend([
             "- API definition **with inline documentation**:",
             f"  - [View it on ReDoc](https://redocly.github.io/redoc/"
             f"?url={raw_url}/{release_tag}/{yaml_path}&nocors)",
@@ -581,6 +589,6 @@ class ChangelogGenerator:
             "### Removed",
             "",
             "* N/A",
-        ]
+        ])
 
         return "\n".join(lines)

@@ -6,10 +6,10 @@ Edit and review this PR before merging it into the release snapshot. After Codeo
 
 ### Release contents
 
-| API | Version | Status |
-|-----|---------|--------|
+| API | Version | Status | Changes compared to |
+|-----|---------|--------|---------------------|
 {{#apis}}
-| {{api_name}} | `{{api_version}}` | {{status_label}} |
+| {{api_name}} | `{{api_version}}` | {{status_label}} | `{{#comparison_baseline}}{{comparison_baseline}}{{/comparison_baseline}}{{^comparison_baseline}}N/A{{/comparison_baseline}}` |
 {{/apis}}
 
 {{#commonalities_release}}**Dependencies:** Commonalities {{commonalities_release}}{{#identity_consent_management_release}}, ICM {{identity_consent_management_release}}{{/identity_consent_management_release}}{{/commonalities_release}}
