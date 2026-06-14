@@ -6,7 +6,7 @@ Edit and review this PR before merging it into the release snapshot. After Codeo
 
 ### Release contents
 
-| API | Version | Status | Changes compared to |
+| API | Version | Status | Changes to be compared to |
 |-----|---------|--------|---------------------|
 {{#apis}}
 | {{api_name}} | `{{api_version}}` | {{status_label}} | `{{#comparison_baseline}}{{comparison_baseline}}{{/comparison_baseline}}{{^comparison_baseline}}N/A{{/comparison_baseline}}` |
@@ -23,7 +23,7 @@ _Tick each box once done. Release Management review starts when all three boxes 
   What to do:
   - Copy all API-consumer-relevant changes from the provided list into the appropriate Added / Changed / Fixed / Removed sections for each API.
   - Do not copy administrative, tooling-only, or internal maintenance changes unless they affect API consumers.
-  - Check which kinds of changes must be listed for *this* release type — the rules are stated at the top of the CHANGELOG file and are easily overlooked.
+  - For each API, fill the CHANGELOG against the stated comparison target, following the release-type rules at the top of the CHANGELOG.
 
 - [ ] **Document deferred validation warnings (and hints)**
 
