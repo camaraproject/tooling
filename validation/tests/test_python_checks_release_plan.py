@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from validation.context import ApiContext, ValidationContext
+from validation.context import ActiveReleaseState, ApiContext, ValidationContext
 from validation.engines.python_checks.release_plan_checks import (
     ALLOWED_META_RELEASES,
     _check_file_existence,
@@ -15,6 +15,8 @@ from validation.engines.python_checks.release_plan_checks import (
     _check_track_consistency,
     check_declared_dependency_tags_exist,
     check_orphan_api_definitions,
+    check_release_plan_active_release_state,
+    check_release_plan_api_names_unique,
     check_release_plan_exclusivity,
     check_release_plan_semantics,
 )
@@ -260,6 +262,64 @@ class TestCheckReleasePlanSemantics:
 
 
 # ---------------------------------------------------------------------------
+# TestCheckReleasePlanApiNamesUnique (P-034)
+# ---------------------------------------------------------------------------
+
+
+class TestCheckReleasePlanApiNamesUnique:
+    def test_no_release_plan(self, tmp_path: Path):
+        assert check_release_plan_api_names_unique(tmp_path, _make_context()) == []
+
+    def test_unique_api_names(self, tmp_path: Path):
+        plan = _make_plan(
+            apis=[
+                {"api_name": "quality-on-demand", "target_api_status": "public"},
+                {"api_name": "qos-booking", "target_api_status": "public"},
+            ]
+        )
+        _write_release_plan(tmp_path, plan)
+        assert check_release_plan_api_names_unique(tmp_path, _make_context()) == []
+
+    def test_duplicate_api_name_errors(self, tmp_path: Path):
+        plan = _make_plan(
+            apis=[
+                {"api_name": "quality-on-demand", "target_api_status": "public"},
+                {"api_name": "quality-on-demand", "target_api_status": "rc"},
+                {"api_name": "qos-booking", "target_api_status": "public"},
+            ]
+        )
+        _write_release_plan(tmp_path, plan)
+
+        findings = check_release_plan_api_names_unique(tmp_path, _make_context())
+
+        assert len(findings) == 1
+        assert findings[0]["engine_rule"] == "check-release-plan-api-names-unique"
+        assert findings[0]["level"] == "error"
+        assert findings[0]["path"] == "release-plan.yaml"
+        assert findings[0]["api_name"] == "quality-on-demand"
+        assert "2 entries" in findings[0]["message"]
+        assert "quality-on-demand" in findings[0]["message"]
+
+    def test_pre_existing_duplicate_prefixes_message(self, tmp_path: Path):
+        plan = _make_plan(
+            apis=[
+                {"api_name": "quality-on-demand", "target_api_status": "public"},
+                {"api_name": "quality-on-demand", "target_api_status": "public"},
+            ]
+        )
+        _write_release_plan(tmp_path, plan)
+        context = _context_with_active_release_state(release_plan_changed=False)
+
+        findings = check_release_plan_api_names_unique(tmp_path, context)
+
+        assert len(findings) == 1
+        assert findings[0]["message"].startswith(
+            "Pre-existing release-plan condition:"
+        )
+        assert "dedicated release-plan PR" in findings[0]["message"]
+
+
+# ---------------------------------------------------------------------------
 # P-019: check-orphan-api-definitions
 # ---------------------------------------------------------------------------
 
@@ -387,6 +447,125 @@ class TestCheckReleasePlanExclusivity:
     def test_default_context_has_no_other_files(self, tmp_path: Path):
         # Ensures _make_context() default does not trigger the rule.
         assert check_release_plan_exclusivity(tmp_path, _make_context()) == []
+
+
+# ---------------------------------------------------------------------------
+# TestCheckReleasePlanActiveReleaseState (P-033)
+# ---------------------------------------------------------------------------
+
+
+def _context_with_active_release_state(
+    *,
+    state: str = "",
+    snapshot_branch: str = "",
+    release_issue_number: int | None = None,
+    trigger_type: str = "pr",
+    release_plan_changed: bool | None = True,
+) -> ValidationContext:
+    base = _make_context()
+    return ValidationContext(
+        repository=base.repository,
+        branch_type=base.branch_type,
+        trigger_type=trigger_type,
+        profile=base.profile,
+        stage=base.stage,
+        target_release_type=base.target_release_type,
+        commonalities_release=base.commonalities_release,
+        commonalities_version=base.commonalities_version,
+        icm_release=base.icm_release,
+        base_ref=base.base_ref,
+        is_release_review_pr=base.is_release_review_pr,
+        release_plan_changed=release_plan_changed,
+        pr_number=base.pr_number,
+        apis=base.apis,
+        workflow_run_url=base.workflow_run_url,
+        tooling_ref=base.tooling_ref,
+        active_release_state=ActiveReleaseState(
+            state=state,
+            snapshot_branch=snapshot_branch,
+            release_issue_number=release_issue_number,
+        ),
+    )
+
+
+class TestCheckReleasePlanActiveReleaseState:
+    def test_no_active_release_state(self, tmp_path: Path):
+        context = _context_with_active_release_state()
+        assert check_release_plan_active_release_state(tmp_path, context) == []
+
+    def test_snapshot_branch_only_blocks(self, tmp_path: Path):
+        context = _context_with_active_release_state(
+            snapshot_branch="release-snapshot/r4.3-abc1234"
+        )
+
+        findings = check_release_plan_active_release_state(tmp_path, context)
+
+        assert len(findings) == 1
+        assert findings[0]["engine_rule"] == "check-release-plan-active-release-state"
+        assert findings[0]["level"] == "error"
+        assert "release-snapshot/r4.3-abc1234" in findings[0]["message"]
+
+    def test_active_state_only_blocks(self, tmp_path: Path):
+        context = _context_with_active_release_state(state="snapshot-active")
+
+        findings = check_release_plan_active_release_state(tmp_path, context)
+
+        assert len(findings) == 1
+        assert "snapshot-active" in findings[0]["message"]
+
+    def test_release_issue_number_is_message_context_only(self, tmp_path: Path):
+        context = _context_with_active_release_state(
+            state="snapshot-active",
+            release_issue_number=23,
+        )
+
+        findings = check_release_plan_active_release_state(tmp_path, context)
+
+        assert len(findings) == 1
+        assert "#23" in findings[0]["message"]
+        assert "snapshot-active" in findings[0]["message"]
+
+    def test_snapshot_branch_and_active_issue_state_block(self, tmp_path: Path):
+        context = _context_with_active_release_state(
+            state="draft-ready",
+            snapshot_branch="release-snapshot/r4.3-abc1234",
+            release_issue_number=23,
+        )
+
+        findings = check_release_plan_active_release_state(tmp_path, context)
+
+        assert len(findings) == 1
+        assert "release-snapshot/r4.3-abc1234" in findings[0]["message"]
+        assert "#23" in findings[0]["message"]
+        assert "draft-ready" in findings[0]["message"]
+
+    def test_planned_state_does_not_block(self, tmp_path: Path):
+        context = _context_with_active_release_state(
+            state="planned",
+            release_issue_number=23,
+        )
+        assert check_release_plan_active_release_state(tmp_path, context) == []
+
+    def test_terminal_issue_state_does_not_block(self, tmp_path: Path):
+        context = _context_with_active_release_state(
+            state="published",
+            release_issue_number=23,
+        )
+        assert check_release_plan_active_release_state(tmp_path, context) == []
+
+    def test_non_pr_trigger_does_not_block(self, tmp_path: Path):
+        context = _context_with_active_release_state(
+            snapshot_branch="release-snapshot/r4.3-abc1234",
+            trigger_type="dispatch",
+        )
+        assert check_release_plan_active_release_state(tmp_path, context) == []
+
+    def test_release_plan_unchanged_does_not_block(self, tmp_path: Path):
+        context = _context_with_active_release_state(
+            snapshot_branch="release-snapshot/r4.3-abc1234",
+            release_plan_changed=False,
+        )
+        assert check_release_plan_active_release_state(tmp_path, context) == []
 
 
 # ---------------------------------------------------------------------------

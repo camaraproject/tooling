@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from jsonschema import Draft202012Validator
 import pytest
 import yaml
 
@@ -16,6 +17,13 @@ from validation.postfilter.metadata_loader import (
     load_rules_from_file,
     parse_rule_metadata,
 )
+
+
+# ---------------------------------------------------------------------------
+# Paths
+# ---------------------------------------------------------------------------
+
+_SCHEMA_PATH = Path(__file__).resolve().parent.parent / "schemas" / "rule-metadata-schema.yaml"
 
 
 # ---------------------------------------------------------------------------
@@ -53,6 +61,11 @@ def _write_yaml(path: Path, data: object) -> None:
     path.write_text(yaml.dump(data, default_flow_style=False), encoding="utf-8")
 
 
+def _validate_against_schema(rule: dict) -> None:
+    schema = yaml.safe_load(_SCHEMA_PATH.read_text(encoding="utf-8"))
+    Draft202012Validator(schema).validate(rule)
+
+
 # ---------------------------------------------------------------------------
 # TestParseRuleMetadata
 # ---------------------------------------------------------------------------
@@ -72,6 +85,7 @@ class TestParseRuleMetadata:
         assert rule.documentation_url is None
         assert rule.applicability == {}
         assert rule.conditional_level is None
+        assert rule.release_plan_check_only_safe is False
 
     def test_full_entry(self):
         raw = _full_rule_dict()
@@ -101,6 +115,16 @@ class TestParseRuleMetadata:
         assert rule.suggestion is None
         assert rule.documentation_url is None
         assert rule.suppress_schema_paths == ()
+        assert rule.release_plan_check_only_safe is False
+
+    def test_release_plan_check_only_safe_parsed(self):
+        raw = _minimal_rule_dict(release_plan_check_only_safe=True)
+        rule = parse_rule_metadata(raw)
+        assert rule.release_plan_check_only_safe is True
+
+    def test_rule_metadata_schema_accepts_release_plan_check_only_safe(self):
+        raw = _minimal_rule_dict(release_plan_check_only_safe=True)
+        _validate_against_schema(raw)
 
     def test_suppress_schema_paths_parsed(self):
         """suppress_schema_paths is an optional list that becomes a tuple."""

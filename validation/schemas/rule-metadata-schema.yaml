@@ -84,6 +84,15 @@ properties:
       under `documentation/validation/` with an anchor fragment so the
       target FAQ section resolves.
 
+  release_plan_check_only_safe:
+    type: boolean
+    description: >
+      True when this rule validates release-plan.yaml, release-plan
+      dependencies, or workflow-resolved release state directly and is
+      safe to keep when release_plan_check_only skips context-dependent
+      engines after a Commonalities dependency declaration advanced.
+      Optional; omitted means false.
+
   applicability:
     type: object
     description: >

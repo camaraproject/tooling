@@ -16,7 +16,7 @@ from __future__ import annotations
 import dataclasses
 import logging
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional, Tuple
 
@@ -90,6 +90,15 @@ class ApiContext:
 
 
 @dataclass(frozen=True)
+class ActiveReleaseState:
+    """Workflow-resolved active release state consumed by P-033."""
+
+    state: str = ""
+    snapshot_branch: str = ""
+    release_issue_number: Optional[int] = None
+
+
+@dataclass(frozen=True)
 class ValidationContext:
     """Unified validation context.  All fields always present.
 
@@ -149,6 +158,10 @@ class ValidationContext:
     # second canonical-resolution tier so the codeowner sees real P-026..P-030
     # warnings on the Release Review PR instead of a P-031 false positive.
     fallback_canonical_path: Optional[str] = None
+
+    # active_release_state: compact workflow-resolved state for P-033.
+    # Populated from shared-actions/derive-release-state outputs.
+    active_release_state: ActiveReleaseState = field(default_factory=ActiveReleaseState)
 
     def to_dict(self) -> dict:
         """Serialize to dict with all keys present.
@@ -298,6 +311,9 @@ def build_validation_context(
     icm_tag_exists: Optional[bool] = None,
     non_release_plan_files_changed: Tuple[str, ...] = (),
     fallback_canonical_path: Optional[str] = None,
+    active_release_state: str = "",
+    active_release_snapshot_branch: str = "",
+    active_release_issue_number: Optional[int] = None,
 ) -> ValidationContext:
     """Assemble the unified validation context.
 
@@ -389,4 +405,9 @@ def build_validation_context(
         icm_tag_exists=icm_tag_exists,
         non_release_plan_files_changed=non_release_plan_files_changed,
         fallback_canonical_path=fallback_canonical_path,
+        active_release_state=ActiveReleaseState(
+            state=active_release_state,
+            snapshot_branch=active_release_snapshot_branch,
+            release_issue_number=active_release_issue_number,
+        ),
     )

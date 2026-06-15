@@ -82,6 +82,9 @@ class RuleMetadata:
             Rendered as a details link in the workflow summary and carried
             into diagnostics; deliberately omitted from annotations.
             ``None`` means no documentation link (selective by design).
+        release_plan_check_only_safe: Whether this rule is safe to keep when
+            ``release_plan_check_only`` skips context-dependent engines after
+            a Commonalities dependency declaration advanced in release-plan.yaml.
         applicability: Condition dict — omitted fields are unconstrained.
         conditional_level: Severity specification, or ``None`` to preserve
             engine-reported severity (identity mapping).
@@ -102,6 +105,7 @@ class RuleMetadata:
     short_title: Optional[str] = None
     suppress_schema_paths: Tuple[str, ...] = ()
     documentation_url: Optional[str] = None
+    release_plan_check_only_safe: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -165,6 +169,10 @@ def parse_rule_metadata(raw: dict) -> RuleMetadata:
         entry for entry in raw_suppress if isinstance(entry, str) and entry
     )
 
+    raw_check_only_safe = raw.get("release_plan_check_only_safe", False)
+    if not isinstance(raw_check_only_safe, bool):
+        raise ValueError("release_plan_check_only_safe must be a boolean")
+
     return RuleMetadata(
         id=raw["id"],
         name=raw.get("name", raw["engine_rule"]),
@@ -177,6 +185,7 @@ def parse_rule_metadata(raw: dict) -> RuleMetadata:
         short_title=raw.get("short_title"),
         suppress_schema_paths=suppress_schema_paths,
         documentation_url=raw.get("documentation_url"),
+        release_plan_check_only_safe=raw_check_only_safe,
     )
 
 

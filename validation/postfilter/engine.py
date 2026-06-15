@@ -273,13 +273,13 @@ def run_post_filter(
             # and on-disk content are stale relative to the declared tag.
             # Running version-context-dependent rules against that stale
             # content produces misleading findings (DEC-029 exclusivity
-            # principle).  Only rules that explicitly gate on
-            # release_plan_changed: true survive — those are release-plan
-            # validation rules (P-009, P-022, P-023) which check the
-            # release-plan.yaml content itself, not the consumption side.
+            # principle).  Only rules explicitly marked safe survive; the
+            # flag is separate from release_plan_changed applicability so
+            # always-valid release-plan consistency checks can still run on
+            # unrelated PRs.
             if (
                 context.release_plan_check_only
-                and rule.applicability.get("release_plan_changed") is not True
+                and not rule.release_plan_check_only_safe
             ):
                 continue
 
