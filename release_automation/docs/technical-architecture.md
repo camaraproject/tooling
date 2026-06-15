@@ -469,7 +469,7 @@ CHANGELOG/
 
 **Cycle mapping:** Extract first number from release_tag: `r4.1` → cycle `4` → `CHANGELOG/CHANGELOG-r4.md`
 
-**Template:** Generates per-release sections with release header (all APIs and dependencies), per-API sections with ReDoc/Swagger/YAML links, empty Added/Changed/Fixed/Removed subsections, and a collapsible candidate changes section listing merged PRs (from GitHub compare API).
+**Template:** Generates per-release sections with release header (all APIs and dependencies), per-API sections with ReDoc/Swagger/YAML links, empty Breaking changes/Added/Changed/Fixed/Removed subsections, and a collapsible candidate changes section listing merged PRs (from GitHub compare API).
 
 ---
 
