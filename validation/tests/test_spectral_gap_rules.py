@@ -770,6 +770,97 @@ class TestS037NoNumericResourceIds:
 
 
 # ---------------------------------------------------------------------------
+# S-038: camara-integer-safe-range
+# ---------------------------------------------------------------------------
+
+_SAFE_RANGE_RULE = "camara-integer-safe-range"
+
+
+class TestS038IntegerSafeRange:
+    """S-038: integer schema values must stay within JS safe-integer range."""
+
+    def test_unsafe_int64_maximum_fires(self):
+        spec = _VALID_SPEC + (
+            "    LargeCounter:\n"
+            "      type: integer\n"
+            "      format: int64\n"
+            "      minimum: 0\n"
+            "      maximum: 9223372036854775807\n"
+            "      description: Large traffic counter\n"
+        )
+        findings = _run_spectral(spec)
+        s038 = _findings_for(findings, _SAFE_RANGE_RULE)
+        assert s038, f"Expected {_SAFE_RANGE_RULE}; got {_codes(findings)}"
+        assert any(f.get("path", [])[-1:] == ["maximum"] for f in s038)
+
+    def test_safe_integer_boundaries_pass(self):
+        spec = _VALID_SPEC + (
+            "    SafeCounter:\n"
+            "      type: integer\n"
+            "      format: int64\n"
+            "      minimum: -9007199254740991\n"
+            "      maximum: 9007199254740991\n"
+            "      description: Safe traffic counter\n"
+        )
+        findings = _run_spectral(spec)
+        assert _SAFE_RANGE_RULE not in _codes(findings)
+
+    def test_numeric_enum_and_default_outside_safe_range_fire(self):
+        spec = _VALID_SPEC + (
+            "    CounterState:\n"
+            "      type: integer\n"
+            "      format: int64\n"
+            "      default: 9007199254740993\n"
+            "      enum:\n"
+            "        - 1\n"
+            "        - 9007199254740992\n"
+            "      description: Counter state\n"
+        )
+        findings = _run_spectral(spec)
+        s038 = _findings_for(findings, _SAFE_RANGE_RULE)
+        assert len(s038) >= 2, f"Expected default and enum findings; got {s038}"
+        paths = {tuple(f.get("path", [])) for f in s038}
+        assert any(path[-1:] == ("default",) for path in paths)
+        assert any("enum" in path for path in paths)
+
+    def test_missing_format_integer_with_unsafe_minimum_fires(self):
+        spec = _VALID_SPEC + (
+            "    UnformattedInteger:\n"
+            "      type: integer\n"
+            "      minimum: -9223372036854775808\n"
+            "      description: Unformatted integer value\n"
+        )
+        findings = _run_spectral(spec)
+        s038 = _findings_for(findings, _SAFE_RANGE_RULE)
+        assert s038, f"Expected {_SAFE_RANGE_RULE}; got {_codes(findings)}"
+        assert any(f.get("path", [])[-1:] == ["minimum"] for f in s038)
+
+    def test_inline_parameter_schema_with_unsafe_maximum_fires(self):
+        schema = (
+            "        schema:\n"
+            "          type: integer\n"
+            "          format: int64\n"
+            "          maximum: 9223372036854775807\n"
+        )
+        findings = _run_spectral(_spec_with_id_param(schema, name="category"))
+        s038 = _findings_for(findings, _SAFE_RANGE_RULE)
+        assert s038, f"Expected {_SAFE_RANGE_RULE}; got {_codes(findings)}"
+        assert any("parameters" in f.get("path", []) for f in s038)
+
+    def test_large_double_value_passes(self):
+        spec = _VALID_SPEC + (
+            "    LargeDouble:\n"
+            "      type: number\n"
+            "      format: double\n"
+            "      maximum: 1000000000000000000000000000000\n"
+            "      example: 1000000000000000000000000000000\n"
+            "      description: Large floating-point value\n"
+        )
+        findings = _run_spectral(spec)
+        assert _SAFE_RANGE_RULE not in _codes(findings)
+
+
+# ---------------------------------------------------------------------------
 # Regression: camara-security-no-secrets must not crash Spectral on null values
 #
 # The rule's `given` includes a recursive-descent filter

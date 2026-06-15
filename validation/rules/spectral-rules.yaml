@@ -214,6 +214,11 @@
   short_title: "Use non-numeric resource IDs"
   suggestion: "Use non-numeric (e.g. string) resource identifiers to prevent enumeration attacks."
 
+- id: S-038
+  engine: spectral
+  engine_rule: camara-integer-safe-range
+  short_title: "Integer value exceeds safe range"
+
 # ===== Built-in OAS rules (S-200+) =====
 
 - id: S-200
