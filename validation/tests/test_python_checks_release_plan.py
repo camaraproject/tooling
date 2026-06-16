@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 from pathlib import Path
 
 import pytest
@@ -462,24 +463,10 @@ def _context_with_active_release_state(
     trigger_type: str = "pr",
     release_plan_changed: bool | None = True,
 ) -> ValidationContext:
-    base = _make_context()
-    return ValidationContext(
-        repository=base.repository,
-        branch_type=base.branch_type,
+    return dataclasses.replace(
+        _make_context(),
         trigger_type=trigger_type,
-        profile=base.profile,
-        stage=base.stage,
-        target_release_type=base.target_release_type,
-        commonalities_release=base.commonalities_release,
-        commonalities_version=base.commonalities_version,
-        icm_release=base.icm_release,
-        base_ref=base.base_ref,
-        is_release_review_pr=base.is_release_review_pr,
         release_plan_changed=release_plan_changed,
-        pr_number=base.pr_number,
-        apis=base.apis,
-        workflow_run_url=base.workflow_run_url,
-        tooling_ref=base.tooling_ref,
         active_release_state=ActiveReleaseState(
             state=state,
             snapshot_branch=snapshot_branch,

@@ -14,6 +14,7 @@ from collections import Counter
 from pathlib import Path
 from typing import List, Optional
 
+from release_automation.scripts import config
 from validation.context import ValidationContext
 from validation.context.release_plan_parser import is_valid_release_tag
 
@@ -26,8 +27,8 @@ _RELEASE_PLAN_PATH = "release-plan.yaml"
 
 _ACTIVE_RELEASE_STATES = frozenset(
     {
-        "snapshot-active",
-        "draft-ready",
+        config.STATE_SNAPSHOT_ACTIVE,
+        config.STATE_DRAFT_READY,
     }
 )
 
