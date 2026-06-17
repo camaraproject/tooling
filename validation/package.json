@@ -2,6 +2,10 @@
   "name": "camara-validation-tools",
   "private": true,
   "description": "Node.js tool dependencies for CAMARA validation framework",
+  "engines": {
+    "node": ">=24",
+    "npm": ">=11.13.0"
+  },
   "dependencies": {
     "@redocly/cli": "^2.34.0",
     "@stoplight/spectral-cli": "^6.16.0",
