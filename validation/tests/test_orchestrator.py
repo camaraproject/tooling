@@ -144,6 +144,9 @@ class TestParseArgs:
         assert result.tooling_path == Path(".tooling")
         assert result.output_dir == Path("validation-output")
         assert result.config_path == ""
+        assert result.active_release_state == ""
+        assert result.active_release_snapshot_branch == ""
+        assert result.active_release_issue_number is None
         assert result.repo_name == ""
         assert result.pr_number is None
         assert result.release_plan_changed is None
@@ -154,6 +157,9 @@ class TestParseArgs:
             "VALIDATION_TOOLING_PATH": "/my/tooling",
             "VALIDATION_OUTPUT_DIR": "/my/output",
             "VALIDATION_CONFIG_PATH": "/my/runner/.tooling-config/config/validation-settings.yaml",
+            "VALIDATION_ACTIVE_RELEASE_STATE": "snapshot-active",
+            "VALIDATION_ACTIVE_RELEASE_SNAPSHOT_BRANCH": "release-snapshot/r4.3-abc1234",
+            "VALIDATION_ACTIVE_RELEASE_ISSUE_NUMBER": "23",
             "VALIDATION_REPO_NAME": "camaraproject/QoD",
             "VALIDATION_REPO_OWNER": "camaraproject",
             "VALIDATION_EVENT_NAME": "pull_request",
@@ -172,6 +178,9 @@ class TestParseArgs:
         assert result.repo_path == Path("/my/repo")
         assert result.repo_name == "camaraproject/QoD"
         assert result.config_path == "/my/runner/.tooling-config/config/validation-settings.yaml"
+        assert result.active_release_state == "snapshot-active"
+        assert result.active_release_snapshot_branch == "release-snapshot/r4.3-abc1234"
+        assert result.active_release_issue_number == 23
         assert result.mode == "pre-snapshot"
         assert result.profile == "strict"
         assert result.pr_number == 42

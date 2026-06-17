@@ -84,6 +84,11 @@ class OrchestratorArgs:
     # empty everywhere else, keeping local/main/working-branch runs offline.
     fallback_canonical_path: str
 
+    # Optional workflow-resolved active release state for P-033.
+    active_release_state: str
+    active_release_snapshot_branch: str
+    active_release_issue_number: Optional[int]
+
     repo_name: str  # e.g. "camaraproject/QualityOnDemand"
     repo_owner: str  # e.g. "camaraproject"
     event_name: str  # e.g. "pull_request", "workflow_dispatch"
@@ -169,6 +174,9 @@ def parse_args() -> OrchestratorArgs:
         output_dir=Path(_env("OUTPUT_DIR", "validation-output")),
         config_path=_env("CONFIG_PATH"),
         fallback_canonical_path=_env("FALLBACK_CANONICAL_PATH"),
+        active_release_state=_env("ACTIVE_RELEASE_STATE"),
+        active_release_snapshot_branch=_env("ACTIVE_RELEASE_SNAPSHOT_BRANCH"),
+        active_release_issue_number=_env_optional_int("ACTIVE_RELEASE_ISSUE_NUMBER"),
         repo_name=_env("REPO_NAME"),
         repo_owner=_env("REPO_OWNER"),
         event_name=_env("EVENT_NAME"),
@@ -539,6 +547,9 @@ def main() -> int:
         icm_tag_exists=args.icm_tag_exists,
         non_release_plan_files_changed=args.non_release_plan_files_changed,
         fallback_canonical_path=args.fallback_canonical_path or None,
+        active_release_state=args.active_release_state,
+        active_release_snapshot_branch=args.active_release_snapshot_branch,
+        active_release_issue_number=args.active_release_issue_number,
     )
     logger.info(
         "Context: branch=%s trigger=%s profile=%s release_review=%s apis=%d",

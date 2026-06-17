@@ -117,6 +117,7 @@ def _minimal_rule(
     overrides: list[dict] | None = None,
     short_title: str | None = None,
     documentation_url: str | None = None,
+    release_plan_check_only_safe: bool = False,
 ) -> dict:
     """Build a rule with conditional_level (full behavior)."""
     rule: dict = {
@@ -125,6 +126,8 @@ def _minimal_rule(
         "engine_rule": engine_rule,
         "conditional_level": {"default": default_level},
     }
+    if release_plan_check_only_safe:
+        rule["release_plan_check_only_safe"] = True
     if message_override is not None:
         rule["message_override"] = message_override
     if suggestion is not None:
@@ -343,14 +346,14 @@ class TestRunPostFilter:
         assert result.findings == []
         assert result.result == "pass"
 
-    def test_release_plan_check_only_keeps_release_plan_gated_rules(
+    def test_release_plan_check_only_keeps_safe_rules_without_release_plan_gate(
         self, tmp_path: Path
     ):
-        """On a Commonalities advance, rules gated on release_plan_changed=true pass through."""
+        """Check-only mode keeps rules marked safe by explicit metadata."""
         _write_rules(tmp_path, [
             _minimal_rule(
                 engine_rule="some-rule",
-                applicability={"release_plan_changed": True},
+                release_plan_check_only_safe=True,
             )
         ])
         ctx = _make_context(
@@ -361,10 +364,10 @@ class TestRunPostFilter:
         result = run_post_filter(findings, ctx, tmp_path)
         assert len(result.findings) == 1
 
-    def test_release_plan_check_only_drops_rules_without_release_plan_gate(
+    def test_release_plan_check_only_drops_rules_without_safe_flag(
         self, tmp_path: Path
     ):
-        """On a Commonalities advance, rules without release_plan_changed applicability are dropped."""
+        """Check-only mode drops mapped rules unless metadata marks them safe."""
         _write_rules(tmp_path, [
             _minimal_rule(engine_rule="some-rule")  # no applicability
         ])
@@ -376,18 +379,14 @@ class TestRunPostFilter:
         result = run_post_filter(findings, ctx, tmp_path)
         assert result.findings == []
 
-    def test_release_plan_check_only_drops_false_gated_rules(
+    def test_release_plan_check_only_drops_release_plan_gated_rule_without_safe_flag(
         self, tmp_path: Path
     ):
-        """Rules gated on release_plan_changed=false would already fail the
-        applicability check (release_plan_changed is true under
-        release_plan_check_only).  Verifies the gate doesn't accidentally
-        keep them.
-        """
+        """release_plan_changed=true applicability is not the survival heuristic."""
         _write_rules(tmp_path, [
             _minimal_rule(
                 engine_rule="some-rule",
-                applicability={"release_plan_changed": False},
+                applicability={"release_plan_changed": True},
             )
         ])
         ctx = _make_context(

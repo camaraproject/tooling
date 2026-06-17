@@ -10,9 +10,11 @@ imported or modified.
 
 from __future__ import annotations
 
+from collections import Counter
 from pathlib import Path
 from typing import List, Optional
 
+from release_automation.scripts import config
 from validation.context import ValidationContext
 from validation.context.release_plan_parser import is_valid_release_tag
 
@@ -22,6 +24,13 @@ from ._types import load_yaml_safe, make_finding
 ALLOWED_META_RELEASES = ["Fall25", "Spring26", "Fall26", "Sync26", "Signal27"]
 
 _RELEASE_PLAN_PATH = "release-plan.yaml"
+
+_ACTIVE_RELEASE_STATES = frozenset(
+    {
+        config.STATE_SNAPSHOT_ACTIVE,
+        config.STATE_DRAFT_READY,
+    }
+)
 
 
 # ---------------------------------------------------------------------------
@@ -278,6 +287,58 @@ def check_release_plan_semantics(
 
 
 # ---------------------------------------------------------------------------
+# P-034: check-release-plan-api-names-unique
+# ---------------------------------------------------------------------------
+
+
+def check_release_plan_api_names_unique(
+    repo_path: Path, context: ValidationContext
+) -> List[dict]:
+    """Detect duplicate ``apis[].api_name`` entries in release-plan.yaml."""
+    plan_path = repo_path / _RELEASE_PLAN_PATH
+    release_plan = load_yaml_safe(plan_path)
+    if release_plan is None:
+        return []
+
+    apis = release_plan.get("apis", [])
+    if not isinstance(apis, list):
+        return []
+
+    names = [
+        api.get("api_name")
+        for api in apis
+        if isinstance(api, dict) and isinstance(api.get("api_name"), str)
+    ]
+    duplicates = sorted(
+        (name, count) for name, count in Counter(names).items() if count > 1
+    )
+
+    findings: List[dict] = []
+    for api_name, count in duplicates:
+        message = (
+            f"release-plan.yaml contains {count} entries for api_name "
+            f"'{api_name}'. Keep exactly one entry for each api_name."
+        )
+        if context.release_plan_changed is False:
+            message = (
+                "Pre-existing release-plan condition: "
+                f"{message} Submit the fix in a dedicated release-plan PR."
+            )
+        findings.append(
+            make_finding(
+                engine_rule="check-release-plan-api-names-unique",
+                level="error",
+                message=message,
+                path=_RELEASE_PLAN_PATH,
+                line=1,
+                api_name=api_name,
+            )
+        )
+
+    return findings
+
+
+# ---------------------------------------------------------------------------
 # P-019 (NEW-003): Orphan API definitions
 # ---------------------------------------------------------------------------
 
@@ -372,6 +433,50 @@ def check_release_plan_exclusivity(
                 f"release-plan.yaml changes should be submitted in a "
                 f"dedicated PR so that any new validation findings remain "
                 f"clearly attributable to the release-plan change."
+            ),
+            path=_RELEASE_PLAN_PATH,
+            line=1,
+        )
+    ]
+
+
+# ---------------------------------------------------------------------------
+# P-033: check-release-plan-active-release-state
+# ---------------------------------------------------------------------------
+
+
+def check_release_plan_active_release_state(
+    repo_path: Path, context: ValidationContext
+) -> List[dict]:
+    """Block release-plan.yaml edits while a release snapshot is active."""
+    if context.trigger_type != "pr" or context.release_plan_changed is not True:
+        return []
+
+    active_release = context.active_release_state
+    active_state = active_release.state
+    snapshot_branch = active_release.snapshot_branch
+    has_active_state = active_state in _ACTIVE_RELEASE_STATES
+
+    if not snapshot_branch and not has_active_state:
+        return []
+
+    details: list[str] = []
+    if snapshot_branch:
+        details.append(f"active snapshot branch: {snapshot_branch}")
+    if has_active_state:
+        state_detail = f"release state is '{active_state}'"
+        if active_release.release_issue_number is not None:
+            state_detail += f" (Release Issue #{active_release.release_issue_number})"
+        details.append(state_detail)
+
+    return [
+        make_finding(
+            engine_rule="check-release-plan-active-release-state",
+            level="error",
+            message=(
+                "release-plan.yaml cannot be changed while an active release "
+                f"exists ({'; '.join(details)}). Finish, discard, or publish "
+                "the active snapshot before changing release-plan.yaml."
             ),
             path=_RELEASE_PLAN_PATH,
             line=1,
