@@ -964,6 +964,35 @@ class TestFetchLastBotComment:
         assert result is not None
         assert result["body"] == "good"
 
+    def test_retries_transient_comment_read_error(self, monkeypatch):
+        monkeypatch.setattr(
+            "release_automation.scripts.regression_runner.time.sleep",
+            lambda *_a, **_k: None,
+        )
+        since = datetime(2026, 4, 23, 10, 0, 0, tzinfo=timezone.utc)
+        comments = [
+            _comment(
+                "2026-04-23T10:00:30Z",
+                "github-actions[bot]",
+                "<!-- release-bot:r1.2 -->\n**✅ Snapshot created — State: `snapshot-active`**",
+            ),
+        ]
+        gh_mock = patch(
+            "release_automation.scripts.regression_runner.gh",
+            side_effect=[
+                InfrastructureError(
+                    "gh api repos/o/r/issues/90/comments: exit 1\n"
+                    "stderr: invalid character 'u' looking for beginning of value"
+                ),
+                comments,
+            ],
+        )
+        with gh_mock as mocked:
+            result = fetch_last_bot_comment("o/r", 90, since)
+
+        assert result == comments[0]
+        assert mocked.call_count == 2
+
 
 # ---------------------------------------------------------------------------
 # _build_command_body + _canary_run_url

@@ -411,6 +411,8 @@ _RA_BOT_LOGINS = frozenset({
     "github-actions[bot]",
     "camara-release-automation[bot]",
 })
+_COMMENT_READ_ATTEMPTS = 3
+_COMMENT_READ_RETRY_SECONDS = 5
 
 
 def _expected_comments_path() -> Path:
@@ -474,6 +476,39 @@ def _match_comment_title(body: str, expected_prefix: str) -> bool:
     return _first_visible_line(body).startswith(expected_prefix)
 
 
+def _read_issue_comments(repo: str, issue_number: int) -> list[dict[str, Any]]:
+    """Read issue comments, retrying transient `gh api` transport failures."""
+    last_error: InfrastructureError | None = None
+    for attempt in range(1, _COMMENT_READ_ATTEMPTS + 1):
+        try:
+            return gh(
+                [
+                    "api", f"repos/{repo}/issues/{issue_number}/comments",
+                    "--paginate",
+                    "--jq",
+                    "[.[] | {body, created_at, user: {login: .user.login}, html_url}]",
+                ],
+                parse_json=True,
+            )
+        except InfrastructureError as exc:
+            last_error = exc
+            if attempt == _COMMENT_READ_ATTEMPTS:
+                break
+            logger.warning(
+                "comment read failed for %s#%s (attempt %s/%s); retrying: %s",
+                repo,
+                issue_number,
+                attempt,
+                _COMMENT_READ_ATTEMPTS,
+                exc,
+            )
+            time.sleep(_COMMENT_READ_RETRY_SECONDS)
+    raise InfrastructureError(
+        f"could not fetch issue comments after {_COMMENT_READ_ATTEMPTS} attempts: "
+        f"{last_error}"
+    ) from last_error
+
+
 def fetch_last_bot_comment(
     repo: str, issue_number: int, since: datetime,
 ) -> dict[str, Any] | None:
@@ -484,14 +519,7 @@ def fetch_last_bot_comment(
     Returns the comment dict (with `body`, `created_at`, `user.login`, `html_url`)
     or None if no matching comment is found.
     """
-    data = gh(
-        [
-            "api", f"repos/{repo}/issues/{issue_number}/comments",
-            "--paginate",
-            "--jq", "[.[] | {body, created_at, user: {login: .user.login}, html_url}]",
-        ],
-        parse_json=True,
-    )
+    data = _read_issue_comments(repo, issue_number)
     candidates: list[dict[str, Any]] = []
     for item in data:
         user = (item.get("user") or {}).get("login")
