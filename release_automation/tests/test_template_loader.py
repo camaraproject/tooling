@@ -34,6 +34,12 @@ class TestRenderTemplate:
         assert "### Release Management Actions" in result
         # Three status-independent codeowner actions
         assert "**Update the CHANGELOG**" in result
+        assert (
+            "Copy all API-consumer-relevant changes from the provided list into the appropriate "
+            "Breaking changes / Added / Changed / Fixed / Removed sections for each API. List "
+            "breaking changes both in Breaking changes and in their normal change category."
+            in result
+        )
         assert "**Document deferred validation warnings (and hints)**" in result
         assert "**The release is ready for Release Management review**" in result
         # API Readiness Checklist link lives once, in the asset-table footer
