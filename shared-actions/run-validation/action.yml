@@ -6,7 +6,7 @@ description: |
   (all engines, post-filter, output generation), writes workflow summary,
   and outputs the overall result.
 
-  Prerequisites: Python 3.11 and Node 24 must be available (caller sets
+  Prerequisites: Python 3.14 and Node 24 must be available (caller sets
   up runtimes via setup-python and setup-node before invoking this action).
 
 inputs:

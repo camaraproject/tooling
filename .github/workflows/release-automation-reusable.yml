@@ -37,6 +37,9 @@ env:
   # Allowlist for tooling_ref_override beyond a 40-char SHA. Comma-separated.
   # Each consuming caller's override input must match a SHA or one of these.
   ALLOWED_TOOLING_REFS: "main,v1-rc,hotfix"
+  # Keep release automation runtime pins explicit and aligned with validation.
+  PYTHON_VERSION: "3.14"
+  NODE_VERSION: "24"
 
 permissions:
   contents: write
@@ -1004,12 +1007,12 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v6
         with:
-          python-version: "3.11"
+          python-version: ${{ env.PYTHON_VERSION }}
 
       - name: Setup Node
         uses: actions/setup-node@v6
         with:
-          node-version: "24"
+          node-version: ${{ env.NODE_VERSION }}
 
       # ── Central validation settings (main) ─────────────────────────
       #
@@ -1473,7 +1476,7 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v6
         with:
-          python-version: "3.11"
+          python-version: ${{ env.PYTHON_VERSION }}
 
       - name: Install dependencies
         run: pip install --quiet -r _tooling/requirements.txt
