@@ -3,7 +3,7 @@
   "private": true,
   "description": "Node.js tool dependencies for CAMARA validation framework",
   "dependencies": {
-    "@redocly/cli": "^2.31.6",
+    "@redocly/cli": "^2.33.2",
     "@stoplight/spectral-cli": "^6.16.0",
     "@stoplight/spectral-owasp-ruleset": "^2.0.0",
     "gherkin-lint": "^4.2.4"
