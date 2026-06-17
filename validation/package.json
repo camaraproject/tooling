@@ -6,7 +6,7 @@
     "@redocly/cli": "^2.31.6",
     "@stoplight/spectral-cli": "^6.16.0",
     "@stoplight/spectral-owasp-ruleset": "^2.0.0",
-    "gherkin-lint": "^4.2.4"
+    "gplint": "^2.5.2"
   },
   "overrides": {
     "@stoplight/spectral-rulesets": "1.22.2",

@@ -1,6 +1,6 @@
-# Gherkin-lint rule metadata.
+# GPLint rule metadata.
 # All entries are identity-only initially, can be extended if needed.
-# All rules default to warn (gherkin-lint has no per-finding severity).
+# All rules default to warn; validation metadata governs final severity.
 
 - id: G-001
   engine: gherkin

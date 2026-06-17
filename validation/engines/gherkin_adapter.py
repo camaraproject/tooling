@@ -1,11 +1,11 @@
-"""gherkin-lint engine adapter for the CAMARA validation framework.
+"""GPLint engine adapter for the CAMARA validation framework.
 
-Invokes gherkin-lint on BDD feature files, parses the JSON output,
-and normalizes findings into the common findings model.
+Invokes GPLint on BDD feature files, parses the JSON output, and normalizes
+findings into the common findings model.
 
 Design doc references:
-  - Section 8.1 step 7: full validation (gherkin-lint invocation)
-  - Section 2.2: check areas (gherkin-lint coverage)
+  - Section 8.1 step 7: full validation (Gherkin lint invocation)
+  - Section 2.2: check areas (Gherkin lint coverage)
 """
 
 from __future__ import annotations
@@ -25,10 +25,11 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 ENGINE_NAME = "gherkin"
+LINTER_NAME = "gplint"
 
-# gherkin-lint has no per-finding severity — all are reported identically.
-# Default to "warn" so findings don't block in standard profile; post-filter
-# rule metadata can elevate specific rules to "error".
+# GPLint reports the configured rule level, but CAMARA severity is governed by
+# validation rule metadata. Default to "warn" so the normalized model remains
+# stable across the linter migration.
 DEFAULT_LEVEL = "warn"
 
 DEFAULT_TEST_GLOB = "code/Test_definitions/**/*.feature"
@@ -62,9 +63,9 @@ def derive_api_name(file_path: str) -> Optional[str]:
 
 
 def normalize_file_errors(file_entry: dict, cwd: str) -> List[dict]:
-    """Convert one gherkin-lint file entry into normalised findings.
+    """Convert one GPLint file entry into normalised findings.
 
-    gherkin-lint JSON format per file::
+    GPLint JSON format per file::
 
         {"filePath": "/absolute/path/to/file.feature",
          "errors": [{"message": "...", "rule": "...", "line": N}, ...]}
@@ -99,13 +100,13 @@ def normalize_file_errors(file_entry: dict, cwd: str) -> List[dict]:
 
 
 def parse_gherkin_output(raw_json: str, cwd: str) -> List[dict]:
-    """Parse gherkin-lint ``--format json`` stdout into normalised findings.
+    """Parse GPLint ``--format json`` output into normalised findings.
 
-    gherkin-lint outputs a JSON array of file entries.  Files with no
-    errors (empty ``errors`` array) are skipped.
+    GPLint outputs a JSON array of file entries. Files with no errors
+    (empty ``errors`` array) are skipped.
 
     Args:
-        raw_json: Raw JSON string from gherkin-lint stdout.
+        raw_json: Raw JSON string from GPLint.
         cwd: Repo root path for relativizing absolute file paths.
 
     Returns:
@@ -117,11 +118,11 @@ def parse_gherkin_output(raw_json: str, cwd: str) -> List[dict]:
     try:
         data = json.loads(raw_json)
     except json.JSONDecodeError as exc:
-        logger.warning("Failed to parse gherkin-lint JSON output: %s", exc)
+        logger.warning("Failed to parse GPLint JSON output: %s", exc)
         return []
 
     if not isinstance(data, list):
-        logger.warning("gherkin-lint output is not a JSON array")
+        logger.warning("GPLint output is not a JSON array")
         return []
 
     findings = []
@@ -138,7 +139,7 @@ def parse_gherkin_output(raw_json: str, cwd: str) -> List[dict]:
 
 @dataclass(frozen=True)
 class GherkinResult:
-    """Result of a gherkin-lint CLI invocation."""
+    """Result of a Gherkin linter CLI invocation."""
 
     findings: List[dict]
     success: bool
@@ -149,9 +150,8 @@ def _expand_globs(patterns: Sequence[str], cwd: Path) -> List[str]:
     """Expand glob patterns relative to *cwd* into concrete file paths.
 
     ``subprocess.run()`` without ``shell=True`` does not expand globs,
-    and gherkin-lint's internal feature-finder mangles ``**`` patterns
-    (appends ``/**.feature`` to any pattern containing ``/**``).
-    Expanding in Python avoids both issues.
+    and historical Gherkin linter feature-finders can mangle ``**`` patterns.
+    Expanding in Python keeps the adapter behavior stable across linter swaps.
 
     Returns repo-relative POSIX path strings.
     """
@@ -162,32 +162,31 @@ def _expand_globs(patterns: Sequence[str], cwd: Path) -> List[str]:
     return expanded
 
 
-def run_gherkin_lint(
+def run_gplint(
     config_path: Path,
     file_patterns: List[str],
     cwd: Path,
 ) -> GherkinResult:
-    """Invoke gherkin-lint via npx and capture structured output.
+    """Invoke GPLint and capture structured output.
 
     Uses ``--format json`` for machine-readable output.
 
     Args:
-        config_path: Path to the ``.gherkin-lintrc`` configuration file.
+        config_path: Path to the Gherkin linter configuration file.
         file_patterns: Glob patterns for input feature files.
         cwd: Working directory (repo root).
 
     Returns:
         :class:`GherkinResult` with parsed findings and status.
     """
-    # Expand globs in Python — gherkin-lint's feature-finder mangles
-    # ** patterns (turns "dir/**/*.feature" into "dir/**/*.feature/**.feature").
+    # Expand globs in Python to keep the CLI invocation deterministic.
     files = _expand_globs(file_patterns, cwd)
     if not files:
         logger.info("No files matched patterns: %s", file_patterns)
         return GherkinResult(findings=[], success=True)
 
     cmd = [
-        "gherkin-lint",
+        LINTER_NAME,
         "--format", "json",
         "--config", str(config_path),
         *files,
@@ -205,19 +204,20 @@ def run_gherkin_lint(
         return GherkinResult(
             findings=[],
             success=False,
-            error_message="gherkin-lint not found — is it installed and on PATH?",
+            error_message="GPLint not found — is it installed and on PATH?",
         )
     except subprocess.TimeoutExpired:
         return GherkinResult(
             findings=[],
             success=False,
-            error_message="gherkin-lint timed out after 120 seconds",
+            error_message="GPLint timed out after 120 seconds",
         )
 
-    # Exit 0 = clean, exit 1 = findings found.  Both produce valid JSON.
-    # gherkin-lint writes JSON to stderr (not stdout).
+    # Exit 0 = clean or warn-level findings, exit 1 = error-level findings.
+    # Both produce valid JSON; prefer stdout, but keep stderr fallback for
+    # CLI versions that emit machine output on stderr.
     if result.returncode in (0, 1):
-        raw_json = result.stderr or result.stdout
+        raw_json = result.stdout or result.stderr
         findings = parse_gherkin_output(raw_json, str(cwd))
         return GherkinResult(findings=findings, success=True)
 
@@ -228,7 +228,7 @@ def run_gherkin_lint(
     return GherkinResult(
         findings=[],
         success=False,
-        error_message=f"gherkin-lint exited with code {result.returncode}: {error_detail}",
+        error_message=f"GPLint exited with code {result.returncode}: {error_detail}",
     )
 
 
@@ -254,7 +254,7 @@ def run_gherkin_engine(
 
     Args:
         repo_path: Root of the repository being validated.
-        config_path: Path to the gherkin-lint configuration file.
+        config_path: Path to the Gherkin linter configuration file.
         file_patterns: Override glob patterns (default:
             ``["code/Test_definitions/**/*.feature"]``).
 
@@ -264,13 +264,13 @@ def run_gherkin_engine(
     if file_patterns is None:
         file_patterns = [DEFAULT_TEST_GLOB]
 
-    logger.info("Running gherkin-lint with config: %s", config_path)
+    logger.info("Running GPLint with config: %s", config_path)
 
-    result = run_gherkin_lint(config_path, file_patterns, cwd=repo_path)
+    result = run_gplint(config_path, file_patterns, cwd=repo_path)
 
     if not result.success:
-        logger.error("gherkin-lint engine error: %s", result.error_message)
+        logger.error("GPLint engine error: %s", result.error_message)
         return [_make_error_finding(result.error_message)]
 
-    logger.info("gherkin-lint produced %d finding(s)", len(result.findings))
+    logger.info("GPLint produced %d finding(s)", len(result.findings))
     return result.findings

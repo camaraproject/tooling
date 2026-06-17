@@ -1,5 +1,5 @@
 # JSON Schema for the common findings model.
-# Every validation engine (Spectral, yamllint, gherkin-lint, Python checks)
+# Every validation engine (Spectral, yamllint, GPLint, Python checks)
 # normalizes its output into this format before the post-filter stage.
 
 $schema: "https://json-schema.org/draft/2020-12/schema"

@@ -279,7 +279,7 @@ def run_engines(
     # When release_plan_check_only is true, a Commonalities dependency
     # declaration advanced in this PR.  The code/common/ cache and API
     # spec content on disk are still tied to the previous tag — running
-    # Spectral with the new ruleset or gherkin-lint against those files
+    # Spectral with the new ruleset or GPLint against those files
     # produces misleading findings (DEC-029 exclusivity principle).
     # Skip those engines entirely; Python engine still runs but its
     # post-filter keeps only rules gated on release_plan_changed=true.
@@ -338,13 +338,13 @@ def run_engines(
         engine_statuses["python"] = f"error: {exc}"
         logger.error("Python checks failed: %s", exc)
 
-    # --- gherkin-lint ---
+    # --- GPLint ---
     if skip_context_dependent:
         engine_statuses["gherkin"] = "skipped (release-plan-check-only mode)"
-        logger.info("gherkin-lint: skipped (release-plan-check-only mode)")
+        logger.info("GPLint: skipped (release-plan-check-only mode)")
     elif not test_files:
         engine_statuses["gherkin"] = "skipped (no test files)"
-        logger.info("gherkin-lint: skipped (no test files)")
+        logger.info("GPLint: skipped (no test files)")
     else:
         try:
             gherkin_config = paths.linting_config_dir / ".gherkin-lintrc"
@@ -354,10 +354,10 @@ def run_engines(
             )
             all_findings.extend(findings)
             engine_statuses["gherkin"] = f"{len(findings)} finding(s)"
-            logger.info("gherkin-lint: %d finding(s)", len(findings))
+            logger.info("GPLint: %d finding(s)", len(findings))
         except Exception as exc:
             engine_statuses["gherkin"] = f"error: {exc}"
-            logger.error("gherkin-lint failed: %s", exc)
+            logger.error("GPLint failed: %s", exc)
 
     return all_findings, engine_statuses
 

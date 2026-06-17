@@ -188,8 +188,9 @@ class TestEngineCoverage:
         """Extract enabled rules from the fallback .spectral.yaml."""
         return self._get_spectral_enabled_rules_from(_SPECTRAL_CONFIG)
 
-    def _get_gherkin_enabled_rules(self) -> set[str]:
-        """Extract enabled rules from .gherkin-lintrc."""
+    @staticmethod
+    def _load_gherkin_config() -> dict:
+        """Load .gherkin-lintrc, allowing legacy // comments."""
         if not _GHERKIN_CONFIG.is_file():
             pytest.skip("Gherkin config not found")
         # gherkin-lintrc may have comments (non-standard JSON)
@@ -206,7 +207,11 @@ class TestEngineCoverage:
                 idx = line.index("//")
                 line = line[:idx]
             lines.append(line)
-        data = json.loads("\n".join(lines))
+        return json.loads("\n".join(lines))
+
+    def _get_gherkin_enabled_rules(self) -> set[str]:
+        """Extract enabled rules from .gherkin-lintrc."""
+        data = self._load_gherkin_config()
         enabled = set()
         for name, value in data.items():
             if value == "off":
@@ -263,13 +268,22 @@ class TestEngineCoverage:
         )
 
     def test_gherkin_coverage(self, rule_index):
-        """Every enabled gherkin-lint rule has a metadata entry."""
+        """Every enabled Gherkin lint rule has a metadata entry."""
         enabled = self._get_gherkin_enabled_rules()
         indexed = {er for (eng, er) in rule_index if eng == "gherkin"}
         missing = enabled - indexed
         assert not missing, (
             f"Gherkin rules without metadata: {sorted(missing)}"
         )
+
+    def test_gplint_required_tags_config_shape(self):
+        """GPLint requires scenario-level required-tags as regex arrays."""
+        data = self._load_gherkin_config()
+        level, config = data["required-tags"]
+        assert level == "warn"
+        assert "tags" not in config
+        assert config["scenario"] == ["/^@.*$/"]
+        assert config["ignoreUntagged"] is False
 
     def test_yamllint_coverage(self, rule_index):
         """Every enabled yamllint rule has a metadata entry."""

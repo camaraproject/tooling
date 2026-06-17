@@ -37,7 +37,7 @@ Manual run of this workflow produces more detailed output compared to results pr
 ### Workflow configuration files in `linting` folder
 
 Configuration files in `/linting/config/`:
-- **.gherkin-lintrc** - ruleset for [gherkin-lint](https://github.com/gherkin-lint/gherkin-lint) tool
+- **.gherkin-lintrc** - ruleset for the [GPLint](https://github.com/Nyaran/gplint) tool
 - **.spectral.yaml** - CAMARA rulest for [Spectral](https://meta.stoplight.io/docs/spectral) linter
 - **.yamllint.yml** - ruleset for [yamllint](https://yamllint.readthedocs.io/en/stable/index.html) tool
 
