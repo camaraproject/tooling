@@ -1,3 +1,7 @@
+// DEPRECATED: legacy v0 validation only.
+// This file is consumed by MegaLinter's gherkin-lint integration in
+// .github/workflows/pr_validation.yml. Do not use it for CAMARA Validation v1.
+// Remove it together with the v0 validation workflow.
 {
   "no-files-without-scenarios" : "on",
   "no-unnamed-features": "on",

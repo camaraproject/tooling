@@ -41,7 +41,8 @@ _DOCUMENTATION_URL_PATTERN = re.compile(
 _SPECTRAL_CONFIG = _LINTING_DIR / ".spectral.yaml"
 _SPECTRAL_R34_CONFIG = _LINTING_DIR / ".spectral-r3.4.yaml"
 _SPECTRAL_R4_CONFIG = _LINTING_DIR / ".spectral-r4.yaml"
-_GHERKIN_CONFIG = _LINTING_DIR / ".gherkin-lintrc"
+_GPLINT_CONFIG = _LINTING_DIR / ".gplintrc"
+_LEGACY_GHERKIN_CONFIG = _LINTING_DIR / ".gherkin-lintrc"
 _YAMLLINT_CONFIG = _LINTING_DIR / ".yamllint.yaml"
 
 # Rule ID pattern from schema
@@ -188,12 +189,12 @@ class TestEngineCoverage:
         """Extract enabled rules from the fallback .spectral.yaml."""
         return self._get_spectral_enabled_rules_from(_SPECTRAL_CONFIG)
 
-    def _get_gherkin_enabled_rules(self) -> set[str]:
-        """Extract enabled rules from .gherkin-lintrc."""
-        if not _GHERKIN_CONFIG.is_file():
-            pytest.skip("Gherkin config not found")
-        # gherkin-lintrc may have comments (non-standard JSON)
-        text = _GHERKIN_CONFIG.read_text(encoding="utf-8")
+    @staticmethod
+    def _load_jsonc_config(config_path: Path, skip_message: str) -> dict:
+        """Load a JSON config file that may contain // comments."""
+        if not config_path.is_file():
+            pytest.skip(skip_message)
+        text = config_path.read_text(encoding="utf-8")
         # Strip // comments for JSON parsing
         lines = []
         for line in text.splitlines():
@@ -206,7 +207,24 @@ class TestEngineCoverage:
                 idx = line.index("//")
                 line = line[:idx]
             lines.append(line)
-        data = json.loads("\n".join(lines))
+        return json.loads("\n".join(lines))
+
+    @classmethod
+    def _load_gplint_config(cls) -> dict:
+        """Load .gplintrc, allowing // comments."""
+        return cls._load_jsonc_config(_GPLINT_CONFIG, "GPLint config not found")
+
+    @classmethod
+    def _load_legacy_gherkin_config(cls) -> dict:
+        """Load legacy .gherkin-lintrc, allowing // comments."""
+        return cls._load_jsonc_config(
+            _LEGACY_GHERKIN_CONFIG,
+            "legacy Gherkin config not found",
+        )
+
+    def _get_gherkin_enabled_rules(self) -> set[str]:
+        """Extract enabled GPLint rules for the gherkin validation engine."""
+        data = self._load_gplint_config()
         enabled = set()
         for name, value in data.items():
             if value == "off":
@@ -263,13 +281,31 @@ class TestEngineCoverage:
         )
 
     def test_gherkin_coverage(self, rule_index):
-        """Every enabled gherkin-lint rule has a metadata entry."""
+        """Every enabled Gherkin lint rule has a metadata entry."""
         enabled = self._get_gherkin_enabled_rules()
         indexed = {er for (eng, er) in rule_index if eng == "gherkin"}
         missing = enabled - indexed
         assert not missing, (
             f"Gherkin rules without metadata: {sorted(missing)}"
         )
+
+    def test_gplint_required_tags_config_shape(self):
+        """GPLint requires scenario-level required-tags as regex arrays."""
+        data = self._load_gplint_config()
+        level, config = data["required-tags"]
+        assert level == "warn"
+        assert "tags" not in config
+        assert config["scenario"] == ["/^@.*$/"]
+        assert config["ignoreUntagged"] is False
+
+    def test_legacy_gherkin_lint_config_remains_v0_shape(self):
+        """Legacy v0 config must stay compatible with gherkin-lint."""
+        data = self._load_legacy_gherkin_config()
+        assert data["only-one-when"] == "off"
+        level, config = data["required-tags"]
+        assert level == "on"
+        assert config["tags"] == ["^@.*$"]
+        assert "scenario" not in config
 
     def test_yamllint_coverage(self, rule_index):
         """Every enabled yamllint rule has a metadata entry."""

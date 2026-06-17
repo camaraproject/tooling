@@ -1,0 +1,77 @@
+// CAMARA Validation v1 GPLint configuration.
+// GPLint's default config file name is .gplintrc. Keep this separate from the
+// legacy .gherkin-lintrc used by v0/MegaLinter's gherkin-lint integration.
+// Rule levels stay at warn; CAMARA severity is assigned by validation metadata.
+{
+  "no-files-without-scenarios" : "warn",
+  "no-unnamed-features": "warn",
+  "no-unnamed-scenarios": "warn",
+  "no-dupe-scenario-names": ["warn", "in-feature"],
+  "no-dupe-feature-names": "warn",
+  "no-partially-commented-tag-lines": "warn",
+  "indentation" : [
+    "warn", {
+      "Feature": 0,
+      "Background": 2,
+      "Scenario": 2,
+      "Step": 2,
+      "Examples": 4,
+      "example": 6,
+      "given": 4,
+      "when": 4,
+      "then": 4,
+      "and": 4,
+      "but": 4,
+      "feature tag": 2,
+      "scenario tag": 2
+    }
+  ],
+  "no-trailing-spaces": "warn",
+  "new-line-at-eof": ["off", "yes"],
+  "no-multiple-empty-lines": "warn",
+  "no-empty-file": "warn",
+  "no-scenario-outlines-without-examples": "warn",
+  "name-length": ["warn", {"Feature": 250, "Step": 250, "Scenario": 250}],
+  "no-restricted-tags": ["warn", {"tags": ["@watch", "@wip"]}],
+  "use-and": "warn",
+  "keywords-in-logical-order": "warn",
+  "no-duplicate-tags": "warn",
+  "no-superfluous-tags": "warn",
+  "no-homogenous-tags": "warn",
+  "one-space-between-tags": "warn",
+  "no-unused-variables": "warn",
+  "no-background-only-scenario": "warn",
+  "no-empty-background": "warn",
+  "scenario-size": ["off", { "steps-length": {"Background": 15, "Scenario": 15}}],
+  "allowed-tags": ["warn", {
+  "patterns": [
+    "^@watch$",
+    "^@wip$",
+    "^@.*$"
+  ]
+ }],
+  "file-name": ["off", {"style": "kebab-case"}],
+  "max-scenarios-per-file": ["warn", {"maxScenarios": 50, "countOutlineExamples": false}],
+  "no-restricted-patterns": ["off", {
+    "Global": [
+      "^globally restricted pattern"
+    ],
+    "Feature": [
+      "poor description",
+      "validate",
+      "verify"
+    ],
+    "Background": [
+      "show last response",
+      "a debugging step"
+    ],
+    "Scenario": [
+      "show last response",
+      "a debugging step"
+    ]
+  }],
+  "required-tags": ["warn", {
+  "scenario": ["/^@.*$/"],
+  "ignoreUntagged": false
+}]
+}

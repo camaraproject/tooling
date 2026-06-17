@@ -2,7 +2,7 @@
 
 Runs native Python check functions against the repository, producing
 findings conforming to the common findings model.  Unlike the other
-engine adapters (Spectral, yamllint, gherkin-lint), Python checks run
+engine adapters (Spectral, yamllint, GPLint), Python checks run
 in-process — no subprocess invocation.
 
 Design doc references:

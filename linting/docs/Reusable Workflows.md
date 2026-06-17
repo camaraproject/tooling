@@ -37,11 +37,12 @@ Manual run of this workflow produces more detailed output compared to results pr
 ### Workflow configuration files in `linting` folder
 
 Configuration files in `/linting/config/`:
-- **.gherkin-lintrc** - ruleset for [gherkin-lint](https://github.com/gherkin-lint/gherkin-lint) tool
+- **.gherkin-lintrc** - deprecated v0-only ruleset for the [gherkin-lint](https://github.com/vsiakka/gherkin-lint) tool used by MegaLinter in `pr_validation.yml`
+- **.gplintrc** - ruleset for the [GPLint](https://github.com/gplint/gplint) tool used by CAMARA Validation v1
 - **.spectral.yaml** - CAMARA rulest for [Spectral](https://meta.stoplight.io/docs/spectral) linter
 - **.yamllint.yml** - ruleset for [yamllint](https://yamllint.readthedocs.io/en/stable/index.html) tool
 
-The rulesets above are copied from [Commonalities/artifacts](https://github.com/camaraproject/Commonalities/tree/main/artifacts/linting_rules).
+The legacy v0 linting rulesets originated from [Commonalities/artifacts](https://github.com/camaraproject/Commonalities/tree/main/artifacts/linting_rules). The GPLint ruleset is maintained separately in `tooling` because GPLint uses a different configuration schema from `gherkin-lint`.
 
 
 ### Caller Workflows in `linting` folder
