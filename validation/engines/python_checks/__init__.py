@@ -18,6 +18,8 @@ from .common_cache_checks import check_common_cache_sync
 from .release_plan_checks import (
     check_declared_dependency_tags_exist,
     check_orphan_api_definitions,
+    check_release_plan_active_release_state,
+    check_release_plan_api_names_unique,
     check_release_plan_exclusivity,
     check_release_plan_semantics,
 )
@@ -67,12 +69,14 @@ CHECKS: list[CheckDescriptor] = [
     # --- Repo-level checks (run once) ---
     CheckDescriptor("check-test-directory-exists", CheckScope.REPO, check_test_directory_exists),
     CheckDescriptor("check-release-plan-semantics", CheckScope.REPO, check_release_plan_semantics),
+    CheckDescriptor("check-release-plan-api-names-unique", CheckScope.REPO, check_release_plan_api_names_unique),
     CheckDescriptor("check-readme-placeholder-removal", CheckScope.REPO, check_readme_placeholder_removal),
     CheckDescriptor("check-api-readiness-checklist-removal", CheckScope.REPO, check_api_readiness_checklist_removal),
     CheckDescriptor("check-release-review-file-restriction", CheckScope.REPO, check_release_review_file_restriction),
     CheckDescriptor("check-orphan-api-definitions", CheckScope.REPO, check_orphan_api_definitions),
     CheckDescriptor("check-common-cache-sync", CheckScope.REPO, check_common_cache_sync),
     CheckDescriptor("check-release-plan-exclusivity", CheckScope.REPO, check_release_plan_exclusivity),
+    CheckDescriptor("check-release-plan-active-release-state", CheckScope.REPO, check_release_plan_active_release_state),
     CheckDescriptor("check-declared-dependency-tags-exist", CheckScope.REPO, check_declared_dependency_tags_exist),
 ]
 

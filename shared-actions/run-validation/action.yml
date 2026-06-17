@@ -70,6 +70,24 @@ inputs:
       the only changed file.  Consumed by P-022 (exclusivity check).
     required: false
     default: '[]'
+  active_release_state:
+    description: >
+      Optional workflow-resolved release state from derive-release-state.
+      Consumed by P-033.
+    required: false
+    default: ''
+  active_release_snapshot_branch:
+    description: >
+      Optional active release-snapshot branch from derive-release-state.
+      Consumed by P-033.
+    required: false
+    default: ''
+  active_release_issue_number:
+    description: >
+      Optional workflow-owned Release Issue number from derive-release-state.
+      Consumed by P-033.
+    required: false
+    default: ''
   tooling_ref:
     description: 'Tooling ref used for this run (for diagnostics)'
     required: false
@@ -217,6 +235,9 @@ runs:
         VALIDATION_COMMONALITIES_TAG_EXISTS: ${{ inputs.commonalities_tag_exists }}
         VALIDATION_ICM_TAG_EXISTS: ${{ inputs.icm_tag_exists }}
         VALIDATION_NON_RELEASE_PLAN_FILES_CHANGED: ${{ inputs.non_release_plan_files_changed }}
+        VALIDATION_ACTIVE_RELEASE_STATE: ${{ inputs.active_release_state }}
+        VALIDATION_ACTIVE_RELEASE_SNAPSHOT_BRANCH: ${{ inputs.active_release_snapshot_branch }}
+        VALIDATION_ACTIVE_RELEASE_ISSUE_NUMBER: ${{ inputs.active_release_issue_number }}
         VALIDATION_WORKFLOW_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         VALIDATION_TOOLING_REF: ${{ inputs.tooling_ref }}
         VALIDATION_COMMIT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}

@@ -245,6 +245,7 @@ class TestValidationContextToDict:
             "commonalities_tag_exists", "icm_tag_exists",
             "non_release_plan_files_changed",
             "fallback_canonical_path",
+            "active_release_state",
         }
         assert set(d.keys()) == expected_keys
 
@@ -258,6 +259,14 @@ class TestValidationContextToDict:
     def test_none_values_preserved(self, sample_context):
         d = sample_context.to_dict()
         assert d["icm_release"] is None
+
+    def test_active_release_state_serialized(self, sample_context):
+        d = sample_context.to_dict()
+        assert d["active_release_state"] == {
+            "state": "",
+            "snapshot_branch": "",
+            "release_issue_number": None,
+        }
 
 
 # ---------------------------------------------------------------------------
@@ -312,6 +321,21 @@ class TestBuildValidationContextMetadataFallback:
             },
         )
         return tmp_path
+
+    def test_active_release_state_outputs_populate_context(self):
+        ctx = build_validation_context(
+            repo_name="camaraproject/QualityOnDemand",
+            event_name="pull_request",
+            ref_name="feature/release-plan",
+            base_ref="main",
+            active_release_state="planned",
+            active_release_snapshot_branch="release-snapshot/r4.3-abc1234",
+            active_release_issue_number=23,
+        )
+
+        assert ctx.active_release_state.state == "planned"
+        assert ctx.active_release_state.snapshot_branch == "release-snapshot/r4.3-abc1234"
+        assert ctx.active_release_state.release_issue_number == 23
 
     def test_fallback_populates_context(self, repo_with_metadata):
         ctx = build_validation_context(

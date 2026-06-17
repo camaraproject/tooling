@@ -119,6 +119,7 @@
   engine: python
   engine_rule: check-release-plan-semantics
   short_title: "release-plan.yaml has semantic error"
+  release_plan_check_only_safe: true
   applicability:
     release_plan_changed: true
   conditional_level:
@@ -155,25 +156,6 @@
   short_title: "Remove placeholder README alongside API definitions"
   conditional_level:
     default: warn
-
-# P-032: check-api-readiness-checklist-removal
-# API readiness checklist files moved to canonical ReleaseManagement
-# documentation; repo-local checklist files should be deleted from API repos.
-- id: P-032
-  engine: python
-  engine_rule: check-api-readiness-checklist-removal
-  short_title: "Remove API readiness checklist file from API repo"
-  applicability:
-    commonalities_release: ">=r4.3"
-  conditional_level:
-    default: error
-    overrides:
-      - condition:
-          target_release_type: [none, pre-release-alpha, pre-release-rc]
-        level: warn
-  suggestion: >-
-    Delete the obsolete API readiness checklist file(s). It is replaced by the
-    new Release process and API Readiness documentation.
 
 # P-014: check-subscription-filename (DG-088)
 # Explicit subscription API names must end with '-subscriptions'.
@@ -331,6 +313,7 @@
   engine_rule: check-release-plan-exclusivity
   short_title: "release-plan.yaml must change in its own PR"
   documentation_url: "https://github.com/camaraproject/tooling/blob/main/documentation/validation/faq.md#p-022-release-plan-exclusivity"
+  release_plan_check_only_safe: true
   applicability:
     release_plan_changed: true
   conditional_level:
@@ -349,6 +332,7 @@
   engine: python
   engine_rule: check-declared-dependency-tags-exist
   short_title: "Declared dependency tag not found upstream"
+  release_plan_check_only_safe: true
   applicability:
     release_plan_changed: true
   conditional_level:
@@ -504,3 +488,54 @@
     your branch when `main` already carries the latest synced files; if
     `main` is also behind, merge the auto-created sync PR or dispatch the
     release automation workflow to create the sync PR again.
+
+# P-032: check-api-readiness-checklist-removal
+# API readiness checklist files moved to canonical ReleaseManagement
+# documentation; repo-local checklist files should be deleted from API repos.
+- id: P-032
+  engine: python
+  engine_rule: check-api-readiness-checklist-removal
+  short_title: "Remove API readiness checklist file from API repo"
+  applicability:
+    commonalities_release: ">=r4.3"
+  conditional_level:
+    default: error
+    overrides:
+      - condition:
+          target_release_type: [none, pre-release-alpha, pre-release-rc]
+        level: warn
+  suggestion: >-
+    Delete the obsolete API readiness checklist file(s). It is replaced by the
+    new Release process and API Readiness documentation.
+
+# P-033: check-release-plan-active-release-state
+# release-plan.yaml edits are blocked while a release snapshot is active.
+# The workflow layer derives release state and the Python check consumes
+# the compact outputs offline.
+- id: P-033
+  engine: python
+  engine_rule: check-release-plan-active-release-state
+  short_title: "release-plan.yaml blocked during active release"
+  release_plan_check_only_safe: true
+  applicability:
+    trigger_types: [pr]
+    release_plan_changed: true
+  conditional_level:
+    default: error
+  suggestion: >-
+    Finish, discard, or publish the active snapshot before changing
+    release-plan.yaml.
+
+# P-034: check-release-plan-api-names-unique
+# A release plan must have at most one entry per api_name.  This runs on
+# release-plan PRs and unrelated PRs so pre-existing plan defects are visible.
+- id: P-034
+  engine: python
+  engine_rule: check-release-plan-api-names-unique
+  short_title: "release-plan api_name values must be unique"
+  release_plan_check_only_safe: true
+  conditional_level:
+    default: error
+  suggestion: >-
+    Keep exactly one entry for each api_name. If the plan needs a fix,
+    submit a dedicated release-plan PR.
