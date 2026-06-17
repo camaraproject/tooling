@@ -14,6 +14,8 @@ permissions:
 env:
   ACTIONLINT_VERSION: "1.7.12"
   PYTHON_VERSION: "3.11"
+  # Must match .github/workflows/validation.yml; Tooling CI validates the same Node-backed engines.
+  VALIDATION_NODE_VERSION: "24"
 
 jobs:
   changes:
@@ -205,7 +207,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v6
         with:
-          node-version: "20"
+          node-version: ${{ env.VALIDATION_NODE_VERSION }}
           cache: npm
           cache-dependency-path: validation/package-lock.json
 
@@ -253,7 +255,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v6
         with:
-          node-version: "20"
+          node-version: ${{ env.VALIDATION_NODE_VERSION }}
 
       - name: Check custom Spectral functions
         shell: bash
@@ -308,7 +310,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v6
         with:
-          node-version: "20"
+          node-version: ${{ env.VALIDATION_NODE_VERSION }}
           cache: npm
           cache-dependency-path: validation/package-lock.json
 
