@@ -27,7 +27,7 @@ This file is the CLI reference only.
 
 ### Prerequisites
 
-- Python 3.11+ with `pyyaml` and `jsonschema`
+- Python 3.14 with `pyyaml` and `jsonschema`
 - `gh` CLI installed and authenticated (`gh auth status` must be green)
 - The test repo must have the validation framework caller workflow installed
   at `.github/workflows/camara-validation.yml`

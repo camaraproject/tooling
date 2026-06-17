@@ -26,6 +26,10 @@ on:
 permissions:
   contents: read
 
+env:
+  # Keep validation runtime pins explicit and aligned across CI workflows.
+  PYTHON_VERSION: "3.14"
+
 jobs:
   validate:
     name: Schema-validate validation-settings.yaml
@@ -37,7 +41,7 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v6
         with:
-          python-version: "3.11"
+          python-version: ${{ env.PYTHON_VERSION }}
 
       - name: Install dependencies
         run: pip install --quiet -r requirements.txt

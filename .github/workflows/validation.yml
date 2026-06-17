@@ -39,7 +39,9 @@ env:
   # Allowlist for tooling_ref_override beyond a 40-char SHA. Comma-separated.
   # Each consuming caller's override input must match a SHA or one of these.
   ALLOWED_TOOLING_REFS: "main,v1-rc,hotfix"
-  VALIDATION_NODE_VERSION: "24"
+  # Keep validation runtime pins explicit and aligned across reusable workflows.
+  PYTHON_VERSION: "3.14"
+  NODE_VERSION: "24"
 
 permissions:
   checks: write
@@ -204,13 +206,13 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v6
         with:
-          python-version: "3.11"
+          python-version: ${{ env.PYTHON_VERSION }}
 
       # ── Step 5: Setup Node ─────────────────────────────────────────
       - name: Setup Node
         uses: actions/setup-node@v6
         with:
-          node-version: ${{ env.VALIDATION_NODE_VERSION }}
+          node-version: ${{ env.NODE_VERSION }}
 
       # ── Step 6: Detect release-plan changes (PR only) ──────────────
       - name: Detect release-plan changes
