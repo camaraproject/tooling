@@ -153,6 +153,18 @@ class TestApiSectionFormatting:
         assert "* N/A" in result
         assert "_To be filled during release review_" not in result
 
+    def test_format_api_section_includes_breaking_changes_before_added(self):
+        api = {
+            "api_name": "quality-on-demand",
+            "api_version": "v1.1.0",
+            "api_title": "quality-on-demand",
+            "api_file_name": "quality-on-demand",
+        }
+        result = ChangelogGenerator.format_api_section(api, "r3.2", "QualityOnDemand")
+
+        assert "### Breaking changes\n\n* N/A" in result
+        assert result.index("### Breaking changes") < result.index("### Added")
+
     def test_format_api_section_url_patterns(self):
         api = {
             "api_name": "my-api",
@@ -288,6 +300,12 @@ class TestDraftGeneration:
         assert CANDIDATE_CHANGES_END_MARKER in result
         # Instruction text visible (not collapsed)
         assert "auto-removed on merge" in result
+        assert (
+            "Copy relevant entries into the Breaking changes/Added/Changed/Fixed/Removed "
+            "sections below. List breaking changes both in Breaking changes and in their "
+            "normal change category."
+            in result
+        )
         # Full Changelog link at end, outside markers
         assert "compare/r3.2...r4.1" in result
         end_marker_pos = result.index(CANDIDATE_CHANGES_END_MARKER)
