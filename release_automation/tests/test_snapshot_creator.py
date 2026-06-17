@@ -1274,6 +1274,42 @@ class TestReleaseDocumentation:
         result = snapshot_creator._get_candidate_changes("r4.1", "r3.2")
         assert result is None
 
+    def test_get_api_comparison_baselines_reads_matching_api_versions(
+        self, snapshot_creator, mock_github_client
+    ):
+        """Per-API baselines come from matching api_name in comparison metadata."""
+        current_metadata = {
+            "apis": [
+                {"api_name": "quality-on-demand", "api_version": "3.2.0-rc.2"},
+                {"api_name": "fresh-api", "api_version": "0.1.0-alpha.1"},
+            ]
+        }
+        mock_github_client.get_release_metadata.return_value = {
+            "apis": [
+                {"api_name": "quality-on-demand", "api_version": "3.2.0-rc.1"},
+                {"api_name": "other-api", "api_version": "1.0.0"},
+            ]
+        }
+
+        result = snapshot_creator._get_api_comparison_baselines(
+            current_metadata, "r4.1"
+        )
+
+        assert result == {"quality-on-demand": "3.2.0-rc.1"}
+        mock_github_client.get_release_metadata.assert_called_once_with("r4.1")
+
+    def test_get_api_comparison_baselines_skips_missing_comparison_release(
+        self, snapshot_creator, mock_github_client
+    ):
+        current_metadata = {"apis": [{"api_name": "new-api", "api_version": "0.1.0"}]}
+
+        result = snapshot_creator._get_api_comparison_baselines(
+            current_metadata, None
+        )
+
+        assert result == {}
+        mock_github_client.get_release_metadata.assert_not_called()
+
     def test_update_readme_returns_false_when_no_readme(
         self, snapshot_creator, tmp_path, sample_release_plan
     ):
@@ -1373,6 +1409,42 @@ class TestReleaseDocumentation:
             draft_metadata["dependencies"]["identity_consent_management_release"]
             == "0.5.0-rc.1"
         )
+
+    @patch("release_automation.scripts.snapshot_creator.ChangelogGenerator")
+    def test_generate_changelog_adds_api_comparison_baselines(
+        self, mock_gen_cls, snapshot_creator, mock_github_client, tmp_path
+    ):
+        """CHANGELOG metadata is enriched with per-API baselines when present."""
+        mock_github_client.generate_release_notes.return_value = None
+
+        mock_instance = Mock()
+        mock_instance.generate_draft.return_value = "# r4.2\n\nContent\n"
+        mock_instance.write_changelog.return_value = "CHANGELOG/CHANGELOG-r4.md"
+        mock_gen_cls.return_value = mock_instance
+
+        metadata = {
+            "repository": {"release_type": "pre-release-rc"},
+            "apis": [
+                {"api_name": "quality-on-demand", "api_version": "3.2.0-rc.2"},
+                {"api_name": "fresh-api", "api_version": "0.1.0-alpha.1"},
+            ],
+            "dependencies": {},
+        }
+
+        snapshot_creator._generate_changelog(
+            str(tmp_path),
+            SnapshotConfig(release_tag="r4.2"),
+            {},
+            {},
+            metadata,
+            "TestRepo-QoD",
+            compare_base="r4.1",
+            api_comparison_baselines={"quality-on-demand": "3.2.0-rc.1"},
+        )
+
+        draft_metadata = mock_instance.generate_draft.call_args.kwargs["metadata"]
+        assert draft_metadata["apis"][0]["comparison_baseline"] == "3.2.0-rc.1"
+        assert "comparison_baseline" not in draft_metadata["apis"][1]
 
     @patch("release_automation.scripts.snapshot_creator.ChangelogGenerator")
     def test_generate_changelog_rc_uses_public_release_as_base(

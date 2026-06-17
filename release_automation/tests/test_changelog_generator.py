@@ -199,6 +199,39 @@ class TestApiSectionFormatting:
         result = ChangelogGenerator.format_api_section(api, "r1.1", "TestRepo")
         assert "## fallback-api v1.0.0" in result
 
+    def test_format_api_section_includes_comparison_baseline_after_descriptor(self):
+        api = {
+            "api_name": "stable-api",
+            "api_version": "v1.0.0",
+            "api_file_name": "stable-api",
+            "comparison_baseline": "v0.9.0",
+        }
+        result = ChangelogGenerator.format_api_section(
+            api, "r2.1", "TestRepo", release_type="public-release"
+        )
+
+        descriptor_pos = result.index(
+            "**stable-api v1.0.0 is the first stable version of this API.**"
+        )
+        baseline_pos = result.index(
+            "Changes documented below are compared to version v0.9.0."
+        )
+        links_pos = result.index("- API definition **with inline documentation**:")
+
+        assert descriptor_pos < baseline_pos < links_pos
+
+    def test_format_api_section_omits_comparison_baseline_when_absent(self):
+        api = {
+            "api_name": "new-api",
+            "api_version": "v0.1.0-alpha.1",
+            "api_file_name": "new-api",
+        }
+        result = ChangelogGenerator.format_api_section(
+            api, "r1.1", "TestRepo", release_type="pre-release-alpha"
+        )
+
+        assert "Changes documented below are compared to version" not in result
+
 
 class TestVersionSentence:
     """Tests for the generated first sentence per version + release_type.
@@ -373,6 +406,17 @@ class TestDraftGeneration:
         )
         assert "* quality-on-demand v1.0.0-alpha.1" in result
         assert "CAMARA Quality On Demand" not in result
+
+    def test_generate_draft_renders_api_comparison_baseline(self, generator, single_api_metadata):
+        single_api_metadata["apis"][0]["comparison_baseline"] = "v1.0.0"
+
+        result = generator.generate_draft(
+            release_tag="r4.1",
+            metadata=single_api_metadata,
+            repo_name="QualityOnDemand",
+        )
+
+        assert "Changes documented below are compared to version v1.0.0." in result
 
 
 # --- File Writing ---

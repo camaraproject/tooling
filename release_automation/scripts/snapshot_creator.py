@@ -30,6 +30,9 @@ from .version_calculator import VersionCalculator
 from .wip_checker import check_wip_versions
 
 
+COMPARE_BASE_UNSET = object()
+
+
 @dataclass
 class SnapshotConfig:
     """Configuration for snapshot creation."""
@@ -322,8 +325,14 @@ class SnapshotCreator:
                 result.warnings.append(f"README update failed: {e}")
 
             # Step 12c: Generate CHANGELOG draft
+            api_comparison_baselines: Dict[str, str] = {}
             try:
                 repo_name = self.gh.repo.split("/")[-1]
+                release_type = metadata.get("repository", {}).get("release_type", "")
+                compare_base = self._get_compare_base(release_type, config.release_tag)
+                api_comparison_baselines = self._get_api_comparison_baselines(
+                    metadata, compare_base
+                )
                 self._generate_changelog(
                     temp_dir,
                     config,
@@ -333,6 +342,8 @@ class SnapshotCreator:
                     repo_name,
                     commonalities_version=commonalities_version,
                     icm_version=icm_version,
+                    compare_base=compare_base,
+                    api_comparison_baselines=api_comparison_baselines,
                 )
                 git_ops.commit_all(
                     f"Add CHANGELOG draft for {config.release_tag}"
@@ -350,6 +361,7 @@ class SnapshotCreator:
                 snapshot_id,
                 api_versions,
                 release_plan,
+                api_comparison_baselines,
             )
             result.release_pr_number = pr_info.number
             result.release_pr_url = pr_info.url
@@ -643,6 +655,7 @@ class SnapshotCreator:
         snapshot_id: str,
         api_versions: Dict[str, str],
         release_plan: Dict[str, Any],
+        api_comparison_baselines: Optional[Dict[str, str]] = None,
     ) -> PullRequestInfo:
         """
         Create the Release PR.
@@ -653,6 +666,7 @@ class SnapshotCreator:
             snapshot_id: Snapshot ID
             api_versions: Calculated API versions
             release_plan: Release plan dict
+            api_comparison_baselines: Previous API version by api_name
 
         Returns:
             PullRequestInfo with PR number and URL
@@ -667,6 +681,7 @@ class SnapshotCreator:
 
         # Build PR body from template with enriched context
         apis = []
+        api_comparison_baselines = api_comparison_baselines or {}
         for api_plan in release_plan.get("apis", []):
             name = api_plan.get("api_name", "unknown")
             status = api_plan.get("target_api_status", "")
@@ -684,6 +699,7 @@ class SnapshotCreator:
                 "api_version": api_versions.get(name, "—"),
                 "target_api_status": status,
                 "status_label": status_label,
+                "comparison_baseline": api_comparison_baselines.get(name),
             })
 
         # Dependencies from release plan
@@ -816,6 +832,30 @@ class SnapshotCreator:
         Falls back to None on API errors (non-fatal).
         """
         return self.gh.generate_release_notes(release_tag, previous_release)
+
+    def _get_api_comparison_baselines(
+        self, metadata: Dict[str, Any], compare_base: Optional[str]
+    ) -> Dict[str, str]:
+        """Return previous API versions for APIs present in comparison metadata."""
+        current_apis = metadata.get("apis", [])
+        if not compare_base or not current_apis:
+            return {}
+
+        comparison_metadata = self.gh.get_release_metadata(compare_base)
+        if not comparison_metadata:
+            return {}
+
+        previous_versions = {
+            api.get("api_name"): api.get("api_version")
+            for api in comparison_metadata.get("apis", [])
+            if api.get("api_name") and api.get("api_version")
+        }
+
+        return {
+            api["api_name"]: previous_versions[api["api_name"]]
+            for api in current_apis
+            if api.get("api_name") in previous_versions
+        }
 
     def _update_readme(
         self,
@@ -953,6 +993,8 @@ class SnapshotCreator:
         repo_name: str,
         commonalities_version: str = "",
         icm_version: str = "",
+        compare_base: Any = COMPARE_BASE_UNSET,
+        api_comparison_baselines: Optional[Dict[str, str]] = None,
     ) -> str:
         """Generate CHANGELOG draft on release-review branch.
 
@@ -964,11 +1006,20 @@ class SnapshotCreator:
             Relative path to the written CHANGELOG file.
         """
         release_type = metadata.get("repository", {}).get("release_type", "")
-        compare_base = self._get_compare_base(release_type, config.release_tag)
+        if compare_base is COMPARE_BASE_UNSET:
+            compare_base = self._get_compare_base(release_type, config.release_tag)
         candidate_changes = self._get_candidate_changes(
             config.release_tag, compare_base
         )
         changelog_metadata = deepcopy(metadata)
+        if api_comparison_baselines is None:
+            api_comparison_baselines = self._get_api_comparison_baselines(
+                metadata, compare_base
+            )
+        for api in changelog_metadata.get("apis", []):
+            baseline = api_comparison_baselines.get(api.get("api_name", ""))
+            if baseline:
+                api["comparison_baseline"] = baseline
         if commonalities_version:
             changelog_metadata.setdefault("dependencies", {})[
                 "commonalities_release"
