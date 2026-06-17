@@ -158,7 +158,7 @@ class TestRunGplint:
             args=[], returncode=0, stdout="", stderr="[]",
         )
         result = run_gplint(
-            tmp_path / ".gherkin-lintrc", ["*.feature"], cwd=tmp_path,
+            tmp_path / ".gplintrc", ["*.feature"], cwd=tmp_path,
         )
         assert result.success is True
         assert result.findings == []
@@ -176,7 +176,7 @@ class TestRunGplint:
             stderr="",
         )
         result = run_gplint(
-            tmp_path / ".gherkin-lintrc", ["*.feature"], cwd=tmp_path,
+            tmp_path / ".gplintrc", ["*.feature"], cwd=tmp_path,
         )
         assert result.success is True
         assert len(result.findings) == 1
@@ -194,7 +194,7 @@ class TestRunGplint:
             }]),
         )
         result = run_gplint(
-            tmp_path / ".gherkin-lintrc", ["*.feature"], cwd=tmp_path,
+            tmp_path / ".gplintrc", ["*.feature"], cwd=tmp_path,
         )
         assert result.success is True
         assert len(result.findings) == 1
@@ -205,25 +205,25 @@ class TestRunGplint:
             args=[], returncode=2, stdout="", stderr="config not found",
         )
         result = run_gplint(
-            tmp_path / ".gherkin-lintrc", ["*.feature"], cwd=tmp_path,
+            tmp_path / ".gplintrc", ["*.feature"], cwd=tmp_path,
         )
         assert result.success is False
         assert "config not found" in result.error_message
 
     @patch("validation.engines.gherkin_adapter.subprocess.run")
-    def test_npx_not_found(self, mock_run, tmp_path):
-        mock_run.side_effect = FileNotFoundError("npx")
+    def test_gplint_not_found(self, mock_run, tmp_path):
+        mock_run.side_effect = FileNotFoundError("gplint")
         result = run_gplint(
-            tmp_path / ".gherkin-lintrc", ["*.feature"], cwd=tmp_path,
+            tmp_path / ".gplintrc", ["*.feature"], cwd=tmp_path,
         )
         assert result.success is False
         assert "not found" in result.error_message
 
     @patch("validation.engines.gherkin_adapter.subprocess.run")
     def test_timeout(self, mock_run, tmp_path):
-        mock_run.side_effect = subprocess.TimeoutExpired(cmd="npx", timeout=120)
+        mock_run.side_effect = subprocess.TimeoutExpired(cmd="gplint", timeout=120)
         result = run_gplint(
-            tmp_path / ".gherkin-lintrc", ["*.feature"], cwd=tmp_path,
+            tmp_path / ".gplintrc", ["*.feature"], cwd=tmp_path,
         )
         assert result.success is False
         assert "timed out" in result.error_message
@@ -241,15 +241,15 @@ class TestRunGherkinEngine:
                       "message": "m", "path": "f.feature", "line": 1}]
         mock_run.return_value = GherkinResult(findings=findings, success=True)
 
-        result = run_gherkin_engine(tmp_path, tmp_path / ".gherkin-lintrc")
+        result = run_gherkin_engine(tmp_path, tmp_path / ".gplintrc")
         assert result == findings
 
     @patch("validation.engines.gherkin_adapter.run_gplint")
     def test_error_returns_error_finding(self, mock_run, tmp_path):
         mock_run.return_value = GherkinResult(
-            findings=[], success=False, error_message="npx missing",
+            findings=[], success=False, error_message="gplint missing",
         )
-        result = run_gherkin_engine(tmp_path, tmp_path / ".gherkin-lintrc")
+        result = run_gherkin_engine(tmp_path, tmp_path / ".gplintrc")
         assert len(result) == 1
         assert result[0]["level"] == "error"
         assert result[0]["engine_rule"] == "gherkin-execution-error"
@@ -257,7 +257,7 @@ class TestRunGherkinEngine:
     @patch("validation.engines.gherkin_adapter.run_gplint")
     def test_default_patterns(self, mock_run, tmp_path):
         mock_run.return_value = GherkinResult(findings=[], success=True)
-        run_gherkin_engine(tmp_path, tmp_path / ".gherkin-lintrc")
+        run_gherkin_engine(tmp_path, tmp_path / ".gplintrc")
         call_args = mock_run.call_args
         assert call_args[0][1] == ["code/Test_definitions/**/*.feature"]
 
@@ -265,6 +265,6 @@ class TestRunGherkinEngine:
     def test_custom_patterns(self, mock_run, tmp_path):
         mock_run.return_value = GherkinResult(findings=[], success=True)
         custom = ["tests/*.feature"]
-        run_gherkin_engine(tmp_path, tmp_path / ".gherkin-lintrc", file_patterns=custom)
+        run_gherkin_engine(tmp_path, tmp_path / ".gplintrc", file_patterns=custom)
         call_args = mock_run.call_args
         assert call_args[0][1] == custom

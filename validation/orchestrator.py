@@ -347,10 +347,10 @@ def run_engines(
         logger.info("GPLint: skipped (no test files)")
     else:
         try:
-            gherkin_config = paths.linting_config_dir / ".gherkin-lintrc"
+            gplint_config = paths.linting_config_dir / ".gplintrc"
             findings = run_gherkin_engine(
                 repo_path=repo_path,
-                config_path=gherkin_config,
+                config_path=gplint_config,
             )
             all_findings.extend(findings)
             engine_statuses["gherkin"] = f"{len(findings)} finding(s)"
