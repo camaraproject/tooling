@@ -27,7 +27,7 @@ class TestRenderTemplate:
         result = render_template("release_review_pr", context)
 
         assert "## Release Review: r4.1 rc" in result
-        assert "| API | Version | Status | Changes to be compared to |" in result
+        assert "| API | Version | Status | Comparison target |" in result
         assert "| QualityOnDemand | `v1.0.0` | rc | `N/A` |" in result
         assert "| DeviceLocation | `v2.0.0` | rc | `N/A` |" in result
         assert "### Codeowner Actions" in result
@@ -179,7 +179,7 @@ class TestTemplateLoader:
 
         result = render_template("release_review_pr", context)
 
-        assert "| API | Version | Status | Changes to be compared to |" in result
+        assert "| API | Version | Status | Comparison target |" in result
         assert "| TestAPI | `v1.2.0-rc.2` | rc | `v1.2.0-rc.1` |" in result
         assert "| NewAPI | `v0.1.0-alpha.1` | alpha | `N/A` |" in result
 
