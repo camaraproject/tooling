@@ -1,5 +1,6 @@
 """Unit tests for validation.context.context_builder."""
 
+import json
 from pathlib import Path
 
 import pytest
@@ -246,6 +247,7 @@ class TestValidationContextToDict:
             "non_release_plan_files_changed",
             "fallback_canonical_path",
             "active_release_state",
+            "release_history",
         }
         assert set(d.keys()) == expected_keys
 
@@ -280,6 +282,37 @@ METADATA_SCHEMA = SCHEMAS_DIR / "release-metadata-schema.yaml"
 
 def _write_yaml(path: Path, data) -> Path:
     path.write_text(yaml.dump(data, default_flow_style=False), encoding="utf-8")
+    return path
+
+
+def _write_release_history(path: Path) -> Path:
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "repository": "camaraproject/QualityOnDemand",
+                "base_ref": "main",
+                "lookup_status": "complete",
+                "published_releases": [
+                    {
+                        "tag": "r4.2",
+                        "release_type": "public-release",
+                        "prerelease": False,
+                        "published_at": "2026-01-15T00:00:00Z",
+                        "src_commit_sha": "a" * 40,
+                        "metadata_available": True,
+                        "apis": [
+                            {
+                                "api_name": "quality-on-demand",
+                                "api_version": "1.0.0",
+                            }
+                        ],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
     return path
 
 
@@ -336,6 +369,32 @@ class TestBuildValidationContextMetadataFallback:
         assert ctx.active_release_state.state == "planned"
         assert ctx.active_release_state.snapshot_branch == "release-snapshot/r4.3-abc1234"
         assert ctx.active_release_state.release_issue_number == 23
+
+    def test_release_history_path_populates_context(self, tmp_path: Path):
+        history_path = _write_release_history(tmp_path / "release-history.json")
+
+        ctx = build_validation_context(
+            repo_name="camaraproject/QualityOnDemand",
+            event_name="pull_request",
+            ref_name="feature/release-plan",
+            base_ref="main",
+            release_history_path=history_path,
+        )
+
+        assert ctx.release_history is not None
+        assert ctx.release_history.lookup_status == "complete"
+        assert ctx.release_history.latest_release().tag == "r4.2"
+
+    def test_missing_release_history_path_leaves_context_empty(self, tmp_path: Path):
+        ctx = build_validation_context(
+            repo_name="camaraproject/QualityOnDemand",
+            event_name="pull_request",
+            ref_name="feature/release-plan",
+            base_ref="main",
+            release_history_path=tmp_path / "missing-history.json",
+        )
+
+        assert ctx.release_history is None
 
     def test_fallback_populates_context(self, repo_with_metadata):
         ctx = build_validation_context(

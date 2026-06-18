@@ -11,3 +11,8 @@ from .context_builder import (  # noqa: F401
     ValidationContext,
     build_validation_context,
 )
+from .release_history import (  # noqa: F401
+    PublishedRelease,
+    PublishedReleaseApi,
+    ReleaseHistorySnapshot,
+)

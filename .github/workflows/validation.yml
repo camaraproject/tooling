@@ -248,10 +248,7 @@ jobs:
       # why the orchestrator suppresses the Spectral + gherkin engines.
       # ICM has no common files to sync, so an ICM advance does not
       # trigger engine suppression.
-      - name: Install Python dependencies for dependency resolver
-        if: >-
-          github.event_name == 'pull_request'
-          && steps.detect-changes.outputs.release_plan_changed == 'true'
+      - name: Install Python dependencies for workflow resolvers
         run: pip install --quiet -r .tooling/requirements.txt
 
       - name: Resolve dependency changes and declared tags
@@ -278,6 +275,22 @@ jobs:
           && steps.detect-changes.outputs.release_plan_changed == 'true'
         uses: ./.tooling/shared-actions/derive-release-state
 
+      # ── Step 6d: Resolve published release history for P-035 ──────
+      #
+      # The Python orchestrator stays offline.  Resolve published releases and
+      # release-metadata.yaml in the workflow layer, write a compact JSON
+      # snapshot, and pass only that file path into validation.
+      - name: Resolve published release history
+        id: release-history
+        if: hashFiles('release-plan.yaml') != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 .tooling/validation/scripts/resolve-release-history.py \
+            --repo "${{ github.repository }}" \
+            --base-ref "${{ github.base_ref || github.ref_name || 'main' }}" \
+            --output "${RUNNER_TEMP}/release-history.json"
+
       # ── Step 7: Run validation (shared action) ─────────────────────
       #
       # The run-validation action installs dependencies, runs the Python
@@ -300,6 +313,7 @@ jobs:
           active_release_state: ${{ steps.derive-release-state.outputs.state || '' }}
           active_release_snapshot_branch: ${{ steps.derive-release-state.outputs.snapshot_branch || '' }}
           active_release_issue_number: ${{ steps.derive-release-state.outputs.release_issue_number || '' }}
+          release_history_path: ${{ steps.release-history.outputs.release_history_path || '' }}
           tooling_ref: ${{ steps.resolve-ref.outputs.tooling_checkout_ref }}
           config_path: ${{ steps.resolve-config.outputs.config_path }}
 

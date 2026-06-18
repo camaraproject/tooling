@@ -16,6 +16,11 @@ from typing import List, Optional
 
 from release_automation.scripts import config
 from validation.context import ValidationContext
+from validation.context.release_history import (
+    PublishedRelease,
+    normalize_api_version_base,
+    parse_release_tag,
+)
 from validation.context.release_plan_parser import is_valid_release_tag
 
 from ._types import load_yaml_safe, make_finding
@@ -336,6 +341,302 @@ def check_release_plan_api_names_unique(
         )
 
     return findings
+
+
+# ---------------------------------------------------------------------------
+# P-035: check-release-plan-published-history
+# ---------------------------------------------------------------------------
+
+
+def _planned_api_set(release_plan: dict) -> tuple[tuple[str, str, str], ...]:
+    return tuple(sorted(_planned_api_entries(release_plan)))
+
+
+def _published_api_set(release: PublishedRelease) -> tuple[tuple[str, str, str], ...]:
+    return tuple(
+        sorted(
+            (
+                api.api_name,
+                normalize_api_version_base(api.api_version),
+                api.status,
+            )
+            for api in release.apis
+        )
+    )
+
+
+def _plan_matches_published_release(
+    release_plan: dict, release: PublishedRelease
+) -> bool:
+    repo = release_plan.get("repository", {})
+    release_type = repo.get("target_release_type")
+    if release_type != release.release_type:
+        return False
+    return _planned_api_set(release_plan) == _published_api_set(release)
+
+
+def _inactive_plan_matches_published_release(
+    release_plan: dict, release: PublishedRelease
+) -> bool:
+    repo = release_plan.get("repository", {})
+    if repo.get("target_release_type") != "none":
+        return False
+    return _planned_api_set(release_plan) == _published_api_set(release)
+
+
+def _prefix_pre_existing_release_plan_condition(
+    context: ValidationContext, message: str
+) -> str:
+    if context.release_plan_changed is False:
+        return (
+            "Pre-existing release-plan condition: "
+            f"{message} Submit the fix in a dedicated release-plan PR."
+        )
+    return message
+
+
+def _release_history_finding(
+    context: ValidationContext, message: str, suggestion: str
+) -> dict:
+    return make_finding(
+        engine_rule="check-release-plan-published-history",
+        level="error",
+        message=_prefix_pre_existing_release_plan_condition(context, message),
+        path=_RELEASE_PLAN_PATH,
+        line=1,
+        suggestion=suggestion,
+    )
+
+
+def _planned_api_entries(release_plan: dict) -> list[tuple[str, str, str]]:
+    entries: list[tuple[str, str, str]] = []
+    for api in release_plan.get("apis", []):
+        if not isinstance(api, dict):
+            continue
+        api_name = api.get("api_name")
+        api_version = api.get("target_api_version")
+        api_status = api.get("target_api_status")
+        if (
+            isinstance(api_name, str)
+            and isinstance(api_version, str)
+            and isinstance(api_status, str)
+        ):
+            entries.append((api_name, api_version, api_status))
+    return entries
+
+
+def _plan_declares_new_api_content(
+    release_plan: dict, context: ValidationContext
+) -> Optional[bool]:
+    history = context.release_history
+    if history is None:
+        return None
+
+    for api_name, api_version, api_status in _planned_api_entries(release_plan):
+        if (api_version, api_status) not in history.terminal_api_version_statuses(
+            api_name
+        ):
+            if history.may_have_missing_terminal_metadata():
+                return None
+            return True
+    return False
+
+
+def check_release_plan_published_history(
+    repo_path: Path, context: ValidationContext
+) -> List[dict]:
+    """Validate repository-level release-plan consistency against history."""
+    plan_path = repo_path / _RELEASE_PLAN_PATH
+    release_plan = load_yaml_safe(plan_path)
+    if release_plan is None:
+        return []
+
+    history = context.release_history
+    if history is None:
+        return []
+
+    repo = release_plan.get("repository", {})
+    release_type = repo.get("target_release_type", "none")
+    target_tag = repo.get("target_release_tag")
+
+    # A parked plan (target_release_type: none) only carries forward the last
+    # release.  On a PR that does not touch release-plan.yaml there is no
+    # actionable release-planning finding, so stay silent rather than block
+    # unrelated work.  When the plan IS edited under none, the consistency checks
+    # below still apply: the plan must remain in a shape where flipping the
+    # release type makes it valid.
+    if release_type == "none" and context.release_plan_changed is not True:
+        return []
+
+    if release_type != "none" and not target_tag:
+        return [
+            _release_history_finding(
+                context,
+                f"target_release_tag is required when target_release_type is "
+                f"'{release_type}'.",
+                "Set target_release_tag for the release being prepared, or set "
+                "target_release_type: none when no release is being prepared.",
+            )
+        ]
+
+    if not target_tag:
+        return []
+
+    latest_release = (
+        history.latest_release() if history.release_tags_available() else None
+    )
+    latest_tag = latest_release.tag if latest_release is not None else None
+
+    if (
+        latest_release is not None
+        and latest_release.metadata_available
+        and target_tag == latest_release.tag
+        and _plan_matches_published_release(release_plan, latest_release)
+    ):
+        return []
+
+    published_target = (
+        history.release_by_tag(target_tag) if history.release_tags_available() else None
+    )
+    if (
+        published_target is not None
+        and published_target.metadata_available
+        and _inactive_plan_matches_published_release(release_plan, published_target)
+    ):
+        return []
+
+    if (
+        published_target is not None
+        and published_target.metadata_available
+        and not _plan_matches_published_release(release_plan, published_target)
+    ):
+        return [
+            _release_history_finding(
+                context,
+                f"target_release_tag '{target_tag}' is already published, but "
+                "release-plan.yaml no longer matches that published release. "
+                "Bump target_release_tag or restore the published API entries.",
+                "Restore the release plan to match the published tag, or choose "
+                "the next unpublished target_release_tag for a new release.",
+            )
+        ]
+
+    parsed_target = parse_release_tag(target_tag)
+    parsed_latest = parse_release_tag(latest_tag) if latest_tag else None
+    if (
+        parsed_target is not None
+        and parsed_latest is not None
+        and parsed_target < parsed_latest
+    ):
+        return [
+            _release_history_finding(
+                context,
+                f"target_release_tag '{target_tag}' is lower than latest "
+                f"published release tag '{latest_tag}'.",
+                "Use a target_release_tag greater than the latest published "
+                "release tag for this release line.",
+            )
+        ]
+
+    if (
+        parsed_target is not None
+        and parsed_target.minor == 1
+        and parsed_target.major > 1
+        and history.release_tags_available()
+        and not history.has_cycle(parsed_target.major - 1)
+    ):
+        previous_cycle = f"r{parsed_target.major - 1}.y"
+        return [
+            _release_history_finding(
+                context,
+                f"target_release_tag '{target_tag}' opens release cycle "
+                f"r{parsed_target.major} without any published "
+                f"{previous_cycle} release.",
+                "Publish or target the previous release cycle before opening "
+                "the next cycle.",
+            )
+        ]
+
+    target_metadata_missing = (
+        published_target is not None and not published_target.metadata_available
+    )
+    if release_type != "none" and not target_metadata_missing:
+        new_api_content = _plan_declares_new_api_content(release_plan, context)
+        if new_api_content is False:
+            return [
+                _release_history_finding(
+                    context,
+                    f"target_release_type '{release_type}' cannot start a new "
+                    "release because every planned API entry was already "
+                    "published with the same version and status in a public or "
+                    "maintenance release.",
+                    "Change at least one API entry in a valid way before "
+                    "preparing a new release, or set target_release_type: none "
+                    "if no API publication is intended.",
+                )
+            ]
+
+    return []
+
+
+# ---------------------------------------------------------------------------
+# P-036: check-release-plan-terminal-api-status
+# ---------------------------------------------------------------------------
+
+
+def _terminal_api_status_findings(
+    release_plan: dict, context: ValidationContext
+) -> list[dict]:
+    history = context.release_history
+    if history is None:
+        return []
+
+    findings: list[dict] = []
+    for api_name, api_version, api_status in _planned_api_entries(release_plan):
+        terminal_statuses = {
+            status
+            for version, status in history.terminal_api_version_statuses(api_name)
+            if version == api_version
+        }
+        if terminal_statuses and api_status not in terminal_statuses:
+            expected = " or ".join(f"'{status}'" for status in sorted(terminal_statuses))
+            findings.append(
+                make_finding(
+                    engine_rule="check-release-plan-terminal-api-status",
+                    level="error",
+                    message=_prefix_pre_existing_release_plan_condition(
+                        context,
+                        f"API '{api_name}' was already published as version "
+                        f"{api_version}; target_api_status must remain "
+                        f"{expected} for that version.",
+                    ),
+                    path=_RELEASE_PLAN_PATH,
+                    line=1,
+                    api_name=api_name,
+                    suggestion=(
+                        "Keep target_api_status aligned with the published "
+                        "version, or bump target_api_version before changing "
+                        "API status."
+                    ),
+                )
+            )
+    return findings
+
+
+def check_release_plan_terminal_api_status(
+    repo_path: Path, context: ValidationContext
+) -> List[dict]:
+    """Validate status for API versions already in terminal releases."""
+    plan_path = repo_path / _RELEASE_PLAN_PATH
+    release_plan = load_yaml_safe(plan_path)
+    if release_plan is None:
+        return []
+
+    history = context.release_history
+    if history is None:
+        return []
+
+    return _terminal_api_status_findings(release_plan, context)
 
 
 # ---------------------------------------------------------------------------

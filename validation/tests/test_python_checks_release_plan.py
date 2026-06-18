@@ -9,6 +9,7 @@ import pytest
 import yaml
 
 from validation.context import ActiveReleaseState, ApiContext, ValidationContext
+from validation.context.release_history import parse_release_history
 from validation.engines.python_checks.release_plan_checks import (
     ALLOWED_META_RELEASES,
     _check_file_existence,
@@ -19,7 +20,9 @@ from validation.engines.python_checks.release_plan_checks import (
     check_release_plan_active_release_state,
     check_release_plan_api_names_unique,
     check_release_plan_exclusivity,
+    check_release_plan_published_history,
     check_release_plan_semantics,
+    check_release_plan_terminal_api_status,
 )
 
 
@@ -59,12 +62,15 @@ def _make_plan(
     release_track: str = "meta-release",
     meta_release: str | None = "Spring26",
     target_release_type: str = "public-release",
+    target_release_tag: str | None = "r4.3",
     apis: list[dict] | None = None,
 ) -> dict:
     repo: dict = {
         "release_track": release_track,
         "target_release_type": target_release_type,
     }
+    if target_release_tag is not None:
+        repo["target_release_tag"] = target_release_tag
     if meta_release is not None:
         repo["meta_release"] = meta_release
     if apis is None:
@@ -318,6 +324,754 @@ class TestCheckReleasePlanApiNamesUnique:
             "Pre-existing release-plan condition:"
         )
         assert "dedicated release-plan PR" in findings[0]["message"]
+
+
+# ---------------------------------------------------------------------------
+# TestCheckReleasePlanPublishedHistory (P-035)
+# ---------------------------------------------------------------------------
+
+
+def _published_release(
+    tag: str,
+    *,
+    release_type: str = "public-release",
+    apis: list[dict] | None = None,
+    metadata_available: bool = True,
+) -> dict:
+    if apis is None:
+        apis = [
+            {
+                "api_name": "quality-on-demand",
+                "api_version": "1.0.0",
+                "api_file_name": "quality-on-demand",
+            }
+        ]
+    return {
+        "tag": tag,
+        "release_type": release_type,
+        "prerelease": release_type.startswith("pre-release"),
+        "published_at": "2026-01-15T00:00:00Z",
+        "src_commit_sha": "a" * 40,
+        "metadata_available": metadata_available,
+        "apis": apis if metadata_available else [],
+    }
+
+
+def _release_history(
+    *releases: dict,
+    lookup_status: str = "complete",
+) -> dict:
+    return {
+        "schema_version": 1,
+        "repository": "camaraproject/QualityOnDemand",
+        "base_ref": "main",
+        "lookup_status": lookup_status,
+        "published_releases": list(releases),
+    }
+
+
+def _context_with_release_history(
+    history: dict,
+    *,
+    release_plan_changed: bool | None = True,
+) -> ValidationContext:
+    return dataclasses.replace(
+        _make_context(),
+        release_plan_changed=release_plan_changed,
+        release_history=parse_release_history(history),
+    )
+
+
+class TestCheckReleasePlanPublishedHistory:
+    def test_no_release_plan(self, tmp_path: Path):
+        context = _context_with_release_history(
+            _release_history(_published_release("r4.2"))
+        )
+        assert check_release_plan_published_history(tmp_path, context) == []
+
+    def test_absent_history_skips(self, tmp_path: Path):
+        _write_release_plan(tmp_path, _make_plan(target_release_tag="r4.3"))
+
+        assert check_release_plan_published_history(tmp_path, _make_context()) == []
+
+    def test_partial_history_tag_regression_still_errors_when_tags_available(
+        self, tmp_path: Path
+    ):
+        _write_release_plan(
+            tmp_path,
+            _make_plan(
+                target_release_tag="r4.2",
+                apis=[
+                    {
+                        "api_name": "quality-on-demand",
+                        "target_api_status": "public",
+                        "target_api_version": "1.0.0",
+                    }
+                ],
+            ),
+        )
+        context = _context_with_release_history(
+            _release_history(
+                _published_release("r4.2", metadata_available=False),
+                _published_release("r4.3", metadata_available=False),
+                lookup_status="partial",
+            )
+        )
+
+        findings = check_release_plan_published_history(tmp_path, context)
+
+        assert len(findings) == 1
+        assert "lower than latest published release tag 'r4.3'" in findings[0]["message"]
+
+    def test_partial_history_missing_target_metadata_skips_tag_mismatch(
+        self, tmp_path: Path
+    ):
+        _write_release_plan(
+            tmp_path,
+            _make_plan(
+                target_release_tag="r4.2",
+                apis=[
+                    {
+                        "api_name": "quality-on-demand",
+                        "target_api_status": "public",
+                        "target_api_version": "1.1.0",
+                    }
+                ],
+            ),
+        )
+        context = _context_with_release_history(
+            _release_history(
+                _published_release("r4.2", metadata_available=False),
+                lookup_status="partial",
+            )
+        )
+
+        assert check_release_plan_published_history(tmp_path, context) == []
+
+    def test_parked_after_publish_matching_latest_release_skips(self, tmp_path: Path):
+        _write_release_plan(
+            tmp_path,
+            _make_plan(
+                target_release_tag="r4.2",
+                target_release_type="public-release",
+                apis=[
+                    {
+                        "api_name": "quality-on-demand",
+                        "target_api_status": "public",
+                        "target_api_version": "1.0.0",
+                    }
+                ],
+            ),
+        )
+        context = _context_with_release_history(
+            _release_history(_published_release("r4.1"), _published_release("r4.2"))
+        )
+
+        assert check_release_plan_published_history(tmp_path, context) == []
+
+    def test_not_planning_new_release_keeps_published_plan_quiet(
+        self, tmp_path: Path
+    ):
+        _write_release_plan(
+            tmp_path,
+            _make_plan(
+                target_release_tag="r4.2",
+                target_release_type="none",
+                apis=[
+                    {
+                        "api_name": "quality-on-demand",
+                        "target_api_status": "public",
+                        "target_api_version": "1.0.0",
+                    }
+                ],
+            ),
+        )
+        context = _context_with_release_history(
+            _release_history(_published_release("r4.1"), _published_release("r4.2"))
+        )
+
+        assert check_release_plan_published_history(tmp_path, context) == []
+
+    def test_existing_published_tag_with_changed_api_entries_errors(self, tmp_path: Path):
+        _write_release_plan(
+            tmp_path,
+            _make_plan(
+                target_release_tag="r4.2",
+                apis=[
+                    {
+                        "api_name": "quality-on-demand",
+                        "target_api_status": "public",
+                        "target_api_version": "1.1.0",
+                    }
+                ],
+            ),
+        )
+        context = _context_with_release_history(
+            _release_history(_published_release("r4.2"))
+        )
+
+        findings = check_release_plan_published_history(tmp_path, context)
+
+        assert len(findings) == 1
+        assert findings[0]["engine_rule"] == "check-release-plan-published-history"
+        assert "target_release_tag 'r4.2' is already published" in findings[0]["message"]
+
+    def test_tag_regression_errors(self, tmp_path: Path):
+        _write_release_plan(
+            tmp_path,
+            _make_plan(
+                target_release_tag="r4.2",
+                apis=[
+                    {
+                        "api_name": "quality-on-demand",
+                        "target_api_status": "public",
+                        "target_api_version": "1.0.0",
+                    }
+                ],
+            ),
+        )
+        context = _context_with_release_history(
+            _release_history(_published_release("r4.2"), _published_release("r4.3"))
+        )
+
+        findings = check_release_plan_published_history(tmp_path, context)
+
+        assert len(findings) == 1
+        assert "lower than latest published release tag 'r4.3'" in findings[0]["message"]
+
+    def test_cycle_opening_without_previous_cycle_errors(self, tmp_path: Path):
+        _write_release_plan(tmp_path, _make_plan(target_release_tag="r4.1"))
+        context = _context_with_release_history(
+            _release_history(_published_release("r2.4"))
+        )
+
+        findings = check_release_plan_published_history(tmp_path, context)
+
+        assert len(findings) == 1
+        assert "opens release cycle r4 without any published r3.y release" in findings[0]["message"]
+
+    def test_null_tag_with_non_none_release_type_errors(self, tmp_path: Path):
+        _write_release_plan(
+            tmp_path,
+            _make_plan(
+                target_release_tag=None,
+                target_release_type="public-release",
+            ),
+        )
+        context = _context_with_release_history(
+            _release_history(_published_release("r4.2"))
+        )
+
+        findings = check_release_plan_published_history(tmp_path, context)
+
+        assert len(findings) == 1
+        assert "target_release_tag is required" in findings[0]["message"]
+
+    def test_type_none_with_tag_is_allowed(self, tmp_path: Path):
+        _write_release_plan(
+            tmp_path,
+            _make_plan(
+                target_release_tag="r4.3",
+                target_release_type="none",
+            ),
+        )
+        context = _context_with_release_history(
+            _release_history(_published_release("r4.2"))
+        )
+
+        assert check_release_plan_published_history(tmp_path, context) == []
+
+    def test_public_release_without_new_api_content_errors(self, tmp_path: Path):
+        _write_release_plan(
+            tmp_path,
+            _make_plan(
+                target_release_tag="r4.3",
+                target_release_type="public-release",
+                apis=[
+                    {
+                        "api_name": "quality-on-demand",
+                        "target_api_status": "public",
+                        "target_api_version": "1.0.0",
+                    }
+                ],
+            ),
+        )
+        context = _context_with_release_history(
+            _release_history(_published_release("r4.2"))
+        )
+
+        findings = check_release_plan_published_history(tmp_path, context)
+
+        assert len(findings) == 1
+        assert "cannot start a new release" in findings[0]["message"]
+
+    def test_partial_history_missing_terminal_metadata_skips_no_new_content(
+        self, tmp_path: Path
+    ):
+        _write_release_plan(
+            tmp_path,
+            _make_plan(
+                target_release_tag="r4.3",
+                target_release_type="public-release",
+                apis=[
+                    {
+                        "api_name": "quality-on-demand",
+                        "target_api_status": "public",
+                        "target_api_version": "1.0.0",
+                    }
+                ],
+            ),
+        )
+        context = _context_with_release_history(
+            _release_history(
+                _published_release("r4.2", metadata_available=False),
+                lookup_status="partial",
+            )
+        )
+
+        assert check_release_plan_published_history(tmp_path, context) == []
+
+    def test_public_release_after_alpha_history_counts_as_new_content(
+        self, tmp_path: Path
+    ):
+        _write_release_plan(
+            tmp_path,
+            _make_plan(
+                target_release_tag="r4.2",
+                target_release_type="public-release",
+                apis=[
+                    {
+                        "api_name": "qos-profiles",
+                        "target_api_status": "public",
+                        "target_api_version": "1.2.0",
+                    },
+                    {
+                        "api_name": "qos-provisioning",
+                        "target_api_status": "public",
+                        "target_api_version": "0.4.0",
+                    },
+                    {
+                        "api_name": "quality-on-demand",
+                        "target_api_status": "public",
+                        "target_api_version": "1.2.0",
+                    },
+                ],
+            ),
+        )
+        context = _context_with_release_history(
+            _release_history(
+                _published_release(
+                    "r3.2",
+                    apis=[
+                        {
+                            "api_name": "qos-profiles",
+                            "api_version": "1.1.0",
+                        },
+                        {
+                            "api_name": "qos-provisioning",
+                            "api_version": "0.3.0",
+                        },
+                        {
+                            "api_name": "quality-on-demand",
+                            "api_version": "1.1.0",
+                        },
+                    ],
+                ),
+                _published_release(
+                    "r4.1",
+                    release_type="pre-release-alpha",
+                    apis=[
+                        {
+                            "api_name": "qos-profiles",
+                            "api_version": "1.2.0-alpha.1",
+                        },
+                        {
+                            "api_name": "qos-provisioning",
+                            "api_version": "0.4.0-alpha.1",
+                        },
+                        {
+                            "api_name": "quality-on-demand",
+                            "api_version": "1.2.0-alpha.1",
+                        },
+                    ],
+                ),
+            )
+        )
+
+        assert check_release_plan_published_history(tmp_path, context) == []
+
+    def test_pre_release_alpha_with_only_published_public_content_errors(
+        self, tmp_path: Path
+    ):
+        _write_release_plan(
+            tmp_path,
+            _make_plan(
+                target_release_tag="r4.2",
+                target_release_type="pre-release-alpha",
+                apis=[
+                    {
+                        "api_name": "qos-profiles",
+                        "target_api_status": "public",
+                        "target_api_version": "1.1.0",
+                    },
+                    {
+                        "api_name": "qos-provisioning",
+                        "target_api_status": "public",
+                        "target_api_version": "0.3.0",
+                    },
+                    {
+                        "api_name": "quality-on-demand",
+                        "target_api_status": "public",
+                        "target_api_version": "1.1.0",
+                    },
+                ],
+            ),
+        )
+        context = _context_with_release_history(
+            _release_history(
+                _published_release(
+                    "r3.2",
+                    apis=[
+                        {
+                            "api_name": "qos-profiles",
+                            "api_version": "1.1.0",
+                        },
+                        {
+                            "api_name": "qos-provisioning",
+                            "api_version": "0.3.0",
+                        },
+                        {
+                            "api_name": "quality-on-demand",
+                            "api_version": "1.1.0",
+                        },
+                    ],
+                )
+            )
+        )
+
+        findings = check_release_plan_published_history(tmp_path, context)
+
+        assert len(findings) == 1
+        assert "cannot start a new release" in findings[0]["message"]
+        assert "Change at least one API entry in a valid way" in findings[0]["suggestion"]
+
+    def test_pre_release_rc_after_rc_history_counts_as_new_content(
+        self, tmp_path: Path
+    ):
+        _write_release_plan(
+            tmp_path,
+            _make_plan(
+                target_release_tag="r4.3",
+                target_release_type="pre-release-rc",
+                apis=[
+                    {
+                        "api_name": "quality-on-demand",
+                        "target_api_status": "rc",
+                        "target_api_version": "1.2.0",
+                    }
+                ],
+            ),
+        )
+        context = _context_with_release_history(
+            _release_history(
+                _published_release(
+                    "r4.2",
+                    release_type="pre-release-rc",
+                    apis=[
+                        {
+                            "api_name": "quality-on-demand",
+                            "api_version": "1.2.0-rc.1",
+                        }
+                    ],
+                )
+            )
+        )
+
+        assert check_release_plan_published_history(tmp_path, context) == []
+
+    def test_pre_existing_history_condition_prefixes_message(self, tmp_path: Path):
+        _write_release_plan(
+            tmp_path,
+            _make_plan(
+                target_release_tag="r4.3",
+                target_release_type="public-release",
+                apis=[
+                    {
+                        "api_name": "quality-on-demand",
+                        "target_api_status": "public",
+                        "target_api_version": "1.0.0",
+                    }
+                ],
+            ),
+        )
+        context = _context_with_release_history(
+            _release_history(_published_release("r4.2")),
+            release_plan_changed=False,
+        )
+
+        findings = check_release_plan_published_history(tmp_path, context)
+
+        assert len(findings) == 1
+        assert findings[0]["message"].startswith(
+            "Pre-existing release-plan condition:"
+        )
+        assert "dedicated release-plan PR" in findings[0]["message"]
+
+    def test_none_unrelated_pr_silences_history_findings(self, tmp_path: Path):
+        # Parked plan, PR did not touch release-plan.yaml: stay silent even
+        # though target_release_tag r4.1 would regress against latest r4.3.
+        _write_release_plan(
+            tmp_path,
+            _make_plan(
+                target_release_tag="r4.1",
+                target_release_type="none",
+                apis=[
+                    {
+                        "api_name": "quality-on-demand",
+                        "target_api_status": "public",
+                        "target_api_version": "1.0.0",
+                    }
+                ],
+            ),
+        )
+        context = _context_with_release_history(
+            _release_history(_published_release("r4.2"), _published_release("r4.3")),
+            release_plan_changed=False,
+        )
+
+        assert check_release_plan_published_history(tmp_path, context) == []
+
+    def test_none_changed_tag_regression_errors(self, tmp_path: Path):
+        # Same parked plan, but the PR edits release-plan.yaml: a regressing tag
+        # must not be merged regardless of target_release_type.
+        _write_release_plan(
+            tmp_path,
+            _make_plan(
+                target_release_tag="r4.1",
+                target_release_type="none",
+                apis=[
+                    {
+                        "api_name": "quality-on-demand",
+                        "target_api_status": "public",
+                        "target_api_version": "1.0.0",
+                    }
+                ],
+            ),
+        )
+        context = _context_with_release_history(
+            _release_history(_published_release("r4.2"), _published_release("r4.3")),
+            release_plan_changed=True,
+        )
+
+        findings = check_release_plan_published_history(tmp_path, context)
+
+        assert len(findings) == 1
+        assert "lower than latest published release tag 'r4.3'" in findings[0]["message"]
+
+    def test_none_changed_entries_differ_from_published_tag_errors(
+        self, tmp_path: Path
+    ):
+        # Editing a none plan to disagree with the published tag is an error: the
+        # plan must stay in a shape where flipping the release type is valid.
+        _write_release_plan(
+            tmp_path,
+            _make_plan(
+                target_release_tag="r4.2",
+                target_release_type="none",
+                apis=[
+                    {
+                        "api_name": "quality-on-demand",
+                        "target_api_status": "public",
+                        "target_api_version": "1.1.0",
+                    }
+                ],
+            ),
+        )
+        context = _context_with_release_history(
+            _release_history(_published_release("r4.2")),
+            release_plan_changed=True,
+        )
+
+        findings = check_release_plan_published_history(tmp_path, context)
+
+        assert len(findings) == 1
+        assert "target_release_tag 'r4.2' is already published" in findings[0]["message"]
+
+
+class TestCheckReleasePlanTerminalApiStatus:
+    def test_matching_published_release_plan_has_no_history_findings(
+        self, tmp_path: Path
+    ):
+        _write_release_plan(
+            tmp_path,
+            _make_plan(
+                target_release_tag="r4.2",
+                target_release_type="public-release",
+                apis=[
+                    {
+                        "api_name": "quality-on-demand",
+                        "target_api_status": "public",
+                        "target_api_version": "1.0.0",
+                    }
+                ],
+            ),
+        )
+        context = _context_with_release_history(
+            _release_history(_published_release("r4.2"))
+        )
+
+        assert check_release_plan_published_history(tmp_path, context) == []
+        assert check_release_plan_terminal_api_status(tmp_path, context) == []
+
+    def test_none_unrelated_pr_still_locks_terminal_api_status(self, tmp_path: Path):
+        # P-036 is a factual invariant about a published version: it fires
+        # regardless of target_release_type and regardless of whether the PR
+        # touched release-plan.yaml.
+        _write_release_plan(
+            tmp_path,
+            _make_plan(
+                target_release_tag="r4.2",
+                target_release_type="none",
+                apis=[
+                    {
+                        "api_name": "quality-on-demand",
+                        "target_api_status": "alpha",
+                        "target_api_version": "1.0.0",
+                    }
+                ],
+            ),
+        )
+        context = _context_with_release_history(
+            _release_history(_published_release("r4.2")),
+            release_plan_changed=False,
+        )
+
+        findings = check_release_plan_terminal_api_status(tmp_path, context)
+
+        assert len(findings) == 1
+        assert findings[0]["engine_rule"] == "check-release-plan-terminal-api-status"
+        assert "target_api_status must remain 'public'" in findings[0]["message"]
+
+    def test_no_release_plan(self, tmp_path: Path):
+        context = _context_with_release_history(
+            _release_history(_published_release("r4.2"))
+        )
+        assert check_release_plan_terminal_api_status(tmp_path, context) == []
+
+    def test_absent_history_skips(self, tmp_path: Path):
+        _write_release_plan(tmp_path, _make_plan(target_release_tag="r4.3"))
+
+        assert check_release_plan_terminal_api_status(tmp_path, _make_context()) == []
+
+    def test_partial_history_with_relevant_terminal_metadata_errors(
+        self, tmp_path: Path
+    ):
+        _write_release_plan(
+            tmp_path,
+            _make_plan(
+                target_release_tag="r4.3",
+                target_release_type="pre-release-rc",
+                apis=[
+                    {
+                        "api_name": "quality-on-demand",
+                        "target_api_status": "rc",
+                        "target_api_version": "1.0.0",
+                    }
+                ],
+            ),
+        )
+        context = _context_with_release_history(
+            _release_history(
+                _published_release("r4.2"),
+                _published_release("r4.3", metadata_available=False),
+                lookup_status="partial",
+            )
+        )
+
+        findings = check_release_plan_terminal_api_status(tmp_path, context)
+
+        assert len(findings) == 1
+        assert findings[0]["engine_rule"] == "check-release-plan-terminal-api-status"
+        assert "target_api_status must remain 'public'" in findings[0]["message"]
+
+    def test_partial_history_missing_terminal_metadata_skips_status_lock(
+        self, tmp_path: Path
+    ):
+        _write_release_plan(
+            tmp_path,
+            _make_plan(
+                target_release_tag="r4.3",
+                target_release_type="pre-release-rc",
+                apis=[
+                    {
+                        "api_name": "quality-on-demand",
+                        "target_api_status": "rc",
+                        "target_api_version": "1.0.0",
+                    }
+                ],
+            ),
+        )
+        context = _context_with_release_history(
+            _release_history(
+                _published_release("r4.2", metadata_available=False),
+                lookup_status="partial",
+            )
+        )
+
+        assert check_release_plan_terminal_api_status(tmp_path, context) == []
+
+    def test_terminal_published_version_with_different_status_errors(
+        self, tmp_path: Path
+    ):
+        _write_release_plan(
+            tmp_path,
+            _make_plan(
+                target_release_tag="r4.3",
+                target_release_type="pre-release-rc",
+                apis=[
+                    {
+                        "api_name": "quality-on-demand",
+                        "target_api_status": "rc",
+                        "target_api_version": "1.0.0",
+                    }
+                ],
+            ),
+        )
+        context = _context_with_release_history(
+            _release_history(_published_release("r4.2"))
+        )
+
+        findings = check_release_plan_terminal_api_status(tmp_path, context)
+
+        assert len(findings) == 1
+        assert findings[0]["engine_rule"] == "check-release-plan-terminal-api-status"
+        assert findings[0]["api_name"] == "quality-on-demand"
+        assert "API 'quality-on-demand' was already published as version 1.0.0" in (
+            findings[0]["message"]
+        )
+        assert "target_api_status must remain 'public'" in findings[0]["message"]
+        assert "Keep target_api_status aligned" in findings[0]["suggestion"]
+
+    def test_matching_terminal_status_is_allowed(self, tmp_path: Path):
+        _write_release_plan(
+            tmp_path,
+            _make_plan(
+                target_release_tag="r4.3",
+                target_release_type="public-release",
+                apis=[
+                    {
+                        "api_name": "quality-on-demand",
+                        "target_api_status": "public",
+                        "target_api_version": "1.0.0",
+                    }
+                ],
+            ),
+        )
+        context = _context_with_release_history(
+            _release_history(_published_release("r4.2"))
+        )
+
+        assert check_release_plan_terminal_api_status(tmp_path, context) == []
 
 
 # ---------------------------------------------------------------------------

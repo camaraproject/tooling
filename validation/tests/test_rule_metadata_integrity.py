@@ -88,7 +88,7 @@ class TestStructuralIntegrity:
         counts = {}
         for r in all_rules:
             counts[r.engine] = counts.get(r.engine, 0) + 1
-        assert counts["python"] == 33
+        assert counts["python"] == 35
         assert counts["spectral"] == 86
         assert counts["gherkin"] == 25
         assert counts["yamllint"] == 13
@@ -353,8 +353,8 @@ class TestMetadataQuality:
         """
         with_suggestions = [r.id for r in all_rules if r.suggestion is not None]
         with_overrides = [r.id for r in all_rules if r.message_override is not None]
-        assert len(with_suggestions) == 24, (
-            f"Expected 24 explicit suggestions (update test if adding "
+        assert len(with_suggestions) == 25, (
+            f"Expected 25 explicit suggestions (update test if adding "
             f"suggestions): {with_suggestions}"
         )
         assert len(with_overrides) == 0, (

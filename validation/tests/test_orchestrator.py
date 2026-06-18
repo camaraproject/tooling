@@ -40,6 +40,12 @@ def args():
         repo_path=Path("/repo"),
         tooling_path=Path("/tooling"),
         output_dir=Path("/output"),
+        config_path="",
+        fallback_canonical_path="",
+        active_release_state="",
+        active_release_snapshot_branch="",
+        active_release_issue_number=None,
+        release_history_path="",
         repo_name="camaraproject/QualityOnDemand",
         repo_owner="camaraproject",
         event_name="pull_request",
@@ -144,6 +150,7 @@ class TestParseArgs:
         assert result.tooling_path == Path(".tooling")
         assert result.output_dir == Path("validation-output")
         assert result.config_path == ""
+        assert result.release_history_path == ""
         assert result.active_release_state == ""
         assert result.active_release_snapshot_branch == ""
         assert result.active_release_issue_number is None
@@ -157,6 +164,7 @@ class TestParseArgs:
             "VALIDATION_TOOLING_PATH": "/my/tooling",
             "VALIDATION_OUTPUT_DIR": "/my/output",
             "VALIDATION_CONFIG_PATH": "/my/runner/.tooling-config/config/validation-settings.yaml",
+            "VALIDATION_RELEASE_HISTORY_PATH": "/my/repo/validation-output/release-history.json",
             "VALIDATION_ACTIVE_RELEASE_STATE": "snapshot-active",
             "VALIDATION_ACTIVE_RELEASE_SNAPSHOT_BRANCH": "release-snapshot/r4.3-abc1234",
             "VALIDATION_ACTIVE_RELEASE_ISSUE_NUMBER": "23",
@@ -178,6 +186,7 @@ class TestParseArgs:
         assert result.repo_path == Path("/my/repo")
         assert result.repo_name == "camaraproject/QoD"
         assert result.config_path == "/my/runner/.tooling-config/config/validation-settings.yaml"
+        assert result.release_history_path == "/my/repo/validation-output/release-history.json"
         assert result.active_release_state == "snapshot-active"
         assert result.active_release_snapshot_branch == "release-snapshot/r4.3-abc1234"
         assert result.active_release_issue_number == 23
