@@ -539,3 +539,28 @@
   suggestion: >-
     Keep exactly one entry for each api_name. If the plan needs a fix,
     submit a dedicated release-plan PR.
+
+# P-035: check-release-plan-published-history
+# Repository-level release-plan consistency against workflow-resolved
+# published release metadata.
+- id: P-035
+  engine: python
+  engine_rule: check-release-plan-published-history
+  short_title: "release-plan must move forward from published history"
+  release_plan_check_only_safe: true
+  conditional_level:
+    default: error
+
+# P-036: check-release-plan-terminal-api-status
+# API versions already published in public or maintenance releases must keep
+# their published status if the same version appears again.
+- id: P-036
+  engine: python
+  engine_rule: check-release-plan-terminal-api-status
+  short_title: "published API versions must keep their status"
+  release_plan_check_only_safe: true
+  conditional_level:
+    default: error
+  suggestion: >-
+    Keep target_api_status aligned with the published version, or bump
+    target_api_version before changing API status.

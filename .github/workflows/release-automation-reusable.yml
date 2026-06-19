@@ -1082,6 +1082,17 @@ jobs:
           print(f"Validation settings: {config_path} (main) — schema-valid")
           PY
 
+      - name: Resolve published release history
+        id: release-history
+        if: hashFiles('_repo/release-plan.yaml') != ''
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token || github.token }}
+        run: |
+          python3 _tooling/validation/scripts/resolve-release-history.py \
+            --repo "${{ github.repository }}" \
+            --base-ref "${{ github.event.repository.default_branch || github.ref_name || 'main' }}" \
+            --output "${RUNNER_TEMP}/release-history.json"
+
       - name: Run pre-snapshot validation
         id: validation
         uses: ./_tooling/shared-actions/run-validation
@@ -1091,6 +1102,7 @@ jobs:
           mode: pre-snapshot
           tooling_ref: ${{ needs.check-trigger.outputs.tooling_checkout_ref }}
           config_path: ${{ github.workspace }}/_tooling-config/config/validation-settings.yaml
+          release_history_path: ${{ steps.release-history.outputs.release_history_path || '' }}
 
       - name: Gate on validation result
         id: validation-gate

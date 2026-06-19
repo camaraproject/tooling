@@ -84,6 +84,9 @@ class OrchestratorArgs:
     # empty everywhere else, keeping local/main/working-branch runs offline.
     fallback_canonical_path: str
 
+    # Optional workflow-resolved published release history for P-035+.
+    release_history_path: str
+
     # Optional workflow-resolved active release state for P-033.
     active_release_state: str
     active_release_snapshot_branch: str
@@ -174,6 +177,7 @@ def parse_args() -> OrchestratorArgs:
         output_dir=Path(_env("OUTPUT_DIR", "validation-output")),
         config_path=_env("CONFIG_PATH"),
         fallback_canonical_path=_env("FALLBACK_CANONICAL_PATH"),
+        release_history_path=_env("RELEASE_HISTORY_PATH"),
         active_release_state=_env("ACTIVE_RELEASE_STATE"),
         active_release_snapshot_branch=_env("ACTIVE_RELEASE_SNAPSHOT_BRANCH"),
         active_release_issue_number=_env_optional_int("ACTIVE_RELEASE_ISSUE_NUMBER"),
@@ -547,6 +551,11 @@ def main() -> int:
         icm_tag_exists=args.icm_tag_exists,
         non_release_plan_files_changed=args.non_release_plan_files_changed,
         fallback_canonical_path=args.fallback_canonical_path or None,
+        release_history_path=(
+            Path(args.release_history_path)
+            if args.release_history_path
+            else None
+        ),
         active_release_state=args.active_release_state,
         active_release_snapshot_branch=args.active_release_snapshot_branch,
         active_release_issue_number=args.active_release_issue_number,

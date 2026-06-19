@@ -21,7 +21,9 @@ from .release_plan_checks import (
     check_release_plan_active_release_state,
     check_release_plan_api_names_unique,
     check_release_plan_exclusivity,
+    check_release_plan_published_history,
     check_release_plan_semantics,
+    check_release_plan_terminal_api_status,
 )
 from .release_review_checks import check_release_review_file_restriction
 from .subscription_checks import (
@@ -70,6 +72,8 @@ CHECKS: list[CheckDescriptor] = [
     CheckDescriptor("check-test-directory-exists", CheckScope.REPO, check_test_directory_exists),
     CheckDescriptor("check-release-plan-semantics", CheckScope.REPO, check_release_plan_semantics),
     CheckDescriptor("check-release-plan-api-names-unique", CheckScope.REPO, check_release_plan_api_names_unique),
+    CheckDescriptor("check-release-plan-published-history", CheckScope.REPO, check_release_plan_published_history),
+    CheckDescriptor("check-release-plan-terminal-api-status", CheckScope.REPO, check_release_plan_terminal_api_status),
     CheckDescriptor("check-readme-placeholder-removal", CheckScope.REPO, check_readme_placeholder_removal),
     CheckDescriptor("check-api-readiness-checklist-removal", CheckScope.REPO, check_api_readiness_checklist_removal),
     CheckDescriptor("check-release-review-file-restriction", CheckScope.REPO, check_release_review_file_restriction),

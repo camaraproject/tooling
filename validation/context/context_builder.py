@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Optional, Tuple
 
 from .api_pattern_detector import detect_api_pattern_from_file
+from .release_history import ReleaseHistorySnapshot, load_release_history
 from .release_metadata_parser import load_release_metadata
 from .release_plan_parser import load_release_plan
 
@@ -162,6 +163,11 @@ class ValidationContext:
     # active_release_state: compact workflow-resolved state for P-033.
     # Populated from shared-actions/derive-release-state outputs.
     active_release_state: ActiveReleaseState = field(default_factory=ActiveReleaseState)
+
+    # release_history: optional workflow-resolved published-history snapshot for
+    # P-035 and later history/content checks.  None means absent, incomplete,
+    # or unreadable input; history-aware rules fail open in that case.
+    release_history: Optional[ReleaseHistorySnapshot] = None
 
     def to_dict(self) -> dict:
         """Serialize to dict with all keys present.
@@ -314,6 +320,7 @@ def build_validation_context(
     active_release_state: str = "",
     active_release_snapshot_branch: str = "",
     active_release_issue_number: Optional[int] = None,
+    release_history_path: Optional[Path] = None,
 ) -> ValidationContext:
     """Assemble the unified validation context.
 
@@ -381,6 +388,12 @@ def build_validation_context(
                 )
             api_contexts = tuple(api_list)
 
+    release_history = (
+        load_release_history(release_history_path)
+        if release_history_path is not None
+        else None
+    )
+
     return ValidationContext(
         repository=repo_name,
         branch_type=branch_type,
@@ -410,4 +423,5 @@ def build_validation_context(
             snapshot_branch=active_release_snapshot_branch,
             release_issue_number=active_release_issue_number,
         ),
+        release_history=release_history,
     )
