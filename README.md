@@ -42,10 +42,11 @@ This repository provides:
 
 ## Current Content
 
-The repository ships two consumption lines:
+The repository ships one active consumption line:
 
 * **v1-rc** — unified validation framework (linting, validation, release automation) in release candidate phase. All active CAMARA API repositories use v1-rc.
-* **v0** — deprecated legacy linting.
+
+The historical **v0** tag covered legacy PR linting only. Active CAMARA API repositories have disabled v0 callers; the tag is retained only for compatibility with old references and is not advanced for new releases.
 
 ### v1-rc — CAMARA Validation and Release Automation V1
 
@@ -57,9 +58,9 @@ A single lightweight tag (`v1-rc`) covers:
 
 See the [release candidate documentation](https://github.com/camaraproject/tooling/blob/main/documentation/README.md) for linting and validation, and the [Release Process Guide](https://github.com/camaraproject/ReleaseManagement/blob/main/documentation/README.md) (in ReleaseManagement) for release automation.
 
-### v0 (deprecated legacy)
+### v0 (retired legacy)
 
-v0 ships linting only and is deprecated. **There is no v0 release automation**, and Release Management no longer supports manual releases. Repositories that need to create a release must onboard to v1-rc.
+v0 shipped linting only and is retired. **There is no v0 release automation**, Release Management no longer supports manual releases, and active repositories should not use v0 caller workflows.
 
 ### Shared Actions
 
@@ -82,22 +83,23 @@ tooling/
 ├── .github/
 │   ├── ISSUE_TEMPLATE/
 │   └── workflows/                    # Reusable workflows (public interface)
-│       ├── pr_validation.yml         # v0 linting
+│       ├── pr_validation.yml         # retired v0 linting
 │       ├── release-automation-regression.yml
 │       ├── release-automation-reusable.yml
-│       ├── spectral-oas.yml          # v0 linting
+│       ├── spectral-oas.yml          # retired v0 linting
 │       ├── update-floating-tag.yml
 │       ├── validation-regression.yml
 │       ├── validation-settings-ci.yml
 │       └── validation.yml
 ├── config/
 │   └── validation-settings.yaml      # Central per-repo validation settings
+├── CHANGELOG.md                      # Numbered tooling release history
 ├── documentation/                    # User-facing documentation
 │   └── validation/
 ├── linting/
 │   ├── config/                       # Spectral rulesets (.spectral.yaml, .spectral-r3.4.yaml, .spectral-r4.yaml) and lint functions
 │   ├── docs/
-│   └── workflows/                    # Caller workflow templates v0 (deprecated)
+│   └── workflows/                    # Caller workflow templates for retired v0 linting
 ├── release_automation/
 │   ├── config/
 │   ├── docs/
@@ -116,6 +118,7 @@ tooling/
 │   └── validate-release-plan/
 ├── tooling_lib/                      # Shared Python library
 │   └── tests/
+├── VERSION.yaml                      # Current numbered tooling release version
 └── validation/                       # CAMARA Validation Framework v1
     ├── bundling/                     # Redocly bundling pipeline
     ├── config/
@@ -134,9 +137,12 @@ tooling/
 
 ## Release Information
 
-* **`v1-rc`** — lightweight tag covering the validation and release automation framework v1 release candidate; promoted to `v1` (release 1.0.0) at GA
-* **`v0`** — deprecated floating tag tracking the latest v0.x legacy linting release
-* **`main`** — active development; carries both the v0 linting line and the v1-rc framework
+* **`VERSION.yaml`** — records the current numbered tooling release version.
+* **`CHANGELOG.md`** — records numbered release notes and links to GitHub comparisons.
+* **`v1-rc`** — floating lightweight tag covering the validation and release automation framework v1 release candidate. This is the active consumption line for CAMARA API repositories.
+* **Numbered release tags** — immutable tags such as `v0.6.0` mark release points on `main`.
+* **`v0`** — retired legacy linting tag. It is kept for historical compatibility and is not advanced for new releases.
+* **`main`** — active development branch.
 
 ## Contributing
 
