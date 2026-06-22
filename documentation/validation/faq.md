@@ -45,6 +45,29 @@ The check may not follow every discriminator mapping. A component that looks unu
 
 </details>
 
+<a name="p-037-yaml-parser-conformance"></a>
+<details>
+<summary>[P-037] Why does YAML parser conformance fail when yamllint passes?</summary>
+
+Applies to: `[P-037] OpenAPI YAML fails parser conformance`
+
+This rule parses each OpenAPI YAML definition with a YAML parser used by
+common JavaScript tooling. It can report a problem even when yamllint, PyYAML,
+or Spectral accepted the same file, because those tools do not all use the same
+YAML parser or the same strictness level.
+
+The message includes the first parser error reported for the file, with the
+source line and column. For example, `deficient indentation` usually means that
+a construct such as a flow mapping or quoted multiline scalar is indented in a
+way that tolerant parsers accepted but stricter YAML parsers reject.
+
+**What you do:** open the reported API definition file at the line shown in the
+message and rewrite the YAML in plain block style. Keep the data unchanged; the
+fix is normally just formatting the affected mapping or scalar so stricter YAML
+parsers can load it.
+
+</details>
+
 ## Test definition problems
 
 <a name="p-006-missing-test-files"></a>

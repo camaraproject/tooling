@@ -43,6 +43,7 @@ from .version_checks import (
     check_server_url_api_name,
     check_server_url_version,
 )
+from .yaml_parser_conformance_checks import check_yaml_parser_conformance
 
 # Ordered registry.  Execution order matches this list.
 # Adding a new check: import the function and append a CheckDescriptor.
@@ -63,6 +64,7 @@ CHECKS: list[CheckDescriptor] = [
     CheckDescriptor("check-cloudevent-via-ref", CheckScope.API, check_cloudevent_via_ref),
     CheckDescriptor("check-conflict-deprecated", CheckScope.API, check_conflict_deprecated),
     CheckDescriptor("check-contextcode-format", CheckScope.API, check_contextcode_format),
+    CheckDescriptor("check-yaml-parser-conformance", CheckScope.API, check_yaml_parser_conformance),
     CheckDescriptor(
         "check-info-description-mandatory-missing",
         CheckScope.API,
