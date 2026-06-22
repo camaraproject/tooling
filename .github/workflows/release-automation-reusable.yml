@@ -441,7 +441,7 @@ jobs:
       base_context: ${{ steps.assemble.outputs.base_context }}
     steps:
       - name: Checkout tooling
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: ${{ needs.check-trigger.outputs.tooling_checkout_repo }}
           ref: ${{ needs.check-trigger.outputs.tooling_checkout_ref }}
@@ -462,7 +462,7 @@ jobs:
         if: |
           steps.state.outputs.config_error == '' &&
           steps.state.outputs.commonalities_release != ''
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           path: _api_repo
           sparse-checkout: |
@@ -803,7 +803,7 @@ jobs:
 
       - name: Checkout tooling (for slash command)
         if: steps.decide.outputs.action == 'post_comment'
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: ${{ needs.check-trigger.outputs.tooling_checkout_repo }}
           ref: ${{ needs.check-trigger.outputs.tooling_checkout_ref }}
@@ -881,7 +881,7 @@ jobs:
       # No App token needed — interim updates the ack comment using GITHUB_TOKEN
       # to avoid triggering extra workflow runs from issue_comment events.
       - name: Checkout tooling
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: ${{ needs.check-trigger.outputs.tooling_checkout_repo }}
           ref: ${{ needs.check-trigger.outputs.tooling_checkout_ref }}
@@ -925,7 +925,7 @@ jobs:
       # No App token needed — rejection updates the ack comment using GITHUB_TOKEN
       # to avoid triggering extra workflow runs from issue_comment events.
       - name: Checkout tooling
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: ${{ needs.check-trigger.outputs.tooling_checkout_repo }}
           ref: ${{ needs.check-trigger.outputs.tooling_checkout_ref }}
@@ -978,7 +978,7 @@ jobs:
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
 
       - name: Checkout tooling
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: ${{ needs.check-trigger.outputs.tooling_checkout_repo }}
           ref: ${{ needs.check-trigger.outputs.tooling_checkout_ref }}
@@ -1000,7 +1000,7 @@ jobs:
       # (default: standard — errors block snapshot creation).
 
       - name: Checkout repository for validation
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           path: _repo
 
@@ -1027,7 +1027,7 @@ jobs:
       # This differs from the validation reusable workflow, which is
       # read-only and falls back to the pinned-ref copy with a warning.
       - name: Checkout central validation settings (main)
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: camaraproject/tooling
           ref: main
@@ -1423,7 +1423,7 @@ jobs:
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
 
       - name: Checkout tooling
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: ${{ needs.check-trigger.outputs.tooling_checkout_repo }}
           ref: ${{ needs.check-trigger.outputs.tooling_checkout_ref }}
@@ -1476,7 +1476,7 @@ jobs:
       error_message: ${{ steps.publish.outputs.error_message }}
     steps:
       - name: Checkout tooling
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: ${{ needs.check-trigger.outputs.tooling_checkout_repo }}
           ref: ${{ needs.check-trigger.outputs.tooling_checkout_ref }}
@@ -1626,7 +1626,7 @@ jobs:
       sync_status: ${{ steps.sync.outputs.sync_status }}
     steps:
       - name: Checkout API repo (main branch)
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           path: api-repo
           fetch-depth: 1
@@ -2061,7 +2061,7 @@ jobs:
 
       - name: Checkout tooling for bot comment
         if: steps.create-draft.outputs.success == 'true' && needs.derive-state.outputs.release_issue_number != ''
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: ${{ needs.check-trigger.outputs.tooling_checkout_repo }}
           ref: ${{ needs.check-trigger.outputs.tooling_checkout_ref }}
@@ -2113,7 +2113,7 @@ jobs:
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
 
       - name: Checkout tooling
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: ${{ needs.check-trigger.outputs.tooling_checkout_repo }}
           ref: ${{ needs.check-trigger.outputs.tooling_checkout_ref }}
@@ -2221,7 +2221,7 @@ jobs:
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
 
       - name: Checkout tooling
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: ${{ needs.check-trigger.outputs.tooling_checkout_repo }}
           ref: ${{ needs.check-trigger.outputs.tooling_checkout_ref }}
@@ -2242,7 +2242,7 @@ jobs:
         id: sync-checkout-api
         if: needs.derive-state.outputs.common_cache_status == 'stale'
         continue-on-error: true
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           path: _api_repo
           fetch-depth: 1
@@ -2252,7 +2252,7 @@ jobs:
         id: sync-checkout-commonalities
         if: steps.sync-checkout-api.outcome == 'success'
         continue-on-error: true
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: camaraproject/Commonalities
           ref: ${{ needs.derive-state.outputs.commonalities_release }}
@@ -2641,7 +2641,7 @@ jobs:
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
 
       - name: Checkout tooling
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: ${{ needs.check-trigger.outputs.tooling_checkout_repo }}
           ref: ${{ needs.check-trigger.outputs.tooling_checkout_ref }}
