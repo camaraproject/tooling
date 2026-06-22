@@ -292,6 +292,88 @@ class TestNS27InfoDescriptionMandatory:
         ]
         assert drift == []
 
+    def test_begin_marker_spacer_in_spec_passes_with_old_canonical(
+        self, tmp_path: Path
+    ) -> None:
+        """A presentation spacer after BEGIN in the API spec is not drift."""
+        _write_canonical(tmp_path)
+        spaced_auth = _BLOCK_AUTH.replace(
+            "<!-- CAMARA:MANDATORY:authorization-and-authentication:BEGIN -->\n"
+            "# Authorization and authentication",
+            "<!-- CAMARA:MANDATORY:authorization-and-authentication:BEGIN -->\n\n"
+            "# Authorization and authentication",
+        )
+        body = "\n\n".join([spaced_auth, _BLOCK_ERRORS, _BLOCK_STRICTNESS])
+        _write_spec(tmp_path, "sample-service", body)
+        findings = check_info_description_templates(tmp_path, _make_context())
+        drift = [
+            f for f in findings
+            if f["engine_rule"] == "check-info-description-mandatory-drift"
+        ]
+        assert drift == []
+
+    def test_begin_marker_spacer_in_canonical_passes_with_old_spec(
+        self, tmp_path: Path
+    ) -> None:
+        """A presentation spacer after BEGIN in canonical is not drift."""
+        spaced_canonical = _CANONICAL_YAML.replace(
+            "<!-- CAMARA:MANDATORY:authorization-and-authentication:BEGIN -->\n"
+            "    # Authorization and authentication",
+            "<!-- CAMARA:MANDATORY:authorization-and-authentication:BEGIN -->\n"
+            "\n"
+            "    # Authorization and authentication",
+        )
+        _write_canonical(tmp_path, spaced_canonical)
+        body = "\n\n".join([_BLOCK_AUTH, _BLOCK_ERRORS, _BLOCK_STRICTNESS])
+        _write_spec(tmp_path, "sample-service", body)
+        findings = check_info_description_templates(tmp_path, _make_context())
+        drift = [
+            f for f in findings
+            if f["engine_rule"] == "check-info-description-mandatory-drift"
+        ]
+        assert drift == []
+
+    def test_end_marker_spacer_in_spec_passes_with_old_canonical(
+        self, tmp_path: Path
+    ) -> None:
+        """A presentation spacer before END in the API spec is not drift."""
+        _write_canonical(tmp_path)
+        spaced_auth = _BLOCK_AUTH.replace(
+            "Paragraph two of the authorization template.\n"
+            "<!-- CAMARA:MANDATORY:authorization-and-authentication:END -->",
+            "Paragraph two of the authorization template.\n\n"
+            "<!-- CAMARA:MANDATORY:authorization-and-authentication:END -->",
+        )
+        body = "\n\n".join([spaced_auth, _BLOCK_ERRORS, _BLOCK_STRICTNESS])
+        _write_spec(tmp_path, "sample-service", body)
+        findings = check_info_description_templates(tmp_path, _make_context())
+        drift = [
+            f for f in findings
+            if f["engine_rule"] == "check-info-description-mandatory-drift"
+        ]
+        assert drift == []
+
+    def test_end_marker_spacer_in_canonical_passes_with_old_spec(
+        self, tmp_path: Path
+    ) -> None:
+        """A presentation spacer before END in canonical is not drift."""
+        spaced_canonical = _CANONICAL_YAML.replace(
+            "    Paragraph two of the authorization template.\n"
+            "    <!-- CAMARA:MANDATORY:authorization-and-authentication:END -->",
+            "    Paragraph two of the authorization template.\n"
+            "\n"
+            "    <!-- CAMARA:MANDATORY:authorization-and-authentication:END -->",
+        )
+        _write_canonical(tmp_path, spaced_canonical)
+        body = "\n\n".join([_BLOCK_AUTH, _BLOCK_ERRORS, _BLOCK_STRICTNESS])
+        _write_spec(tmp_path, "sample-service", body)
+        findings = check_info_description_templates(tmp_path, _make_context())
+        drift = [
+            f for f in findings
+            if f["engine_rule"] == "check-info-description-mandatory-drift"
+        ]
+        assert drift == []
+
     def test_duplicate_marker_pair_fires_p028(self, tmp_path: Path) -> None:
         _write_canonical(tmp_path)
         body = "\n\n".join(
