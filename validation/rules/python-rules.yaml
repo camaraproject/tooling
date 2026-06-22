@@ -575,5 +575,6 @@
   conditional_level:
     default: warn
   suggestion: >-
-    Rewrite the invalid YAML in block style or otherwise make the file parse
-    with YAML 1.2-conformant parsers.
+    Prefer block-style YAML for examples. Rewrite invalid JSON-like flow-style
+    YAML mappings or sequences so the file parses with YAML 1.2-conformant
+    parsers.

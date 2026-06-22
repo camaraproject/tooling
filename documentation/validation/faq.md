@@ -61,10 +61,17 @@ source line and column. For example, `deficient indentation` usually means that
 a construct such as a flow mapping or quoted multiline scalar is indented in a
 way that tolerant parsers accepted but stricter YAML parsers reject.
 
+YAML flow style is sometimes called "JSON-like" because it uses `{}`, `[]`,
+colons, and commas. It is still YAML syntax, not strict JSON syntax. For
+example, YAML flow collections can allow constructs that JSON does not, while
+multiline flow collections still interact with YAML indentation rules. To avoid
+parser portability problems in OpenAPI examples, prefer plain block-style YAML
+over JSON-like flow-style mappings or sequences.
+
 **What you do:** open the reported API definition file at the line shown in the
 message and rewrite the YAML in plain block style. Keep the data unchanged; the
-fix is normally just formatting the affected mapping or scalar so stricter YAML
-parsers can load it.
+fix is normally just formatting the affected mapping, sequence, or scalar so
+stricter YAML parsers can load it.
 
 </details>
 
