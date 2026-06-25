@@ -70,6 +70,17 @@ inputs:
       the only changed file.  Consumed by P-022 (exclusivity check).
     required: false
     default: '[]'
+  base_release_track:
+    description: >
+      PR-base repository.release_track from release-plan.yaml. Empty when
+      release-plan.yaml was not changed or no base plan was available.
+    required: false
+    default: ''
+  base_meta_release:
+    description: >
+      PR-base repository.meta_release from release-plan.yaml. Empty when absent.
+    required: false
+    default: ''
   active_release_state:
     description: >
       Optional workflow-resolved release state from derive-release-state.
@@ -241,6 +252,8 @@ runs:
         VALIDATION_COMMONALITIES_TAG_EXISTS: ${{ inputs.commonalities_tag_exists }}
         VALIDATION_ICM_TAG_EXISTS: ${{ inputs.icm_tag_exists }}
         VALIDATION_NON_RELEASE_PLAN_FILES_CHANGED: ${{ inputs.non_release_plan_files_changed }}
+        VALIDATION_BASE_RELEASE_TRACK: ${{ inputs.base_release_track }}
+        VALIDATION_BASE_META_RELEASE: ${{ inputs.base_meta_release }}
         VALIDATION_ACTIVE_RELEASE_STATE: ${{ inputs.active_release_state }}
         VALIDATION_ACTIVE_RELEASE_SNAPSHOT_BRANCH: ${{ inputs.active_release_snapshot_branch }}
         VALIDATION_ACTIVE_RELEASE_ISSUE_NUMBER: ${{ inputs.active_release_issue_number }}

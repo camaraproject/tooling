@@ -45,6 +45,10 @@ def test_resolve_history_writes_complete_metadata(monkeypatch):
                     "release_type": "public-release",
                     "src_commit_sha": "a" * 40,
                 },
+                "dependencies": {
+                    "commonalities_release": "r4.1 (1.2.0)",
+                    "identity_consent_management_release": "r3.1 (1.0.0)",
+                },
                 "apis": [
                     {
                         "api_name": "quality-on-demand",
@@ -65,6 +69,8 @@ def test_resolve_history_writes_complete_metadata(monkeypatch):
     assert snapshot["repository"] == "camaraproject/QualityOnDemand"
     assert snapshot["published_releases"][0]["tag"] == "r4.2"
     assert snapshot["published_releases"][0]["metadata_available"] is True
+    assert snapshot["published_releases"][0]["commonalities_release"] == "r4.1"
+    assert snapshot["published_releases"][0]["icm_release"] == "r3.1"
     assert snapshot["published_releases"][0]["apis"][0]["api_name"] == "quality-on-demand"
 
 

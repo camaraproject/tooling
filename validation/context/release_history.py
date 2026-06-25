@@ -59,6 +59,8 @@ class PublishedRelease:
     src_commit_sha: str
     metadata_available: bool
     apis: Tuple[PublishedReleaseApi, ...]
+    commonalities_release: str = ""
+    icm_release: str = ""
 
     @property
     def parsed_tag(self) -> Optional[ReleaseTag]:
@@ -175,6 +177,8 @@ def _parse_release(raw: Any) -> Optional[PublishedRelease]:
         published_at=str(raw.get("published_at") or ""),
         src_commit_sha=str(raw.get("src_commit_sha") or ""),
         metadata_available=bool(raw.get("metadata_available", False)),
+        commonalities_release=str(raw.get("commonalities_release") or ""),
+        icm_release=str(raw.get("icm_release") or ""),
         apis=apis,
     )
 

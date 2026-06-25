@@ -115,6 +115,8 @@ class OrchestratorArgs:
     commonalities_tag_exists: Optional[bool]
     icm_tag_exists: Optional[bool]
     non_release_plan_files_changed: Tuple[str, ...]
+    base_release_track: Optional[str]
+    base_meta_release: Optional[str]
 
 
 def _env(name: str, default: str = "") -> str:
@@ -206,6 +208,8 @@ def parse_args() -> OrchestratorArgs:
         non_release_plan_files_changed=_env_json_list(
             "NON_RELEASE_PLAN_FILES_CHANGED"
         ),
+        base_release_track=_env("BASE_RELEASE_TRACK") or None,
+        base_meta_release=_env("BASE_META_RELEASE") or None,
     )
 
 
@@ -550,6 +554,8 @@ def main() -> int:
         commonalities_tag_exists=args.commonalities_tag_exists,
         icm_tag_exists=args.icm_tag_exists,
         non_release_plan_files_changed=args.non_release_plan_files_changed,
+        base_release_track=args.base_release_track,
+        base_meta_release=args.base_meta_release,
         fallback_canonical_path=args.fallback_canonical_path or None,
         release_history_path=(
             Path(args.release_history_path)

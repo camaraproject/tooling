@@ -23,6 +23,7 @@ from release_automation.scripts.github_client import GitHubClient, GitHubClientE
 
 def _metadata_release(release, metadata: dict[str, Any] | None) -> dict[str, Any]:
     repo = metadata.get("repository", {}) if isinstance(metadata, dict) else {}
+    deps = metadata.get("dependencies", {}) if isinstance(metadata, dict) else {}
     apis = metadata.get("apis", []) if isinstance(metadata, dict) else []
     return {
         "tag": release.tag_name,
@@ -31,6 +32,10 @@ def _metadata_release(release, metadata: dict[str, Any] | None) -> dict[str, Any
         "published_at": "",
         "src_commit_sha": str(repo.get("src_commit_sha") or ""),
         "metadata_available": isinstance(metadata, dict),
+        "commonalities_release": _release_tag(deps.get("commonalities_release")),
+        "icm_release": _release_tag(
+            deps.get("identity_consent_management_release")
+        ),
         "apis": [
             {
                 "api_name": str(api.get("api_name") or ""),
@@ -43,6 +48,13 @@ def _metadata_release(release, metadata: dict[str, Any] | None) -> dict[str, Any
             and api.get("api_version")
         ],
     }
+
+
+def _release_tag(value: Any) -> str:
+    if not isinstance(value, str):
+        return ""
+    stripped = value.strip()
+    return stripped.split(maxsplit=1)[0] if stripped else ""
 
 
 def resolve_history(

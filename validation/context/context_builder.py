@@ -144,12 +144,17 @@ class ValidationContext:
     # None (check did not run or API lookup failed).
     # non_release_plan_files_changed: files co-changed alongside release-plan.yaml
     # in the current PR diff (P-022 exclusivity input).
+    # base_release_track / base_meta_release: PR-base release-plan attribution
+    # fields used by P-035 to detect attribution drift on an already-published
+    # target_release_tag.  None means no PR-base release-plan baseline.
     commonalities_release_changed: bool = False
     icm_release_changed: bool = False
     release_plan_check_only: bool = False
     commonalities_tag_exists: Optional[bool] = None
     icm_tag_exists: Optional[bool] = None
     non_release_plan_files_changed: Tuple[str, ...] = ()
+    base_release_track: Optional[str] = None
+    base_meta_release: Optional[str] = None
 
     # fallback_canonical_path: absolute path to an info-description-templates.yaml
     # fetched by the workflow from Commonalities source at commonalities_release.
@@ -316,6 +321,8 @@ def build_validation_context(
     commonalities_tag_exists: Optional[bool] = None,
     icm_tag_exists: Optional[bool] = None,
     non_release_plan_files_changed: Tuple[str, ...] = (),
+    base_release_track: Optional[str] = None,
+    base_meta_release: Optional[str] = None,
     fallback_canonical_path: Optional[str] = None,
     active_release_state: str = "",
     active_release_snapshot_branch: str = "",
@@ -417,6 +424,8 @@ def build_validation_context(
         commonalities_tag_exists=commonalities_tag_exists,
         icm_tag_exists=icm_tag_exists,
         non_release_plan_files_changed=non_release_plan_files_changed,
+        base_release_track=base_release_track,
+        base_meta_release=base_meta_release,
         fallback_canonical_path=fallback_canonical_path,
         active_release_state=ActiveReleaseState(
             state=active_release_state,

@@ -375,6 +375,12 @@ def _plan_matches_published_release(
     return _planned_api_set(release_plan) == _published_api_set(release)
 
 
+def _plan_api_entries_match_published_release(
+    release_plan: dict, release: PublishedRelease
+) -> bool:
+    return _planned_api_set(release_plan) == _published_api_set(release)
+
+
 def _inactive_plan_matches_published_release(
     release_plan: dict, release: PublishedRelease
 ) -> bool:
@@ -393,6 +399,50 @@ def _prefix_pre_existing_release_plan_condition(
             f"{message} Submit the fix in a dedicated release-plan PR."
         )
     return message
+
+
+def _normalized_optional_text(value: object) -> str:
+    return value.strip() if isinstance(value, str) else ""
+
+
+def _normalized_release_tag(value: object) -> str:
+    text = _normalized_optional_text(value)
+    return text.split(maxsplit=1)[0] if text else ""
+
+
+def _plan_dependency_tags(release_plan: dict) -> tuple[str, str]:
+    deps = release_plan.get("dependencies", {})
+    if not isinstance(deps, dict):
+        deps = {}
+    return (
+        _normalized_release_tag(deps.get("commonalities_release")),
+        _normalized_release_tag(deps.get("identity_consent_management_release")),
+    )
+
+
+def _published_dependency_tags(release: PublishedRelease) -> tuple[str, str]:
+    return (
+        _normalized_release_tag(release.commonalities_release),
+        _normalized_release_tag(release.icm_release),
+    )
+
+
+def _base_attribution_available(context: ValidationContext) -> bool:
+    return context.base_release_track is not None
+
+
+def _release_plan_attribution_changed(
+    release_plan: dict, context: ValidationContext
+) -> bool:
+    repo = release_plan.get("repository", {})
+    if not isinstance(repo, dict):
+        repo = {}
+    return (
+        _normalized_optional_text(context.base_release_track)
+        != _normalized_optional_text(repo.get("release_track"))
+        or _normalized_optional_text(context.base_meta_release)
+        != _normalized_optional_text(repo.get("meta_release"))
+    )
 
 
 def _release_history_finding(
@@ -482,6 +532,45 @@ def check_release_plan_published_history(
     if not target_tag:
         return []
 
+    published_target = (
+        history.release_by_tag(target_tag) if history.release_tags_available() else None
+    )
+    if (
+        published_target is not None
+        and published_target.metadata_available
+        and _plan_api_entries_match_published_release(release_plan, published_target)
+    ):
+        if _plan_dependency_tags(release_plan) != _published_dependency_tags(
+            published_target
+        ):
+            return [
+                _release_history_finding(
+                    context,
+                    f"target_release_tag '{target_tag}' is already published, "
+                    "so dependencies must not be changed for this release.",
+                    "Restore the dependency tags published with this release, "
+                    "or start a new release cycle with an unpublished "
+                    "target_release_tag.",
+                )
+            ]
+        if (
+            context.release_plan_changed is True
+            and _base_attribution_available(context)
+            and _release_plan_attribution_changed(release_plan, context)
+        ):
+            return [
+                _release_history_finding(
+                    context,
+                    f"target_release_tag '{target_tag}' is already published, "
+                    "so release_track and meta_release must not be changed for "
+                    "this release.",
+                    "Start a new release cycle in this repository. The "
+                    "inclusion of an already-published release, if approved, "
+                    "is handled by Release Management outside this "
+                    "repository's release-plan.",
+                )
+            ]
+
     latest_release = (
         history.latest_release() if history.release_tags_available() else None
     )
@@ -495,9 +584,6 @@ def check_release_plan_published_history(
     ):
         return []
 
-    published_target = (
-        history.release_by_tag(target_tag) if history.release_tags_available() else None
-    )
     if (
         published_target is not None
         and published_target.metadata_available

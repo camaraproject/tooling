@@ -245,6 +245,7 @@ class TestValidationContextToDict:
             "release_plan_check_only",
             "commonalities_tag_exists", "icm_tag_exists",
             "non_release_plan_files_changed",
+            "base_release_track", "base_meta_release",
             "fallback_canonical_path",
             "active_release_state",
             "release_history",
