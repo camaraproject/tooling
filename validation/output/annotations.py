@@ -63,19 +63,20 @@ class AnnotationResult:
 # ---------------------------------------------------------------------------
 
 
-def _sanitize_message(text: str) -> str:
-    """Sanitize a message for use in a workflow command.
+def _sanitize_data(text: str) -> str:
+    """Sanitize command data for use after the workflow command delimiter.
 
-    Workflow commands use ``::`` as delimiters and newlines as
-    terminators.  Both must be escaped in the message body.
+    GitHub Actions command data must escape percent signs and line breaks.
+    Colons are only escaped in command properties, not the annotation body.
     """
     text = text.replace("\r\n", " ").replace("\r", " ").replace("\n", " ")
-    # Percent-encode the characters that GitHub Actions interprets specially
-    # in workflow command data: %, \r, \n, and :
-    # Using the documented encoding: https://github.com/actions/toolkit
     text = text.replace("%", "%25")
-    text = text.replace(":", "%3A")
     return text
+
+
+def _sanitize_property(text: str) -> str:
+    """Sanitize a workflow command property value."""
+    return _sanitize_data(text).replace(":", "%3A").replace(",", "%2C")
 
 
 def _build_command(finding: dict) -> str:
@@ -104,9 +105,9 @@ def _build_command(finding: dict) -> str:
     params = f"file={path},line={line}"
     if col is not None:
         params += f",col={col}"
-    params += f",title={_sanitize_message(title)}"
+    params += f",title={_sanitize_property(title)}"
 
-    return f"::{command} {params}::{_sanitize_message(message)}"
+    return f"::{command} {params}::{_sanitize_data(message)}"
 
 
 # ---------------------------------------------------------------------------

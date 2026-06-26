@@ -6,7 +6,8 @@ from validation.output.annotations import (
     ANNOTATION_LIMIT,
     AnnotationResult,
     _build_command,
-    _sanitize_message,
+    _sanitize_data,
+    _sanitize_property,
     generate_annotations,
 )
 from validation.postfilter.engine import PostFilterResult
@@ -56,28 +57,38 @@ def _make_result(findings: list[dict]) -> PostFilterResult:
 
 
 # ---------------------------------------------------------------------------
-# _sanitize_message
+# _sanitize_data
 # ---------------------------------------------------------------------------
 
 
-class TestSanitizeMessage:
+class TestSanitizeData:
     def test_newlines_replaced(self):
-        assert " " in _sanitize_message("line1\nline2")
-        assert "\n" not in _sanitize_message("line1\nline2")
+        assert " " in _sanitize_data("line1\nline2")
+        assert "\n" not in _sanitize_data("line1\nline2")
 
     def test_carriage_return_replaced(self):
-        assert "\r" not in _sanitize_message("a\rb")
+        assert "\r" not in _sanitize_data("a\rb")
 
     def test_crlf_replaced(self):
-        assert "\r\n" not in _sanitize_message("a\r\nb")
+        assert "\r\n" not in _sanitize_data("a\r\nb")
 
-    def test_colons_encoded(self):
-        result = _sanitize_message("key::value")
-        assert "::" not in result
-        assert "%3A" in result
+    def test_colons_unchanged(self):
+        assert _sanitize_data("key::value") == "key::value"
 
     def test_plain_text_unchanged(self):
-        assert _sanitize_message("hello world") == "hello world"
+        assert _sanitize_data("hello world") == "hello world"
+
+
+# ---------------------------------------------------------------------------
+# _sanitize_property
+# ---------------------------------------------------------------------------
+
+
+class TestSanitizeProperty:
+    def test_colons_encoded(self):
+        result = _sanitize_property("key::value")
+        assert "::" not in result
+        assert "%3A" in result
 
 
 # ---------------------------------------------------------------------------
@@ -163,7 +174,7 @@ class TestBuildCommand:
     def test_suggestion_appended(self):
         f = _make_finding(message="Bad path", suggestion="Use kebab-case")
         cmd = _build_command(f)
-        assert "Bad path | Suggestion%3A Use kebab-case" in cmd
+        assert "Bad path | Suggestion: Use kebab-case" in cmd
 
     def test_no_suggestion(self):
         f = _make_finding(message="Bad path")
