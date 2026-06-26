@@ -564,3 +564,17 @@
   suggestion: >-
     Keep target_api_status aligned with the published version, or bump
     target_api_version before changing API status.
+
+# P-037: check-yaml-parser-conformance
+# Advisory YAML parser compatibility probe for OpenAPI definition files.
+- id: P-037
+  engine: python
+  engine_rule: check-yaml-parser-conformance
+  short_title: "OpenAPI YAML fails parser conformance"
+  documentation_url: "https://github.com/camaraproject/tooling/blob/main/documentation/validation/faq.md#p-037-yaml-parser-conformance"
+  conditional_level:
+    default: warn
+  suggestion: >-
+    Prefer block-style YAML for examples. Rewrite invalid JSON-like flow-style
+    YAML mappings or sequences so the file parses with YAML 1.2-conformant
+    parsers.
