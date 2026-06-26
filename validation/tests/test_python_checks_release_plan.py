@@ -336,6 +336,8 @@ def _published_release(
     *,
     release_type: str = "public-release",
     apis: list[dict] | None = None,
+    commonalities_release: str | None = None,
+    icm_release: str | None = None,
     metadata_available: bool = True,
 ) -> dict:
     if apis is None:
@@ -353,6 +355,8 @@ def _published_release(
         "published_at": "2026-01-15T00:00:00Z",
         "src_commit_sha": "a" * 40,
         "metadata_available": metadata_available,
+        "commonalities_release": commonalities_release if metadata_available else None,
+        "icm_release": icm_release if metadata_available else None,
         "apis": apis if metadata_available else [],
     }
 
@@ -374,10 +378,14 @@ def _context_with_release_history(
     history: dict,
     *,
     release_plan_changed: bool | None = True,
+    base_release_track: str | None = None,
+    base_meta_release: str | None = None,
 ) -> ValidationContext:
     return dataclasses.replace(
         _make_context(),
         release_plan_changed=release_plan_changed,
+        base_release_track=base_release_track,
+        base_meta_release=base_meta_release,
         release_history=parse_release_history(history),
     )
 
@@ -468,6 +476,148 @@ class TestCheckReleasePlanPublishedHistory:
         )
 
         assert check_release_plan_published_history(tmp_path, context) == []
+
+    def test_published_tag_with_changed_attribution_errors(self, tmp_path: Path):
+        _write_release_plan(
+            tmp_path,
+            _make_plan(
+                release_track="meta-release",
+                meta_release="Sync26",
+                target_release_tag="r4.2",
+                target_release_type="public-release",
+                apis=[
+                    {
+                        "api_name": "quality-on-demand",
+                        "target_api_status": "public",
+                        "target_api_version": "1.0.0",
+                    }
+                ],
+            ),
+        )
+        context = _context_with_release_history(
+            _release_history(_published_release("r4.2")),
+            release_plan_changed=True,
+            base_release_track="independent",
+            base_meta_release=None,
+        )
+
+        findings = check_release_plan_published_history(tmp_path, context)
+
+        assert len(findings) == 1
+        assert (
+            findings[0]["message"]
+            == "target_release_tag 'r4.2' is already published, so release_track "
+            "and meta_release must not be changed for this release."
+        )
+        assert findings[0]["suggestion"] == (
+            "Start a new release cycle in this repository. The inclusion of an "
+            "already-published release, if approved, is handled by Release "
+            "Management outside this repository's release-plan."
+        )
+
+    def test_parked_published_tag_with_unchanged_attribution_and_dependencies_skips(
+        self, tmp_path: Path
+    ):
+        plan = _make_plan(
+            release_track="independent",
+            meta_release=None,
+            target_release_tag="r4.2",
+            target_release_type="none",
+            apis=[
+                {
+                    "api_name": "quality-on-demand",
+                    "target_api_status": "public",
+                    "target_api_version": "1.0.0",
+                }
+            ],
+        )
+        plan["dependencies"] = {
+            "commonalities_release": "r4.1",
+            "identity_consent_management_release": "r3.1",
+        }
+        _write_release_plan(tmp_path, plan)
+        context = _context_with_release_history(
+            _release_history(
+                _published_release(
+                    "r4.2",
+                    commonalities_release="r4.1",
+                    icm_release="r3.1",
+                )
+            ),
+            release_plan_changed=True,
+            base_release_track="independent",
+            base_meta_release="",
+        )
+
+        assert check_release_plan_published_history(tmp_path, context) == []
+
+    def test_unpublished_tag_with_changed_attribution_starts_new_cycle(
+        self, tmp_path: Path
+    ):
+        _write_release_plan(
+            tmp_path,
+            _make_plan(
+                release_track="meta-release",
+                meta_release="Sync26",
+                target_release_tag="r4.3",
+                target_release_type="public-release",
+                apis=[
+                    {
+                        "api_name": "quality-on-demand",
+                        "target_api_status": "public",
+                        "target_api_version": "1.1.0",
+                    }
+                ],
+            ),
+        )
+        context = _context_with_release_history(
+            _release_history(_published_release("r4.2")),
+            release_plan_changed=True,
+            base_release_track="independent",
+            base_meta_release=None,
+        )
+
+        assert check_release_plan_published_history(tmp_path, context) == []
+
+    def test_published_tag_with_dependency_drift_errors(self, tmp_path: Path):
+        plan = _make_plan(
+            target_release_tag="r4.2",
+            target_release_type="public-release",
+            apis=[
+                {
+                    "api_name": "quality-on-demand",
+                    "target_api_status": "public",
+                    "target_api_version": "1.0.0",
+                }
+            ],
+        )
+        plan["dependencies"] = {
+            "commonalities_release": "r5.0",
+            "identity_consent_management_release": "r4.0",
+        }
+        _write_release_plan(tmp_path, plan)
+        context = _context_with_release_history(
+            _release_history(
+                _published_release(
+                    "r4.2",
+                    commonalities_release="r4.1",
+                    icm_release="r3.1",
+                )
+            )
+        )
+
+        findings = check_release_plan_published_history(tmp_path, context)
+
+        assert len(findings) == 1
+        assert (
+            findings[0]["message"]
+            == "target_release_tag 'r4.2' is already published, so dependencies "
+            "must not be changed for this release."
+        )
+        assert findings[0]["suggestion"] == (
+            "Restore the dependency tags published with this release, or start "
+            "a new release cycle with an unpublished target_release_tag."
+        )
 
     def test_not_planning_new_release_keeps_published_plan_quiet(
         self, tmp_path: Path

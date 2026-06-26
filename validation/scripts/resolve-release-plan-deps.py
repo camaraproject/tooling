@@ -14,6 +14,8 @@ Outputs (written to the file at $GITHUB_OUTPUT, or --github-output):
     commonalities_tag_exists        'true' | 'false' | ''   (empty = skipped / lookup failed)
     icm_tag_exists                  'true' | 'false' | ''
     release_plan_check_only         'true' | 'false'
+    base_release_track             PR-base repository.release_track, if present
+    base_meta_release               PR-base repository.meta_release, if present
 
 `release_plan_check_only` is 'true' only when commonalities_release advanced:
 that is the dependency whose cached content (code/common/*) is stale under
@@ -120,6 +122,14 @@ def get_dep(plan: dict[str, Any], field: str) -> str | None:
     return value if isinstance(value, str) and value else None
 
 
+def get_repo_field(plan: dict[str, Any], field: str) -> str:
+    repo = plan.get("repository") if isinstance(plan, dict) else None
+    if not isinstance(repo, dict):
+        return ""
+    value = repo.get(field)
+    return value if isinstance(value, str) else ""
+
+
 # ---------------------------------------------------------------------------
 # Tag lookup via gh
 # ---------------------------------------------------------------------------
@@ -216,6 +226,8 @@ def resolve(
             outputs[dep.tag_exists_output] = ""
 
     outputs["release_plan_check_only"] = "true" if commonalities_changed else "false"
+    outputs["base_release_track"] = get_repo_field(base_plan, "release_track")
+    outputs["base_meta_release"] = get_repo_field(base_plan, "meta_release")
     return outputs
 
 

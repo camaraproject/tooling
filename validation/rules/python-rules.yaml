@@ -542,11 +542,11 @@
 
 # P-035: check-release-plan-published-history
 # Repository-level release-plan consistency against workflow-resolved
-# published release metadata.
+# published release metadata, including already-published target tag locks.
 - id: P-035
   engine: python
   engine_rule: check-release-plan-published-history
-  short_title: "release-plan must move forward from published history"
+  short_title: "release-plan must stay consistent with published history"
   release_plan_check_only_safe: true
   conditional_level:
     default: error

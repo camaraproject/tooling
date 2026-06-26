@@ -250,7 +250,40 @@ class TestResolve:
             "commonalities_tag_exists": "",
             "icm_tag_exists": "",
             "release_plan_check_only": "false",
+            "base_release_track": "",
+            "base_meta_release": "",
         }
+
+    def test_emits_base_release_plan_attribution(self, tmp_path):
+        """Base release_track/meta_release are passed through for P-035."""
+        workspace = tmp_path / "workspace"
+        workspace.mkdir()
+        _write_plan(workspace / "release-plan.yaml", "r4.1", "r3.0")
+
+        git_shim = _make_shim(
+            tmp_path,
+            "git",
+            stdout=(
+                "repository:\n"
+                "  release_track: independent\n"
+                "dependencies:\n"
+                "  commonalities_release: r4.1\n"
+                "  identity_consent_management_release: r3.0\n"
+            ),
+            exit_code=0,
+        )
+        gh_shim = _make_shim(tmp_path, "gh", exit_code=0)
+
+        out = resolve(
+            base_ref="main",
+            plan_path="release-plan.yaml",
+            workspace_plan=workspace / "release-plan.yaml",
+            gh_bin=str(gh_shim),
+            git_bin=str(git_shim),
+        )
+
+        assert out["base_release_track"] == "independent"
+        assert out["base_meta_release"] == ""
 
     def test_commonalities_advanced_to_existing_tag(self, tmp_path):
         """Commonalities bump only → check_only true, commonalities_tag_exists 'true'."""
