@@ -2,6 +2,7 @@
 
 ## Table of Contents
 
+- **[v0.7.0](#v070)**
 - **[v0.6.0](#v060)**
 - **[v0.5.0](#v050)**
 - **[v0.4.0](#v040)**
@@ -10,6 +11,35 @@
 - **[v0.2.2](#v022)**
 - **[v0.2.1](#v021)**
 - **[v0.2.0](#v020)**
+
+# v0.7.0
+
+## Release Notes
+
+**v0.7.0 is a validation-behavior release for the CAMARA tooling repository.**
+
+This release consolidates the changes that landed on `main` after v0.6.0. It
+adds a YAML parser conformance warning (P-037), locks published release-plan
+attribution, keeps annotation bodies readable, and bumps the checkout action
+used across workflows. The validation-behavior changes are visible to CAMARA API
+repositories.
+
+### Added
+
+* Add YAML parser conformance warning (P-037) by @hdamker in https://github.com/camaraproject/tooling/pull/353
+* Cover info-description marker spacer tolerance by @hdamker in https://github.com/camaraproject/tooling/pull/354
+* Pin P-037 to the YAML-fundamentals and subscriptions regression branches, and add `CHANGELOG.md` and `VERSION.yaml` for the v0.7.0 release PR
+
+### Changed
+
+* Lock published release-plan attribution by @hdamker in https://github.com/camaraproject/tooling/pull/357
+* Bump actions/checkout from 6 to 7 by @dependabot in https://github.com/camaraproject/tooling/pull/355
+
+### Fixed
+
+* Keep colons readable in annotation bodies by @hdamker in https://github.com/camaraproject/tooling/pull/358
+
+**Full Changelog**: https://github.com/camaraproject/tooling/compare/v0.6.0...v0.7.0
 
 # v0.6.0
 
