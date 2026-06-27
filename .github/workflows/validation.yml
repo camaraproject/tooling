@@ -59,7 +59,7 @@ jobs:
     steps:
       # ── Step 1: Checkout repository content ────────────────────────
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -144,7 +144,7 @@ jobs:
 
       # ── Step 3: Checkout tooling (sparse) ──────────────────────────
       - name: Checkout tooling
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: ${{ steps.resolve-ref.outputs.tooling_checkout_repo }}
           ref: ${{ steps.resolve-ref.outputs.tooling_checkout_ref }}
@@ -171,7 +171,7 @@ jobs:
       - name: Checkout central validation settings (main)
         id: checkout-config
         continue-on-error: true
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: camaraproject/tooling
           ref: main
