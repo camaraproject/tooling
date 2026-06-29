@@ -11,7 +11,7 @@
     "@stoplight/spectral-cli": "^6.16.0",
     "@stoplight/spectral-owasp-ruleset": "^2.0.0",
     "gplint": "^2.5.2",
-    "js-yaml": "^5.0.0"
+    "js-yaml": "^5.2.0"
   },
   "overrides": {
     "@stoplight/spectral-rulesets": "1.22.2",
