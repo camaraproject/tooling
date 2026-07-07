@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import List, Optional, Sequence, Tuple
 
 from validation.context import ValidationContext
 
@@ -17,10 +17,10 @@ from ._types import make_finding
 _TEST_DIR = "code/Test_definitions"
 
 
-def _stem_matches_api(stem: str, api_name: str) -> bool:
-    """Check if a test file stem matches an API name.
+def _stem_anchors_api(stem: str, api_name: str) -> bool:
+    """Check if a test file stem is anchored on an API name.
 
-    Matches:
+    Anchored forms:
     - Exact: ``{api-name}``
     - With version: ``{api-name}.{version}``
     - With suffix: ``{api-name}-{suffix}``
@@ -33,6 +33,35 @@ def _stem_matches_api(stem: str, api_name: str) -> bool:
     if stem.startswith(f"{api_name}-"):
         return True
     return False
+
+
+def _stem_matches_api(
+    stem: str, api_name: str, all_api_names: Sequence[str] = ()
+) -> bool:
+    """Check if a test file stem belongs to ``api_name``.
+
+    A stem belongs to ``api_name`` when it is anchored on it AND no *longer*
+    API name in ``all_api_names`` is also anchored on the same stem — the
+    longest matching API name wins.  This disambiguates sibling APIs whose
+    names share a prefix: ``dedicated-network-areas.feature`` belongs to
+    ``dedicated-network-areas``, not to its prefix sibling
+    ``dedicated-network`` (tooling#365).
+
+    ``all_api_names`` is the full release-scope API-name set (see
+    ``ValidationContext.all_api_names``); it survives the per-API narrowing
+    in ``python_adapter``.  When empty (e.g. a single-API repo), the check
+    degrades to a plain anchor match.  A ``{api-name}-{suffix}`` file whose
+    suffix is not itself an API name (a per-operation split) still matches
+    its base API, since no longer API name is anchored on it.
+    """
+    if not _stem_anchors_api(stem, api_name):
+        return False
+    return not any(
+        other != api_name
+        and len(other) > len(api_name)
+        and _stem_anchors_api(stem, other)
+        for other in all_api_names
+    )
 
 
 def check_test_directory_exists(
@@ -85,7 +114,7 @@ def check_test_files_exist(
         f for f in test_dir.iterdir()
         if f.is_file()
         and f.suffix == ".feature"
-        and _stem_matches_api(f.stem, api.api_name)
+        and _stem_matches_api(f.stem, api.api_name, context.all_api_names)
     ]
 
     if matching:
@@ -199,7 +228,7 @@ def check_test_file_version(
         f for f in test_dir.iterdir()
         if f.is_file()
         and f.suffix == ".feature"
-        and _stem_matches_api(f.stem, api.api_name)
+        and _stem_matches_api(f.stem, api.api_name, context.all_api_names)
     ]
 
     if not matching:

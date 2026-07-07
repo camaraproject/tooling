@@ -293,7 +293,7 @@ def check_feature_file_url_version(
         f for f in test_dir.iterdir()
         if f.is_file()
         and f.suffix == ".feature"
-        and _stem_matches_api(f.stem, api.api_name)
+        and _stem_matches_api(f.stem, api.api_name, context.all_api_names)
     ]
     if not matching:
         return []

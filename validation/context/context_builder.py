@@ -174,6 +174,15 @@ class ValidationContext:
     # or unreadable input; history-aware rules fail open in that case.
     release_history: Optional[ReleaseHistorySnapshot] = None
 
+    # all_api_names: every API name in the release scope.  The per-API
+    # dispatch in python_adapter narrows `apis` to a single element via
+    # dataclasses.replace, which leaves this field intact — so API-scoped
+    # feature-file checks can still see sibling API names.  Feature-file→API
+    # matching consults it so the longest matching name wins, e.g.
+    # dedicated-network-areas.feature is claimed by dedicated-network-areas,
+    # not its prefix sibling dedicated-network (tooling#365).
+    all_api_names: Tuple[str, ...] = ()
+
     def to_dict(self) -> dict:
         """Serialize to dict with all keys present.
 
@@ -416,6 +425,7 @@ def build_validation_context(
         release_plan_changed=release_plan_changed,
         pr_number=pr_number,
         apis=api_contexts,
+        all_api_names=tuple(a.api_name for a in api_contexts),
         workflow_run_url=workflow_run_url,
         tooling_ref=tooling_ref,
         commonalities_release_changed=commonalities_release_changed,
