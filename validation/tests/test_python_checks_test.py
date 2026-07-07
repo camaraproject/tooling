@@ -24,6 +24,7 @@ def _make_context(
     version: str = "1.0.0",
     apis: tuple[ApiContext, ...] | None = None,
     branch_type: str = "main",
+    all_api_names: tuple[str, ...] | None = None,
 ) -> ValidationContext:
     if apis is None:
         api = ApiContext(
@@ -35,6 +36,11 @@ def _make_context(
             spec_file=f"code/API_definitions/{api_name}.yaml",
         )
         apis = (api,)
+    # Mirror the production build: all_api_names covers the whole release
+    # scope.  Tests that emulate the per-API narrowing pass a single api in
+    # `apis` but the full set in `all_api_names`.
+    if all_api_names is None:
+        all_api_names = tuple(a.api_name for a in apis)
     return ValidationContext(
         repository="TestRepo",
         branch_type=branch_type,
@@ -50,6 +56,7 @@ def _make_context(
         release_plan_changed=None,
         pr_number=None,
         apis=apis,
+        all_api_names=all_api_names,
         workflow_run_url="",
         tooling_ref="",
     )
@@ -478,3 +485,66 @@ class TestCheckTestFileVersion:
         findings = check_test_file_version(tmp_path, ctx)
         assert len(findings) == 1
         assert "deleteSession" in findings[0]["path"]
+
+
+# ---------------------------------------------------------------------------
+# Regression: feature-file→API matcher prefix collision (tooling#365)
+# ---------------------------------------------------------------------------
+
+
+class TestSiblingApiPrefixCollision:
+    """A prefix-sibling API must not claim a longer sibling's feature file.
+
+    Constellation from DedicatedNetworks r2.2: ``dedicated-network`` (a
+    prefix of ``dedicated-network-areas``) shared the matcher and
+    over-claimed ``dedicated-network-areas.feature``.  The longest matching
+    API name wins.
+    """
+
+    _BOTH = ("dedicated-network", "dedicated-network-areas")
+
+    def test_p007_shorter_api_does_not_claim_longer_siblings_file(
+        self, tmp_path: Path
+    ):
+        # Areas file correctly targets the areas API (v0.1.0-rc.1).  Under
+        # the base dedicated-network release context (v0.2.0-rc.1) it must
+        # not be version-checked at all.
+        test_dir = _make_test_dir(tmp_path)
+        (test_dir / "dedicated-network.feature").write_text(
+            "Feature: CAMARA Dedicated Network, v0.2.0-rc.1 - Operation a\n"
+        )
+        (test_dir / "dedicated-network-areas.feature").write_text(
+            "Feature: CAMARA Dedicated Network Areas, v0.1.0-rc.1 - Op b\n"
+        )
+        ctx = _make_context(
+            "dedicated-network", version="0.2.0-rc.1", branch_type="release",
+            all_api_names=self._BOTH,
+        )
+        assert check_test_file_version(tmp_path, ctx) == []
+
+    def test_files_exist_shorter_api_needs_its_own_file(
+        self, tmp_path: Path
+    ):
+        # Only the areas file is present.  The base dedicated-network API
+        # must not borrow it — it has no feature file of its own.
+        test_dir = _make_test_dir(tmp_path)
+        (test_dir / "dedicated-network-areas.feature").touch()
+        ctx = _make_context(
+            "dedicated-network", all_api_names=self._BOTH,
+        )
+        findings = check_test_files_exist(tmp_path, ctx)
+        assert len(findings) == 1
+        assert findings[0]["engine_rule"] == "check-test-files-exist"
+        assert findings[0]["api_name"] == "dedicated-network"
+
+    def test_files_exist_operation_split_still_claimed(
+        self, tmp_path: Path
+    ):
+        # A per-operation split whose suffix is not an API name stays with
+        # the base API — no over-correction.
+        test_dir = _make_test_dir(tmp_path)
+        (test_dir / "dedicated-network-createNetwork.feature").touch()
+        ctx = _make_context(
+            "dedicated-network", all_api_names=self._BOTH,
+        )
+        assert check_test_files_exist(tmp_path, ctx) == []

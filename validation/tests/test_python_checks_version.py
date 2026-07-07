@@ -26,6 +26,7 @@ def _make_context(
     api_name: str = "quality-on-demand",
     branch_type: str = "main",
     version: str = "1.0.0",
+    all_api_names: tuple[str, ...] | None = None,
 ) -> ValidationContext:
     api = ApiContext(
         api_name=api_name,
@@ -35,6 +36,10 @@ def _make_context(
         api_pattern="request-response",
         spec_file=f"code/API_definitions/{api_name}.yaml",
     )
+    # all_api_names covers the whole release scope.  Tests that emulate the
+    # per-API narrowing pass a single api but the full sibling set here.
+    if all_api_names is None:
+        all_api_names = (api_name,)
     return ValidationContext(
         repository="TestRepo",
         branch_type=branch_type,
@@ -50,6 +55,7 @@ def _make_context(
         release_plan_changed=None,
         pr_number=None,
         apis=(api,),
+        all_api_names=all_api_names,
         workflow_run_url="",
         tooling_ref="",
     )
@@ -524,3 +530,85 @@ class TestCheckFeatureFileUrlVersion:
         )
         ctx = _make_context("qod", branch_type="main", version="wip")
         assert check_feature_file_url_version(tmp_path, ctx) == []
+
+
+# ---------------------------------------------------------------------------
+# Regression: feature-file→API matcher prefix collision (tooling#365)
+# ---------------------------------------------------------------------------
+
+
+class TestFeatureFileUrlVersionSiblingCollision:
+    """P-025 must not fire on a sibling API's feature file.
+
+    Constellation from DedicatedNetworks r2.2: two APIs where one name is a
+    prefix of the other, at different versions.  The shorter API
+    (``dedicated-network``, v0.2rc1) must not claim
+    ``dedicated-network-areas.feature`` (v0.1rc1), which belongs to the
+    longer sibling.  The longest matching API name wins.
+    """
+
+    _BOTH = ("dedicated-network", "dedicated-network-areas")
+
+    def test_shorter_api_does_not_claim_longer_siblings_file(
+        self, tmp_path: Path
+    ):
+        # dedicated-network-areas.feature correctly targets the areas API
+        # (v0.1rc1).  Under the base dedicated-network context (v0.2rc1) it
+        # must not be scanned at all — otherwise its /v0.1rc1 steps read as
+        # 11 false P-025 errors.
+        _write_spec(tmp_path, "dedicated-network", "0.2.0-rc.1")
+        _write_feature(
+            tmp_path, "dedicated-network.feature",
+            "Feature: Dedicated Network, v0.2rc1\n"
+            "  When I send a POST to /dedicated-network/v0.2rc1/networks\n",
+        )
+        _write_feature(
+            tmp_path, "dedicated-network-areas.feature",
+            "Feature: Dedicated Network Areas, v0.1rc1\n"
+            "  When I send a POST to /dedicated-network-areas/v0.1rc1/areas\n",
+        )
+        ctx = _make_context(
+            "dedicated-network", branch_type="release", version="0.2.0-rc.1",
+            all_api_names=self._BOTH,
+        )
+        assert check_feature_file_url_version(tmp_path, ctx) == []
+
+    def test_longer_sibling_still_validates_its_own_file(
+        self, tmp_path: Path
+    ):
+        # The areas API still owns and validates its own file: a wrong
+        # segment there is a real P-025.
+        _write_spec(tmp_path, "dedicated-network-areas", "0.1.0-rc.1")
+        _write_feature(
+            tmp_path, "dedicated-network-areas.feature",
+            "Feature: Dedicated Network Areas, v0.1rc1\n"
+            "  When I send a POST to /dedicated-network-areas/v0.2rc1/areas\n",
+        )
+        ctx = _make_context(
+            "dedicated-network-areas", branch_type="release",
+            version="0.1.0-rc.1", all_api_names=self._BOTH,
+        )
+        findings = check_feature_file_url_version(tmp_path, ctx)
+        assert len(findings) == 1
+        assert findings[0]["engine_rule"] == "check-feature-file-url-version"
+        assert "dedicated-network-areas.feature" in findings[0]["path"]
+
+    def test_operation_split_file_still_claimed_by_base_api(
+        self, tmp_path: Path
+    ):
+        # A per-operation split file whose suffix is NOT itself an API name
+        # (no dedicated-network-networks API) stays with the base API, so a
+        # wrong segment there is still caught — no over-correction.
+        _write_spec(tmp_path, "dedicated-network", "0.2.0-rc.1")
+        _write_feature(
+            tmp_path, "dedicated-network-networks.feature",
+            "Feature: Dedicated Network, v0.2rc1\n"
+            "  When I send a POST to /dedicated-network/v0.1rc1/networks\n",
+        )
+        ctx = _make_context(
+            "dedicated-network", branch_type="release", version="0.2.0-rc.1",
+            all_api_names=self._BOTH,
+        )
+        findings = check_feature_file_url_version(tmp_path, ctx)
+        assert len(findings) == 1
+        assert "dedicated-network-networks.feature" in findings[0]["path"]

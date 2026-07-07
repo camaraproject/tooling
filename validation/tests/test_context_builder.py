@@ -239,7 +239,8 @@ class TestValidationContextToDict:
             "target_release_type", "commonalities_release",
             "commonalities_version", "icm_release",
             "base_ref", "is_release_review_pr", "release_plan_changed",
-            "pr_number", "apis", "workflow_run_url", "tooling_ref",
+            "pr_number", "apis", "all_api_names",
+            "workflow_run_url", "tooling_ref",
             # Release-plan validation context (Step 6b outputs)
             "commonalities_release_changed", "icm_release_changed",
             "release_plan_check_only",
