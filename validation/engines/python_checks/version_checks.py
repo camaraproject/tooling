@@ -24,26 +24,40 @@ _SEMVER_RE = re.compile(
     r"(?:-(?P<pre>[a-zA-Z0-9]+(?:\.[a-zA-Z0-9]+)*))?$"
 )
 
+_API_NAME_SEGMENT_RE = r"(?P<api_name>[a-z0-9][a-z0-9\-]*)"
+_VERSION_SEGMENT_RE = r"(?P<version>v[^/\"'\s?#]+|wip)"
+_VERSION_SEGMENT_BOUNDARY_RE = r"(?=/|\s|$|[\"'?#])"
+
 # Extracts the version segment from a server URL path.
-# Matches the last path component starting with "v".
+# Matches a complete final path component starting with "v" or the bare
+# "wip" segment after an API-shaped path segment.
 # e.g. "https://example.com/qod/v1" -> "v1"
 #      "{apiRoot}/quality-on-demand/v0.2alpha2" -> "v0.2alpha2"
-_URL_VERSION_RE = re.compile(r"/(?P<version>v[a-z0-9.]+)/?$", re.IGNORECASE)
+#      "{apiRoot}/quality-on-demand/v0.1-eri" -> "v0.1-eri"
+_URL_VERSION_RE = re.compile(
+    rf"/{_API_NAME_SEGMENT_RE}/{_VERSION_SEGMENT_RE}/?(?:[?#].*)?$",
+    re.IGNORECASE,
+)
 
 # Extracts the api-name segment from a server URL (segment before version).
 # e.g. "{apiRoot}/quality-on-demand/v1" -> "quality-on-demand"
-_URL_API_NAME_RE = re.compile(r"/(?P<api_name>[^/]+)/v[a-z0-9.]+/?$", re.IGNORECASE)
+_URL_API_NAME_RE = re.compile(
+    rf"/{_API_NAME_SEGMENT_RE}/(?:v[^/\"'\s?#]+|wip)/?(?:[?#].*)?$",
+    re.IGNORECASE,
+)
 
 # Matches a CAMARA-shaped version segment inside a scenario-step URL path:
 # an api-name segment (lowercase letters/digits/hyphens) followed by
-# either ``v{segment}`` or bare ``wip`` as the next segment. Used by P-025
-# to locate the version-bearing portion of a URL anywhere in a feature-
-# file line (not just at the end of the URL).
+# either ``v{segment}`` or bare ``wip`` as the next segment. The version
+# capture intentionally takes the whole path segment, including malformed
+# values such as ``v0.1-eri``, so P-025 can report a mismatch instead of
+# silently skipping the line.
 # e.g. ``/quality-on-demand/vwip/sessions`` -> captured segment ``vwip``
 #      ``/qod/v1/sessions``                 -> captured ``v1``
 #      ``/device-status/wip/status``        -> captured ``wip``
 _STEP_URL_VERSION_RE = re.compile(
-    r"/[a-z0-9\-]+/(v[a-z0-9.]+|wip)(?=/|\s|$)",
+    rf"/[a-z0-9][a-z0-9\-]*/{_VERSION_SEGMENT_RE}"
+    rf"{_VERSION_SEGMENT_BOUNDARY_RE}",
     re.IGNORECASE,
 )
 
@@ -310,7 +324,7 @@ def check_feature_file_url_version(
 
         for line_number, line in enumerate(lines, start=1):
             for match in _STEP_URL_VERSION_RE.finditer(line):
-                actual_segment = match.group(1)
+                actual_segment = match.group("version")
                 if actual_segment.lower() == expected_lower:
                     continue
                 findings.append(

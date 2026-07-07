@@ -273,6 +273,20 @@ class TestCheckServerUrlVersion:
         assert len(findings) == 1
         assert "no recognisable version" in findings[0]["message"]
 
+    def test_malformed_hyphenated_version_segment_is_error(self, tmp_path: Path):
+        _write_spec(
+            tmp_path, "dedicated-network-areas", "wip",
+            server_urls=["{apiRoot}/dedicated-network-areas/v0.1-eri"],
+        )
+        ctx = _make_context(
+            "dedicated-network-areas", branch_type="main", version="wip"
+        )
+        findings = check_server_url_version(tmp_path, ctx)
+        assert len(findings) == 1
+        assert "v0.1-eri" in findings[0]["message"]
+        assert "vwip" in findings[0]["message"]
+        assert "no recognisable version" not in findings[0]["message"]
+
     def test_no_servers(self, tmp_path: Path):
         _write_spec(tmp_path, "qod", "1.0.0")
         ctx = _make_context("qod")
@@ -430,6 +444,24 @@ class TestCheckFeatureFileUrlVersion:
         assert len(findings) == 1
         assert "/v1" in findings[0]["message"]
         assert "/vwip" in findings[0]["message"]
+
+    def test_main_hyphenated_version_segment_is_error(self, tmp_path: Path):
+        _write_spec(tmp_path, "dedicated-network-areas", "wip")
+        _write_feature(
+            tmp_path, "dedicated-network-areas.feature",
+            "Feature: Dedicated Network Areas, vwip\n"
+            "  Given the resource "
+            '"/dedicated-network-areas/v0.1-eri/retrieve-service-areas"\n',
+        )
+        ctx = _make_context(
+            "dedicated-network-areas", branch_type="main", version="wip"
+        )
+        findings = check_feature_file_url_version(tmp_path, ctx)
+        assert len(findings) == 1
+        assert findings[0]["engine_rule"] == "check-feature-file-url-version"
+        assert "/v0.1-eri" in findings[0]["message"]
+        assert "/vwip" in findings[0]["message"]
+        assert findings[0]["line"] == 2
 
     def test_release_matching_version_passes(self, tmp_path: Path):
         _write_spec(tmp_path, "qod", "1.0.0")
