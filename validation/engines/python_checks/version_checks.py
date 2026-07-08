@@ -24,28 +24,35 @@ _SEMVER_RE = re.compile(
     r"(?:-(?P<pre>[a-zA-Z0-9]+(?:\.[a-zA-Z0-9]+)*))?$"
 )
 
-# Extracts the version segment from a server URL path.
-# Matches the last path component starting with "v".
-# e.g. "https://example.com/qod/v1" -> "v1"
-#      "{apiRoot}/quality-on-demand/v0.2alpha2" -> "v0.2alpha2"
-_URL_VERSION_RE = re.compile(r"/(?P<version>v[a-z0-9.]+)/?$", re.IGNORECASE)
-
 # Extracts the api-name segment from a server URL (segment before version).
 # e.g. "{apiRoot}/quality-on-demand/v1" -> "quality-on-demand"
 _URL_API_NAME_RE = re.compile(r"/(?P<api_name>[^/]+)/v[a-z0-9.]+/?$", re.IGNORECASE)
 
-# Matches a CAMARA-shaped version segment inside a scenario-step URL path:
-# an api-name segment (lowercase letters/digits/hyphens) followed by
-# either ``v{segment}`` or bare ``wip`` as the next segment. Used by P-025
-# to locate the version-bearing portion of a URL anywhere in a feature-
-# file line (not just at the end of the URL).
-# e.g. ``/quality-on-demand/vwip/sessions`` -> captured segment ``vwip``
-#      ``/qod/v1/sessions``                 -> captured ``v1``
-#      ``/device-status/wip/status``        -> captured ``wip``
-_STEP_URL_VERSION_RE = re.compile(
-    r"/[a-z0-9\-]+/(v[a-z0-9.]+|wip)(?=/|\s|$)",
-    re.IGNORECASE,
-)
+
+def _version_segment_pattern(api_name: str) -> re.Pattern[str]:
+    """Matcher for the path segment immediately after ``api_name`` in a URL.
+
+    CAMARA URLs are ``{apiRoot}/{api-name}/{version}/…`` (server URLs) and
+    ``/{api-name}/{version}/…`` (feature-file scenario steps), so the version
+    segment is whatever follows the api-name.  Group 1 captures that segment
+    *verbatim* — a correct ``v…``, a bare ``wip``, a typo, or a hyphenated
+    ``v0.1-eri`` — leaving the conformance decision to the caller instead of
+    baking a version charset into the regex.  (The old capture was blind to
+    hyphens: ``v0.1-eri`` matched only ``v0.1`` and the trailing ``-`` failed
+    the lookahead, so the segment was silently skipped — tooling#367.)  Shared
+    by P-004 (``check_server_url_version``) and P-025
+    (``check_feature_file_url_version``) so the two version checks cannot drift.
+
+    The ``/`` required right after ``api_name`` keeps the match off a longer
+    sibling (``dedicated-network`` will not match inside
+    ``dedicated-network-areas``); the left boundary keeps it off a longer word
+    that merely ends with the api-name.  A *misspelled* api-name is therefore
+    not located — a recorded residual, backstopped by the pre-snapshot wip gate.
+    """
+    return re.compile(
+        r'(?:^|[/\s"\'])' + re.escape(api_name) + r'/([^/\s"\']+)',
+        re.IGNORECASE,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -208,10 +215,11 @@ def check_server_url_version(
     if not isinstance(servers, list):
         return []
 
+    seg_re = _version_segment_pattern(api.api_name)
     findings: List[dict] = []
-    for i, server in enumerate(servers):
+    for server in servers:
         url = server.get("url", "") if isinstance(server, dict) else ""
-        m = _URL_VERSION_RE.search(url)
+        m = seg_re.search(url)
         if m is None:
             findings.append(
                 make_finding(
@@ -228,8 +236,8 @@ def check_server_url_version(
             )
             continue
 
-        actual_segment = m.group("version").lower()
-        if actual_segment != expected_segment.lower():
+        actual_segment = m.group(1)
+        if actual_segment.lower() != expected_segment.lower():
             findings.append(
                 make_finding(
                     engine_rule="check-server-url-version",
@@ -300,6 +308,7 @@ def check_feature_file_url_version(
 
     findings: List[dict] = []
     expected_lower = expected_segment.lower()
+    seg_re = _version_segment_pattern(api.api_name)
 
     for feature_file in matching:
         try:
@@ -309,7 +318,7 @@ def check_feature_file_url_version(
             continue
 
         for line_number, line in enumerate(lines, start=1):
-            for match in _STEP_URL_VERSION_RE.finditer(line):
+            for match in seg_re.finditer(line):
                 actual_segment = match.group(1)
                 if actual_segment.lower() == expected_lower:
                     continue

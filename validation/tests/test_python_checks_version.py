@@ -273,6 +273,22 @@ class TestCheckServerUrlVersion:
         assert len(findings) == 1
         assert "no recognisable version" in findings[0]["message"]
 
+    def test_hyphenated_segment_reports_mismatch(self, tmp_path: Path):
+        """Regression (tooling#367): a hyphenated server-URL segment must read
+        as a mismatch against the expected segment, not the misleading
+        'no recognisable version segment'.  A valid segment never has a hyphen
+        (build_version_segment strips them), so v0.1-eri is always malformed."""
+        _write_spec(
+            tmp_path, "qod", "1.0.0",
+            server_urls=["{apiRoot}/qod/v0.1-eri"],
+        )
+        ctx = _make_context("qod")
+        findings = check_server_url_version(tmp_path, ctx)
+        assert len(findings) == 1
+        assert "v0.1-eri" in findings[0]["message"]
+        assert "no recognisable" not in findings[0]["message"]
+        assert "v1" in findings[0]["message"]
+
     def test_no_servers(self, tmp_path: Path):
         _write_spec(tmp_path, "qod", "1.0.0")
         ctx = _make_context("qod")
@@ -394,7 +410,7 @@ class TestCheckFeatureFileUrlVersion:
             tmp_path, "qod.feature",
             "Feature: QoD, vwip\n"
             "  Scenario: Create session\n"
-            "    When I send a POST to /quality-on-demand/vwip/sessions\n"
+            "    When I send a POST to /qod/vwip/sessions\n"
             "    Then the status code is 201\n",
         )
         ctx = _make_context("qod", branch_type="main", version="wip")
@@ -407,7 +423,7 @@ class TestCheckFeatureFileUrlVersion:
             tmp_path, "qod.feature",
             "Feature: QoD, vwip\n"
             "  Scenario: Create session\n"
-            "    When I send a POST to /quality-on-demand/wip/sessions\n",
+            "    When I send a POST to /qod/wip/sessions\n",
         )
         ctx = _make_context("qod", branch_type="main", version="wip")
         findings = check_feature_file_url_version(tmp_path, ctx)
@@ -423,7 +439,7 @@ class TestCheckFeatureFileUrlVersion:
         _write_feature(
             tmp_path, "qod.feature",
             "Feature: QoD, vwip\n"
-            "  When I send a POST to /quality-on-demand/v1/sessions\n",
+            "  When I send a POST to /qod/v1/sessions\n",
         )
         ctx = _make_context("qod", branch_type="main", version="wip")
         findings = check_feature_file_url_version(tmp_path, ctx)
@@ -431,12 +447,48 @@ class TestCheckFeatureFileUrlVersion:
         assert "/v1" in findings[0]["message"]
         assert "/vwip" in findings[0]["message"]
 
+    def test_main_hyphenated_segment_is_error(self, tmp_path: Path):
+        """Regression (tooling#367): a hyphenated segment (v0.1-eri) must be
+        flagged, not silently skipped.  Real incident: it passed P-025 on the
+        PR but blocked the pre-snapshot wip gate."""
+        _write_spec(tmp_path, "dedicated-network-areas", "wip")
+        _write_feature(
+            tmp_path, "dedicated-network-areas.feature",
+            "Feature: DNA, vwip\n"
+            '  Given the resource "/dedicated-network-areas/v0.1-eri/areas"\n',
+        )
+        ctx = _make_context(
+            "dedicated-network-areas", branch_type="main", version="wip",
+        )
+        findings = check_feature_file_url_version(tmp_path, ctx)
+        assert len(findings) == 1
+        assert "v0.1-eri" in findings[0]["message"]
+        assert "/vwip" in findings[0]["message"]
+        assert findings[0]["line"] == 2
+
+    def test_main_misspelled_api_name_skipped(self, tmp_path: Path):
+        """Recorded residual: a misspelled api-name in the URL is not located
+        (the anchor is the known api-name), so the version segment is not
+        checked here — the pre-snapshot wip gate backstops it.  Anchoring on
+        the api-name keeps a false positive off correct PRs, which matters more
+        for an always-error gate than closing this compound-typo case."""
+        _write_spec(tmp_path, "dedicated-network-areas", "wip")
+        _write_feature(
+            tmp_path, "dedicated-network-areas.feature",
+            "Feature: DNA, vwip\n"
+            '  Given the resource "/dedicated-netwrok-areas/v0.1-eri/areas"\n',
+        )
+        ctx = _make_context(
+            "dedicated-network-areas", branch_type="main", version="wip",
+        )
+        assert check_feature_file_url_version(tmp_path, ctx) == []
+
     def test_release_matching_version_passes(self, tmp_path: Path):
         _write_spec(tmp_path, "qod", "1.0.0")
         _write_feature(
             tmp_path, "qod.feature",
             "Feature: QoD, v1.0.0\n"
-            "  When I send a POST to /quality-on-demand/v1/sessions\n",
+            "  When I send a POST to /qod/v1/sessions\n",
         )
         ctx = _make_context("qod", branch_type="release", version="1.0.0")
         assert check_feature_file_url_version(tmp_path, ctx) == []
@@ -448,7 +500,7 @@ class TestCheckFeatureFileUrlVersion:
         _write_feature(
             tmp_path, "qod.feature",
             "Feature: QoD, v1.0.0\n"
-            "  When I send a POST to /quality-on-demand/vwip/sessions\n",
+            "  When I send a POST to /qod/vwip/sessions\n",
         )
         ctx = _make_context("qod", branch_type="release", version="1.0.0")
         findings = check_feature_file_url_version(tmp_path, ctx)
@@ -462,7 +514,7 @@ class TestCheckFeatureFileUrlVersion:
         _write_feature(
             tmp_path, "qod.feature",
             "Feature: QoD, v0.3.0\n"
-            "  When I send a POST to /quality-on-demand/v0.3/sessions\n",
+            "  When I send a POST to /qod/v0.3/sessions\n",
         )
         ctx = _make_context("qod", branch_type="release", version="0.3.0")
         assert check_feature_file_url_version(tmp_path, ctx) == []
@@ -496,8 +548,8 @@ class TestCheckFeatureFileUrlVersion:
         _write_feature(
             tmp_path, "qod.feature",
             "Feature: QoD, vwip\n"
-            "  When I send a POST to /quality-on-demand/v1/sessions\n"
-            "  And I send a GET to /quality-on-demand/wip/sessions/{id}\n",
+            "  When I send a POST to /qod/v1/sessions\n"
+            "  And I send a GET to /qod/wip/sessions/{id}\n",
         )
         ctx = _make_context("qod", branch_type="main", version="wip")
         findings = check_feature_file_url_version(tmp_path, ctx)
@@ -510,7 +562,7 @@ class TestCheckFeatureFileUrlVersion:
         _write_feature(
             tmp_path, "qod.feature",
             "Feature: QoD, vwip\n"
-            "  When I send a POST to /quality-on-demand/wip/sessions\n",
+            "  When I send a POST to /qod/wip/sessions\n",
         )
         ctx = _make_context("qod", branch_type="main", version="wip")
         assert check_feature_file_url_version(tmp_path, ctx) == []
