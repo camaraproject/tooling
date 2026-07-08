@@ -777,7 +777,7 @@ _SAFE_RANGE_RULE = "camara-integer-safe-range"
 
 
 class TestS038IntegerSafeRange:
-    """S-038: integer schema values must stay within JS safe-integer range."""
+    """S-038: integer schema values must stay within the 53-bit integer range."""
 
     def test_unsafe_int64_maximum_fires(self):
         spec = _VALID_SPEC + (

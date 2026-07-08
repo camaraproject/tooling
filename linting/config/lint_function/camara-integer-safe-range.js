@@ -1,9 +1,11 @@
 // CAMARA Project - support function for Spectral linter
-// Checks integer schema values for JavaScript safe-integer compatibility.
+// Checks integer schema values against the 53-bit integer range recommended
+// by the OpenAPI Format Registry for int64.
 //
-// Release snapshot bundling passes OpenAPI YAML through JavaScript tooling.
-// Numeric integer literals outside Number.MAX_SAFE_INTEGER can be silently
-// rounded before the snapshot is published, so r4 validation rejects them.
+// Recipients that parse JSON numbers into double-precision (binary64)
+// representation cannot preserve integer literals outside the 53-bit range;
+// release snapshot bundling is one such consumer and can silently round the
+// value before the snapshot is published, so r4 validation rejects them.
 
 const MAX_SAFE_INTEGER = Number.MAX_SAFE_INTEGER;
 const INTEGER_VALUE_KEYS = [
@@ -24,11 +26,13 @@ export default (document, _options, context) => {
   function addFinding(value, path, label) {
     errors.push({
       message:
-        `Integer schema ${label} ${String(value)} exceeds the JavaScript ` +
-        `safe-integer range [-${MAX_SAFE_INTEGER}, ${MAX_SAFE_INTEGER}]. ` +
-        "Values outside this range can be silently rounded by release " +
-        "bundling; use a value within range or model it as a string " +
-        "(CAMARA Design Guide section 2.2).",
+        `Integer schema ${label} ${String(value)} exceeds the 53-bit ` +
+        `integer range [-${MAX_SAFE_INTEGER}, ${MAX_SAFE_INTEGER}] ` +
+        "recommended by the OpenAPI Format Registry. Values outside this " +
+        "range are silently altered by tooling that parses JSON numbers " +
+        "into double-precision (binary64) representation, including " +
+        "release bundling; use a value within range or model it as a " +
+        "string (CAMARA Design Guide section 2.2).",
       path,
     });
   }

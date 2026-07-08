@@ -15,6 +15,7 @@
 #   apiRoot, 403, error codes, subscription, format descriptions, required props,
 #   array items description, notification content-type
 # - 14.06.2026: Added camara-integer-safe-range rule (S-038)
+# - 08.07.2026: Reworded S-038 description and message to the OpenAPI Format Registry framing
 
 
 # Note: @stoplight/spectral-owasp-ruleset is installed via validation/package.json.
@@ -543,7 +544,7 @@ rules:
     recommended: true
 
   camara-integer-safe-range:
-    description: "Integer schema values MUST stay within the JavaScript safe-integer range."
+    description: "Integer schema values MUST stay within the 53-bit integer range recommended by the OpenAPI Format Registry."
     message: "{{error}}"
     severity: error
     given: "$"
