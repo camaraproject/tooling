@@ -47,6 +47,8 @@ class TestRenderTemplate:
         assert "Commonalities r3.4" in result
         assert "Mandatory release assets are present for each API according to its status" in result
         assert "All remaining validation warnings are documented in issues and the reasons for deferral are defensible" in result
+        assert "Assign the Release Management reviewer(s) as assignee(s) of this PR" in result
+        assert "The following actions and checks are done by a Release Management reviewer before approving the PR" in result
         assert "### Valid next actions for codeowners" in result
         assert "Snapshot: [`r4.1-abc1234`]" in result
         assert "<details>" in result
