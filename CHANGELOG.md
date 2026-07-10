@@ -2,6 +2,7 @@
 
 ## Table of Contents
 
+- **[v0.7.1](#v071)**
 - **[v0.7.0](#v070)**
 - **[v0.6.0](#v060)**
 - **[v0.5.0](#v050)**
@@ -11,6 +12,36 @@
 - **[v0.2.2](#v022)**
 - **[v0.2.1](#v021)**
 - **[v0.2.0](#v020)**
+
+# v0.7.1
+
+## Release Notes
+
+**v0.7.1 is a patch release for the CAMARA tooling repository.**
+
+This release consolidates the fixes and refinements that landed on `main` after
+v0.7.0: two validation false-negative fixes (feature-file API-name matching and
+hyphenated URL version segments), an S-038 wording alignment and int64 safe-range
+lint refinement, a Release Review PR template change (RM reviewer-assignment
+action and readiness-note rewording), and dependency bumps. No new rule ID.
+
+### Added
+
+* Review PR template: readiness-note fix and RM reviewer-assignment action by @hdamker in https://github.com/camaraproject/tooling/pull/372
+
+### Changed
+
+* Align S-038 wording with the OpenAPI Format Registry framing by @hdamker in https://github.com/camaraproject/tooling/pull/370
+* Bump js-yaml from 5.0.0 to 5.2.1 by @dependabot in https://github.com/camaraproject/tooling/pull/363
+* Bump @redocly/cli from 2.34.0 to 2.37.0 by @dependabot in https://github.com/camaraproject/tooling/pull/364
+* Bump @stoplight/spectral-cli from 6.16.0 to 6.16.1 by @dependabot in https://github.com/camaraproject/tooling/pull/362
+
+### Fixed
+
+* Match feature files to the longest API name in scope by @hdamker in https://github.com/camaraproject/tooling/pull/366
+* Flag hyphenated URL version segments by @hdamker in https://github.com/camaraproject/tooling/pull/369
+
+**Full Changelog**: https://github.com/camaraproject/tooling/compare/v0.7.0...v0.7.1
 
 # v0.7.0
 
