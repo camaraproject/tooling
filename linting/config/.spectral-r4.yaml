@@ -37,6 +37,7 @@ functions:
   - camara-notification-content-type
   - camara-no-numeric-resource-ids
   - camara-integer-safe-range
+  - camara-x-correlator-documentation
 functionsDir: "./lint_function"
 rules:
   #  Built-in OpenAPI Specification ruleset. Each rule then can be enabled individually.
@@ -550,6 +551,28 @@ rules:
     given: "$"
     then:
       function: camara-integer-safe-range
+    recommended: true
+
+  camara-x-correlator-request-parameter:
+    description: "Every operation MUST document the x-correlator request header parameter."
+    message: "{{error}}"
+    severity: warn
+    given: "$"
+    then:
+      function: camara-x-correlator-documentation
+      functionOptions:
+        target: request
+    recommended: true
+
+  camara-x-correlator-response-header:
+    description: "Every documented response MUST document the x-correlator response header."
+    message: "{{error}}"
+    severity: warn
+    given: "$"
+    then:
+      function: camara-x-correlator-documentation
+      functionOptions:
+        target: response
     recommended: true
 
   # ===== OWASP API Security Top 10 2023 =====

@@ -219,6 +219,16 @@
   engine_rule: camara-integer-safe-range
   short_title: "Integer value exceeds safe range"
 
+- id: S-039
+  engine: spectral
+  engine_rule: camara-x-correlator-request-parameter
+  short_title: "x-correlator request header is undocumented"
+
+- id: S-040
+  engine: spectral
+  engine_rule: camara-x-correlator-response-header
+  short_title: "x-correlator response header is undocumented"
+
 # ===== Built-in OAS rules (S-200+) =====
 
 - id: S-200
