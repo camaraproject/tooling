@@ -16,6 +16,7 @@
 #   array items description, notification content-type
 # - 14.06.2026: Added camara-integer-safe-range rule (S-038)
 # - 08.07.2026: Reworded S-038 description and message to the OpenAPI Format Registry framing
+# - 15.07.2026: Added x-correlator documentation rules (S-039, S-040)
 
 
 # Note: @stoplight/spectral-owasp-ruleset is installed via validation/package.json.
