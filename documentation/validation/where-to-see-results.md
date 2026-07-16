@@ -47,8 +47,7 @@ For pull requests from a fork, this second entry is not available. The workflow 
 Annotations are convenient, but they do not show the whole picture:
 
 - Annotations only appear on **changed files**. Problems in unchanged files are absent from both annotation tabs but are still in the workflow summary.
-- Very large pull requests may not show every annotation inline. The workflow summary always lists the complete set.
-- On pull requests from a fork, GitHub further limits the number of annotations shown inline per severity. The full results are still in the workflow summary.
+- GitHub caps annotations at 10 errors, 10 warnings, and 10 notices per workflow step. This applies to every pull request, not only forks or very large ones. GitHub fills the cap from the files it processes first and then stops, so a pull request touching several files can show complete annotations on the earliest files and none at all on the rest — the "annotations only show on the first file" symptom. This is a GitHub Actions limit (the toolkit's problem-matcher cap), not a gap in what validation checked. The workflow summary always lists the complete set, for every file.
 - A pull request comment from the validation workflow does not appear on fork pull requests. Writing a comment requires write permission, which fork pull requests do not have.
 
 A passing **CAMARA Validation** check does not mean there are no warnings or hints — only that no errors blocked the run. Warnings and hints are still listed in the workflow summary; review them before merging or before a release.
