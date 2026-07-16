@@ -18,7 +18,7 @@ summary:
   total_gap: 0
   total_manual: 25
   total_pending: 0
-  total_tested: 93
+  total_tested: 95
   by_engine:
     spectral: 85
     gherkin: 25
@@ -364,6 +364,8 @@ tested_rules:
   S-034: [regression/r4.3-broken-spec-subscriptions]
   S-035: [regression/r4.3-broken-spec-subscriptions]
   S-036: [regression/r4.3-broken-spec-routing]
+  S-039: [regression/r4.3-broken-spec-error-handling]
+  S-040: [regression/r4.3-broken-spec-error-handling]
   S-201: [regression/r4.3-broken-spec-api-metadata]
   S-210: [regression/r4.3-broken-spec-api-metadata]
   S-211: [regression/r4.3-main-baseline]
