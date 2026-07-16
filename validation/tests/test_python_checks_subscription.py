@@ -10,7 +10,7 @@ from validation.context import ApiContext, ValidationContext
 from validation.engines.python_checks.subscription_checks import (
     check_cloudevent_via_ref,
     check_event_type_format,
-    check_sinkcredential_not_in_response,
+    check_sinkcredential_secrets_writeonly,
     check_subscription_filename,
 )
 
@@ -237,151 +237,137 @@ class TestCheckEventTypeFormat:
 
 
 # ---------------------------------------------------------------------------
-# P-016: check-sinkcredential-not-in-response
+# P-016: check-sinkcredential-secrets-writeonly
 # ---------------------------------------------------------------------------
 
 
-class TestCheckSinkCredentialNotInResponse:
-    def test_clean_response_ok(self, tmp_path: Path):
-        api_name = "device-status-subscriptions"
-        spec = _subscription_spec_with_response({
-            "id": {"type": "string"},
-            "sink": {"type": "string"},
-        })
-        _write_spec(tmp_path, api_name=api_name, spec_content=spec)
-        ctx = _make_context(api_name=api_name)
-        assert check_sinkcredential_not_in_response(tmp_path, ctx) == []
+def _sinkcredential_family_spec(
+    access_token_writeonly: bool | None = True,
+    access_token_type_writeonly: bool | None = True,
+    client_id_writeonly: bool | None = True,
+    token_uri_writeonly: bool | None = True,
+) -> dict:
+    """Build a spec with the full SinkCredential discriminator family.
 
-    def test_sinkcredential_in_response_error(self, tmp_path: Path):
-        api_name = "device-status-subscriptions"
-        spec = _subscription_spec_with_response({
-            "id": {"type": "string"},
-            "sink": {"type": "string"},
-            "sinkCredential": {"$ref": "#/components/schemas/SinkCredential"},
-        })
-        _write_spec(tmp_path, api_name=api_name, spec_content=spec)
-        ctx = _make_context(api_name=api_name)
-        findings = check_sinkcredential_not_in_response(tmp_path, ctx)
-        assert len(findings) == 1
-        assert findings[0]["level"] == "error"
-        assert "sinkCredential" in findings[0]["message"]
+    A ``None`` value omits the field's ``writeOnly`` key entirely
+    (missing); a bool value sets it explicitly (including ``False``,
+    present-but-wrong).
+    """
 
-    def test_sinkcredential_in_request_only_ok(self, tmp_path: Path):
-        """sinkCredential in request schema but not in response — OK."""
-        api_name = "device-status-subscriptions"
-        spec = {
-            "openapi": "3.0.3",
-            "info": {"title": "Test", "version": "wip"},
-            "paths": {
-                "/subscriptions": {
-                    "post": {
-                        "requestBody": {
-                            "content": {
-                                "application/json": {
-                                    "schema": {"$ref": "#/components/schemas/SubscriptionRequest"}
-                                }
-                            }
-                        },
-                        "responses": {
-                            "201": {
-                                "content": {
-                                    "application/json": {
-                                        "schema": {"$ref": "#/components/schemas/Subscription"}
-                                    }
-                                }
-                            }
-                        },
-                    }
-                }
-            },
-            "components": {
-                "schemas": {
-                    "SubscriptionRequest": {
-                        "type": "object",
-                        "properties": {
-                            "sink": {"type": "string"},
-                            "sinkCredential": {"type": "object"},
-                        },
-                    },
-                    "Subscription": {
-                        "type": "object",
-                        "properties": {
-                            "id": {"type": "string"},
-                            "sink": {"type": "string"},
-                        },
-                    },
-                }
-            },
-        }
-        _write_spec(tmp_path, api_name=api_name, spec_content=spec)
-        ctx = _make_context(api_name=api_name)
-        assert check_sinkcredential_not_in_response(tmp_path, ctx) == []
+    def _field(base: dict, writeonly: bool | None) -> dict:
+        if writeonly is not None:
+            base = {**base, "writeOnly": writeonly}
+        return base
 
-    def test_non_subscription_skip(self, tmp_path: Path):
-        ctx = _make_context(api_pattern="request-response")
-        assert check_sinkcredential_not_in_response(tmp_path, ctx) == []
-
-    def test_sinkcredential_via_allof_error(self, tmp_path: Path):
-        """sinkCredential inherited via allOf is still caught."""
-        api_name = "device-status-subscriptions"
-        spec = {
-            "openapi": "3.0.3",
-            "info": {"title": "Test", "version": "wip"},
-            "paths": {
-                "/subscriptions": {
-                    "post": {
-                        "responses": {
-                            "201": {
-                                "content": {
-                                    "application/json": {
-                                        "schema": {"$ref": "#/components/schemas/Subscription"}
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            },
-            "components": {
-                "schemas": {
-                    "BaseSubscription": {
-                        "type": "object",
-                        "properties": {
-                            "sinkCredential": {"type": "object"},
-                        },
-                    },
-                    "Subscription": {
-                        "allOf": [
-                            {"$ref": "#/components/schemas/BaseSubscription"},
-                            {
-                                "type": "object",
-                                "properties": {"id": {"type": "string"}},
+    return {
+        "openapi": "3.0.3",
+        "info": {"title": "Test", "version": "wip"},
+        "paths": {},
+        "components": {
+            "schemas": {
+                "SinkCredential": {
+                    "type": "object",
+                    "properties": {"credentialType": {"type": "string"}},
+                    "discriminator": {"propertyName": "credentialType"},
+                },
+                "AccessTokenCredential": {
+                    "allOf": [
+                        {"$ref": "#/components/schemas/SinkCredential"},
+                        {
+                            "type": "object",
+                            "properties": {
+                                "accessToken": _field(
+                                    {"type": "string"}, access_token_writeonly
+                                ),
+                                "accessTokenExpiresUtc": {
+                                    "type": "string",
+                                    "format": "date-time",
+                                },
+                                "accessTokenType": _field(
+                                    {"type": "string"}, access_token_type_writeonly
+                                ),
                             },
-                        ]
-                    },
-                }
-            },
-        }
-        _write_spec(tmp_path, api_name=api_name, spec_content=spec)
-        ctx = _make_context(api_name=api_name)
-        findings = check_sinkcredential_not_in_response(tmp_path, ctx)
-        assert len(findings) == 1
-        assert findings[0]["level"] == "error"
+                        },
+                    ]
+                },
+                "PrivateKeyJWTCredential": {
+                    "allOf": [
+                        {"$ref": "#/components/schemas/SinkCredential"},
+                        {
+                            "type": "object",
+                            "properties": {
+                                "clientId": _field(
+                                    {"type": "string"}, client_id_writeonly
+                                ),
+                                "tokenUri": _field(
+                                    {"type": "string"}, token_uri_writeonly
+                                ),
+                                "jwksUri": {
+                                    "type": "string",
+                                    "readOnly": True,
+                                },
+                            },
+                        },
+                    ]
+                },
+            }
+        },
+    }
 
-    def test_missing_spec_file(self, tmp_path: Path):
-        ctx = _make_context()
-        assert check_sinkcredential_not_in_response(tmp_path, ctx) == []
 
-    def test_no_subscription_paths_ok(self, tmp_path: Path):
-        """Spec has no /subscriptions path — no findings."""
+class TestCheckSinkCredentialSecretsWriteOnly:
+    def test_clean_subtype_writeonly_present_ok(self, tmp_path: Path):
         api_name = "device-status-subscriptions"
-        spec = {"openapi": "3.0.3", "info": {"title": "Test", "version": "wip"}, "paths": {"/other": {}}}
+        spec = _sinkcredential_family_spec()
         _write_spec(tmp_path, api_name=api_name, spec_content=spec)
         ctx = _make_context(api_name=api_name)
-        assert check_sinkcredential_not_in_response(tmp_path, ctx) == []
+        assert check_sinkcredential_secrets_writeonly(tmp_path, ctx) == []
 
-    def test_external_ref_sinkcredential_detected(self, tmp_path: Path):
-        """sinkCredential with external $ref is still detected by name."""
+    def test_accesstoken_missing_writeonly_one_finding(self, tmp_path: Path):
+        api_name = "device-status-subscriptions"
+        spec = _sinkcredential_family_spec(access_token_writeonly=None)
+        _write_spec(tmp_path, api_name=api_name, spec_content=spec)
+        ctx = _make_context(api_name=api_name)
+        findings = check_sinkcredential_secrets_writeonly(tmp_path, ctx)
+        assert len(findings) == 1
+        assert findings[0]["level"] == "warn"
+        assert "AccessTokenCredential.accessToken" in findings[0]["message"]
+
+    def test_accesstoken_writeonly_false_still_flagged(self, tmp_path: Path):
+        """writeOnly: false is present-but-wrong, not just missing."""
+        api_name = "device-status-subscriptions"
+        spec = _sinkcredential_family_spec(access_token_writeonly=False)
+        _write_spec(tmp_path, api_name=api_name, spec_content=spec)
+        ctx = _make_context(api_name=api_name)
+        findings = check_sinkcredential_secrets_writeonly(tmp_path, ctx)
+        assert len(findings) == 1
+        assert "accessToken" in findings[0]["message"]
+
+    def test_privatekeyjwt_clientid_tokenuri_coverage(self, tmp_path: Path):
+        api_name = "device-status-subscriptions"
+        spec = _sinkcredential_family_spec(
+            client_id_writeonly=None, token_uri_writeonly=None
+        )
+        _write_spec(tmp_path, api_name=api_name, spec_content=spec)
+        ctx = _make_context(api_name=api_name)
+        findings = check_sinkcredential_secrets_writeonly(tmp_path, ctx)
+        messages = {f["message"] for f in findings}
+        assert len(findings) == 2
+        assert any("PrivateKeyJWTCredential.clientId" in m for m in messages)
+        assert any("PrivateKeyJWTCredential.tokenUri" in m for m in messages)
+
+    def test_response_visible_fields_ignored(self, tmp_path: Path):
+        """credentialType/accessTokenExpiresUtc/jwksUri are never checked."""
+        api_name = "device-status-subscriptions"
+        # All secret fields correctly writeOnly; jwksUri stays readOnly,
+        # not writeOnly — must not be flagged.
+        spec = _sinkcredential_family_spec()
+        _write_spec(tmp_path, api_name=api_name, spec_content=spec)
+        ctx = _make_context(api_name=api_name)
+        assert check_sinkcredential_secrets_writeonly(tmp_path, ctx) == []
+
+    def test_common_ref_spec_no_local_subtype_ok(self, tmp_path: Path):
+        """sinkCredential via external $ref, no local subtype schema — no findings."""
         api_name = "device-status-subscriptions"
         spec = _subscription_spec_with_response({
             "id": {"type": "string"},
@@ -391,8 +377,47 @@ class TestCheckSinkCredentialNotInResponse:
         })
         _write_spec(tmp_path, api_name=api_name, spec_content=spec)
         ctx = _make_context(api_name=api_name)
-        findings = check_sinkcredential_not_in_response(tmp_path, ctx)
+        assert check_sinkcredential_secrets_writeonly(tmp_path, ctx) == []
+
+    def test_implicit_subscription_resource_schema_coverage(self, tmp_path: Path):
+        """Implicit subscription has no /subscriptions path — detection
+        is schema-definition based, so the subtype is still caught."""
+        api_name = "device-status"
+        spec = _sinkcredential_family_spec(access_token_writeonly=None)
+        spec["paths"] = {"/resources": {"get": {"responses": {"200": {}}}}}
+        _write_spec(tmp_path, api_name=api_name, spec_content=spec)
+        ctx = _make_context(api_name=api_name, api_pattern="implicit-subscription")
+        findings = check_sinkcredential_secrets_writeonly(tmp_path, ctx)
         assert len(findings) == 1
+
+    def test_generic_clientid_field_not_subtype_no_false_positive(self, tmp_path: Path):
+        """A clientId field on a schema that is not a SinkCredential
+        subtype (no allOf $ref to SinkCredential) must not be flagged."""
+        api_name = "device-status-subscriptions"
+        spec = {
+            "openapi": "3.0.3",
+            "info": {"title": "Test", "version": "wip"},
+            "paths": {},
+            "components": {
+                "schemas": {
+                    "OAuthClient": {
+                        "type": "object",
+                        "properties": {"clientId": {"type": "string"}},
+                    },
+                }
+            },
+        }
+        _write_spec(tmp_path, api_name=api_name, spec_content=spec)
+        ctx = _make_context(api_name=api_name)
+        assert check_sinkcredential_secrets_writeonly(tmp_path, ctx) == []
+
+    def test_non_subscription_skip(self, tmp_path: Path):
+        ctx = _make_context(api_pattern="request-response")
+        assert check_sinkcredential_secrets_writeonly(tmp_path, ctx) == []
+
+    def test_missing_spec_file(self, tmp_path: Path):
+        ctx = _make_context()
+        assert check_sinkcredential_secrets_writeonly(tmp_path, ctx) == []
 
 
 # ---------------------------------------------------------------------------

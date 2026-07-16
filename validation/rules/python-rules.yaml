@@ -198,25 +198,34 @@
     API template in Commonalities artifacts/api-templates/ (tracked in
     camaraproject/Commonalities#608).
 
-# P-016: check-sinkcredential-not-in-response (DG-092)
-# sinkCredential must not appear in subscription 2xx response schemas.
-#
-# 2026-05-23 MUTED pending Commonalities#638. r4.3 introduced a
-# partial-disclosure model for sinkCredential in Commonalities#633 —
-# secret fields are kept out of responses via per-field `writeOnly: true`,
-# non-secret client-configuration fields are exchanged bidirectionally.
-# The current blanket-ban shape is too broad. Re-enable (drop the muted
-# default) if §2.2.3 is restored, or replace with a per-field writeOnly
-# check if §4.3.1 wins. Tracked in tooling#297. Same mute pattern as
-# S-314 / S-316 vs Commonalities#615.
+# P-016: check-sinkcredential-secrets-writeonly (DG-092)
+# r4.3 (Commonalities#633) replaced the blanket "sinkCredential MUST NOT
+# appear in responses" ban with a partial-disclosure model: sinkCredential
+# MAY appear in POST/GET responses, but its secret sub-fields — accessToken,
+# accessTokenType (AccessTokenCredential); clientId, tokenUri
+# (PrivateKeyJWTCredential) — MUST be writeOnly so they are withheld.
+# credentialType, accessTokenExpiresUtc, and jwksUri are response-visible
+# by design and are not checked. Gated ">=r4.3" because writeOnly on these
+# fields was introduced there (Commonalities 0.8.0) — a pre-0.8.0 API
+# follows the old blanket-ban model and has no writeOnly concept to check.
+# Graded ramp mirrors the r4.3 drift-rule siblings P-026/P-027: warn gives
+# a migration runway for a just-upgraded API whose copied subtypes predate
+# the markers; error at public is the right gate since the escalation only
+# ever hits secret fields no legitimate consumer ever received in a
+# response under any model. Tracked in tooling#297.
 - id: P-016
   engine: python
-  engine_rule: check-sinkcredential-not-in-response
-  short_title: "sinkCredential must not appear in response"
+  engine_rule: check-sinkcredential-secrets-writeonly
+  short_title: "sinkCredential secret fields must be writeOnly"
   applicability:
-    api_pattern: [explicit-subscription]
+    api_pattern: [explicit-subscription, implicit-subscription]
+    commonalities_release: ">=r4.3"
   conditional_level:
-    default: muted
+    default: warn
+    overrides:
+      - condition:
+          target_api_status: [public]
+        level: error
 
 # P-017: check-conflict-deprecated (DG-018)
 # CONFLICT error code is deprecated in Commonalities r4.x.

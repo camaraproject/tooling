@@ -29,7 +29,7 @@ from .release_review_checks import check_release_review_file_restriction
 from .subscription_checks import (
     check_cloudevent_via_ref,
     check_event_type_format,
-    check_sinkcredential_not_in_response,
+    check_sinkcredential_secrets_writeonly,
     check_subscription_filename,
 )
 from .test_checks import (
@@ -60,7 +60,7 @@ CHECKS: list[CheckDescriptor] = [
     CheckDescriptor("check-commonalities-version", CheckScope.API, check_commonalities_version),
     CheckDescriptor("check-subscription-filename", CheckScope.API, check_subscription_filename),
     CheckDescriptor("check-event-type-format", CheckScope.API, check_event_type_format),
-    CheckDescriptor("check-sinkcredential-not-in-response", CheckScope.API, check_sinkcredential_not_in_response),
+    CheckDescriptor("check-sinkcredential-secrets-writeonly", CheckScope.API, check_sinkcredential_secrets_writeonly),
     CheckDescriptor("check-cloudevent-via-ref", CheckScope.API, check_cloudevent_via_ref),
     CheckDescriptor("check-conflict-deprecated", CheckScope.API, check_conflict_deprecated),
     CheckDescriptor("check-contextcode-format", CheckScope.API, check_contextcode_format),
