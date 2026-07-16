@@ -288,12 +288,10 @@
 
 - id: S-211
   engine: spectral
-  engine_rule: oas3-unused-component
+  engine_rule: camara-discriminator-aware-unused-component
   short_title: "Component may be unused"
-  suggestion: "Spectral does not follow discriminator mappings — verify the schema is truly unused."
+  suggestion: "Remove the component if it is obsolete, or reference it from the API definition."
   documentation_url: "https://github.com/camaraproject/tooling/blob/main/documentation/validation/faq.md#s-211-unused-component"
-  conditional_level:
-    default: hint
 
 - id: S-212
   engine: spectral

@@ -7,6 +7,7 @@
 # - 09.01.2025: Updated info-contact rule
 # - 21.07.2025: Added camara-schema-type-check rule
 # - 12.01.2026: camara-discriminator-use deprecated
+# - 16.07.2026: Made unused-component detection discriminator-aware (S-211)
 
 
 extends: "spectral:oas"
@@ -14,6 +15,7 @@ functions:
   - camara-reserved-words
   - camara-language-avoid-telco
   - camara-security-no-secrets-in-path-or-query-parameters
+  - camara-discriminator-aware-unused-component
 functionsDir: "./lint_function"
 rules:
   #  Built-in OpenAPI Specification ruleset. Each rule then can be enabled individually.
@@ -52,12 +54,24 @@ rules:
   oas3-schema: true
   oas3-server-not-example.com: false
   oas3-server-trailing-slash: true
-  oas3-unused-component: true
+  oas3-unused-component: false
   oas3-valid-media-example: true
   oas3-valid-schema-example: true
   # oas3-server-variables: true
 
   # Custom Rules Utilizing Spectral's Built-in Functions and JavaScript Implementations
+
+  camara-discriminator-aware-unused-component:
+    message: "Potentially unused component has been detected."
+    severity: warn
+    description: >
+      Detects unused OpenAPI components while treating discriminator mapping
+      targets as references.
+    resolved: false
+    given: "$"
+    then:
+      function: camara-discriminator-aware-unused-component
+    recommended: true
 
   camara-language-avoid-telco:
     message: "{{error}}"

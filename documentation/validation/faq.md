@@ -35,13 +35,13 @@ A tag used on an operation must also be declared in the OpenAPI document's top-l
 
 <a name="s-211-unused-component"></a>
 <details>
-<summary>[S-211] Why is an unused component only a hint?</summary>
+<summary>[S-211] Why is a component reported as unused?</summary>
 
 Applies to: `[S-211] Component may be unused`
 
-The check may not follow every discriminator mapping. A component that looks unused to the check may still be referenced indirectly. The hint is a prompt to verify, not an instruction to remove.
+The check follows regular OpenAPI references and local `discriminator.mapping` targets. It reports a warning when a reusable component is not reached through either mechanism.
 
-**What you do:** confirm the component is genuinely unused — for example, by checking discriminator mappings and any oneOf/anyOf indirection — before removing it. If it is in use indirectly, no change is needed.
+**What you do:** remove the obsolete component, or add the missing `$ref` or discriminator mapping that connects it to the API definition.
 
 </details>
 
