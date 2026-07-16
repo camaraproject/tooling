@@ -59,25 +59,26 @@
 
 # P-006: check-test-files-exist
 #
-# Severity is a function of API maturity and release type:
-#   - default (alpha, wip, any non-rc release): hint
-#   - initial (0.x) + rc/public release: warn
-#   - stable  (>=1.x) + rc/public release: error
+# Severity ramps on target_api_status (the canonical content-ramp field; see
+# severity-assignment-guide.md §2), anchored on the public/stable obligation
+# with overrides only demoting:
+#   - default (stable @ rc/public): error
+#   - draft/alpha (either maturity): hint
+#   - initial (0.x) @ rc/public: warn
 - id: P-006
   engine: python
   engine_rule: check-test-files-exist
   short_title: "Missing test definition file for API"
   documentation_url: "https://github.com/camaraproject/tooling/blob/main/documentation/validation/faq.md#p-006-missing-test-files"
   conditional_level:
-    default: hint
+    default: error
     overrides:
       - condition:
-          target_api_maturity: [stable]
-          target_release_type: [pre-release-rc, public-release]
-        level: error
+          target_api_status: [draft, alpha]
+        level: hint
       - condition:
           target_api_maturity: [initial]
-          target_release_type: [pre-release-rc, public-release]
+          target_api_status: [rc, public]
         level: warn
   suggestion: >-
     Test files are optional for alpha releases but expected before the
@@ -90,29 +91,37 @@
 # Parses the Feature line of .feature files to extract the version
 # (e.g. "Feature: CAMARA API, vwip - Operation foo") and compares
 # against the expected version from info.version.
+#
+# Severity ramps on target_api_status, anchored on the public/stable
+# obligation (warn); initial (0.x) APIs stay at hint throughout.
 - id: P-007
   engine: python
   engine_rule: check-test-file-version
   short_title: "Test file: feature-line version mismatch"
   conditional_level:
-    default: hint
+    default: warn
     overrides:
       - condition:
-          target_api_maturity: [stable]
-          target_release_type: [pre-release-rc, public-release]
-        level: warn
+          target_api_status: [draft, alpha]
+        level: hint
+      - condition:
+          target_api_maturity: [initial]
+        level: hint
 
 # P-008: check-test-directory-exists
+#
+# Severity ramps on target_api_status, anchored on the public/stable
+# obligation (warn); no maturity split.
 - id: P-008
   engine: python
   engine_rule: check-test-directory-exists
   short_title: "Test_definitions directory is missing"
   conditional_level:
-    default: hint
+    default: warn
     overrides:
       - condition:
-          target_release_type: [pre-release-rc, public-release]
-        level: warn
+          target_api_status: [draft, alpha]
+        level: hint
 
 # P-009: check-release-plan-semantics
 - id: P-009

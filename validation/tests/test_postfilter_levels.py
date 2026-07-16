@@ -268,3 +268,84 @@ class TestCompletenessRuleMaturityGrading:
             for s in ("draft", "alpha", "rc", "public")
         ]
         assert levels == sorted(levels), f"{rule_id} severity decreases: {levels}"
+
+
+# ---------------------------------------------------------------------------
+# Regression: P-006/P-007/P-008 (test-file rules) ramp on target_api_status,
+# not target_release_type, anchored on the public/stable obligation with
+# overrides only demoting. See validation-rules/017.
+# ---------------------------------------------------------------------------
+
+
+class TestTestFileRulesStatusRamp:
+    """P-006 splits by maturity; P-007/P-008 grade the same for both."""
+
+    @pytest.mark.parametrize("status", ["draft", "alpha"])
+    def test_p006_hint_pre_alpha_both_maturities(self, status):
+        rule = _rule_by_id("P-006")
+        ctx = _make_context()
+        for maturity in ("stable", "initial"):
+            api = _make_api(target_api_maturity=maturity, target_api_status=status)
+            assert resolve_level(rule, ctx, api) == "hint"
+
+    @pytest.mark.parametrize("status", ["rc", "public"])
+    def test_p006_stable_error_initial_warn(self, status):
+        rule = _rule_by_id("P-006")
+        ctx = _make_context()
+        stable = _make_api(target_api_maturity="stable", target_api_status=status)
+        initial = _make_api(target_api_maturity="initial", target_api_status=status)
+        assert resolve_level(rule, ctx, stable) == "error"
+        assert resolve_level(rule, ctx, initial) == "warn"
+
+    def test_p006_monotonic_both_maturities(self):
+        rule = _rule_by_id("P-006")
+        ctx = _make_context()
+        for maturity in ("stable", "initial"):
+            levels = [
+                _SEVERITY_ORDER[
+                    resolve_level(
+                        rule,
+                        ctx,
+                        _make_api(target_api_maturity=maturity, target_api_status=s),
+                    )
+                ]
+                for s in ("draft", "alpha", "rc", "public")
+            ]
+            assert levels == sorted(levels), f"P-006 ({maturity}) decreases: {levels}"
+
+    @pytest.mark.parametrize("status", ["draft", "alpha"])
+    def test_p007_hint_pre_rc_stable(self, status):
+        rule = _rule_by_id("P-007")
+        ctx = _make_context()
+        api = _make_api(target_api_maturity="stable", target_api_status=status)
+        assert resolve_level(rule, ctx, api) == "hint"
+
+    @pytest.mark.parametrize("status", ["rc", "public"])
+    def test_p007_warn_at_rc_public_stable(self, status):
+        rule = _rule_by_id("P-007")
+        ctx = _make_context()
+        api = _make_api(target_api_maturity="stable", target_api_status=status)
+        assert resolve_level(rule, ctx, api) == "warn"
+
+    @pytest.mark.parametrize("status", ["draft", "alpha", "rc", "public"])
+    def test_p007_initial_stays_hint(self, status):
+        rule = _rule_by_id("P-007")
+        ctx = _make_context()
+        api = _make_api(target_api_maturity="initial", target_api_status=status)
+        assert resolve_level(rule, ctx, api) == "hint"
+
+    @pytest.mark.parametrize("status", ["draft", "alpha"])
+    def test_p008_hint_pre_rc(self, status):
+        rule = _rule_by_id("P-008")
+        ctx = _make_context()
+        for maturity in ("stable", "initial"):
+            api = _make_api(target_api_maturity=maturity, target_api_status=status)
+            assert resolve_level(rule, ctx, api) == "hint"
+
+    @pytest.mark.parametrize("status", ["rc", "public"])
+    def test_p008_warn_at_rc_public(self, status):
+        rule = _rule_by_id("P-008")
+        ctx = _make_context()
+        for maturity in ("stable", "initial"):
+            api = _make_api(target_api_maturity=maturity, target_api_status=status)
+            assert resolve_level(rule, ctx, api) == "warn"
