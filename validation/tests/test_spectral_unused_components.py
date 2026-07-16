@@ -106,6 +106,16 @@ components:
       type: object
 """
 
+_COMPONENTS_ONLY_SPEC = """\
+components:
+  schemas:
+    SharedEvent:
+      type: object
+  responses:
+    SharedResponse:
+      description: OK
+"""
+
 
 @pytest.mark.parametrize("ruleset", _RULESETS, ids=lambda path: path.name)
 def test_discriminator_mapping_counts_as_schema_reference(ruleset: Path):
@@ -120,6 +130,13 @@ def test_regular_refs_still_count_and_other_component_types_are_checked():
 
     assert ["components", "responses", "EventResponse"] not in paths
     assert ["components", "responses", "UnusedResponse"] in paths
+
+
+@pytest.mark.parametrize("ruleset", _RULESETS, ids=lambda path: path.name)
+def test_components_only_documents_are_not_checked(ruleset: Path):
+    paths = _unused_component_paths(_run_spectral(_COMPONENTS_ONLY_SPEC, ruleset))
+
+    assert paths == []
 
 
 def test_plain_schema_name_mapping_counts_as_reference():

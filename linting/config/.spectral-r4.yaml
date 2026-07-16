@@ -92,6 +92,7 @@ rules:
     description: >
       Detects unused OpenAPI components while treating discriminator mapping
       targets as references.
+    formats: ["oas3"]
     resolved: false
     given: "$"
     then:
