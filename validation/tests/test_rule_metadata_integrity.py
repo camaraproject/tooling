@@ -89,7 +89,7 @@ class TestStructuralIntegrity:
         for r in all_rules:
             counts[r.engine] = counts.get(r.engine, 0) + 1
         assert counts["python"] == 36
-        assert counts["spectral"] == 86
+        assert counts["spectral"] == 88
         assert counts["gherkin"] == 25
         assert counts["yamllint"] == 13
 
