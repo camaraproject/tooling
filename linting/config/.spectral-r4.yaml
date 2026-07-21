@@ -17,6 +17,7 @@
 # - 14.06.2026: Added camara-integer-safe-range rule (S-038)
 # - 08.07.2026: Reworded S-038 description and message to the OpenAPI Format Registry framing
 # - 15.07.2026: Added x-correlator documentation rules (S-039, S-040)
+# - 16.07.2026: Made unused-component detection discriminator-aware (S-211)
 
 
 # Note: @stoplight/spectral-owasp-ruleset is installed via validation/package.json.
@@ -39,6 +40,7 @@ functions:
   - camara-no-numeric-resource-ids
   - camara-integer-safe-range
   - camara-x-correlator-documentation
+  - camara-discriminator-aware-unused-component
 functionsDir: "./lint_function"
 rules:
   #  Built-in OpenAPI Specification ruleset. Each rule then can be enabled individually.
@@ -77,12 +79,25 @@ rules:
   oas3-schema: true
   oas3-server-not-example.com: false
   oas3-server-trailing-slash: true
-  oas3-unused-component: true
+  oas3-unused-component: false
   oas3-valid-media-example: true
   oas3-valid-schema-example: true
   # oas3-server-variables: true
 
   # Custom Rules Utilizing Spectral's Built-in Functions and JavaScript Implementations
+
+  camara-discriminator-aware-unused-component:
+    message: "Potentially unused component has been detected."
+    severity: warn
+    description: >
+      Detects unused OpenAPI components while treating discriminator mapping
+      targets as references.
+    formats: ["oas3"]
+    resolved: false
+    given: "$"
+    then:
+      function: camara-discriminator-aware-unused-component
+    recommended: true
 
   camara-language-avoid-telco:
     message: "{{error}}"

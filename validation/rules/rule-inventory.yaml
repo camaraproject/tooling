@@ -251,13 +251,13 @@ fixes:
 
 proposed_changes:
   - rule_id: S-211
-    engine_rule: oas3-unused-component
-    change: Keep Spectral severity (warn), add conditional_level default=hint in metadata
+    engine_rule: camara-discriminator-aware-unused-component
+    change: Replace the stock rule with discriminator-aware unused-component detection
     reason: >
-      Spectral does not follow discriminator mappings — schemas referenced
-      only via discriminator appear as unused. False positives on subscription
-      event schemas (e.g. EventApiSpecific1, EventSubscriptionStarted).
-      Unused schemas are cosmetic, not harmful.
+      Spectral does not follow discriminator mappings. The custom rule keeps
+      dependency-graph detection for regular references and also counts local
+      discriminator mapping targets, removing false positives without muting
+      genuinely unused components.
     status: done
 
   - rule_id: S-313

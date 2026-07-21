@@ -314,7 +314,7 @@ Recommended first FAQ entries:
 | `[P-022]` | Why must `release-plan.yaml` change in its own PR? |
 | `[P-023]` | Why does CAMARA Validation say a dependency tag was not found? |
 | `[S-024]`, `[S-307]` | Why do operations need standard error responses? |
-| `[S-211]` | Why is an unused component only a hint? |
+| `[S-211]` | Why is a component reported as unused? |
 | `[S-037]` | Why should resource identifiers not be numeric? |
 | `[S-309]` to `[S-313]` | Why do arrays, integers, and strings need limits? |
 
