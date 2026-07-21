@@ -168,7 +168,7 @@ gap_rules:
     rule_id: P-014
 
   - audit_id: DG-092
-    description: sinkCredential not in responses
+    description: sinkCredential secret fields must be writeOnly (not exposed in responses)
     target_engine: python
     status: implemented
     rule_id: P-016

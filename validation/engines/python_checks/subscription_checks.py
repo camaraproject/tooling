@@ -20,7 +20,6 @@ from validation.context import ValidationContext
 from ._spec_helpers import (
     collect_schema_properties,
     extract_event_types_from_spec,
-    iter_response_schemas,
     resolve_local_ref,
 )
 from ._types import load_yaml_safe, make_finding
@@ -159,65 +158,104 @@ def check_event_type_format(
 
 
 # ---------------------------------------------------------------------------
-# P-016 (DG-092): check-sinkcredential-not-in-response
+# P-016 (DG-092): check-sinkcredential-secrets-writeonly
 # ---------------------------------------------------------------------------
 
+# Secret sub-fields of the SinkCredential discriminator subtypes that MUST
+# be writeOnly so they are withheld from responses. Response-visible fields
+# (credentialType, accessTokenExpiresUtc, jwksUri) are out of scope — this
+# rule guards against secret leakage, not over-hiding.
+_SINKCREDENTIAL_SECRET_FIELDS = (
+    "accessToken",
+    "accessTokenType",
+    "clientId",
+    "tokenUri",
+)
 
-def check_sinkcredential_not_in_response(
+
+def _is_sinkcredential_subtype(schema_def: dict) -> bool:
+    """Return True if *schema_def* is a SinkCredential discriminator subtype.
+
+    A subtype's ``allOf`` contains an entry whose ``$ref`` last path
+    segment is ``SinkCredential`` (e.g. ``AccessTokenCredential``,
+    ``PrivateKeyJWTCredential``).
+    """
+    all_of = schema_def.get("allOf")
+    if not isinstance(all_of, list):
+        return False
+    for entry in all_of:
+        if not isinstance(entry, dict):
+            continue
+        ref = entry.get("$ref")
+        if isinstance(ref, str) and ref.rsplit("/", 1)[-1] == "SinkCredential":
+            return True
+    return False
+
+
+def check_sinkcredential_secrets_writeonly(
     repo_path: Path, context: ValidationContext
 ) -> List[dict]:
-    """Validate sinkCredential does not appear in subscription responses.
+    """Validate sinkCredential secret fields are writeOnly.
 
-    Event Subscription Guide section 2.2.3: "The sinkCredential MUST
-    NOT be present in POST and GET responses."
+    Event Subscription Guide section 4.3.1 (partial-disclosure model,
+    r4.3): sinkCredential MAY appear in POST/GET responses, but its
+    secret sub-fields — ``accessToken``, ``accessTokenType``
+    (AccessTokenCredential); ``clientId``, ``tokenUri``
+    (PrivateKeyJWTCredential) — MUST be ``writeOnly: true`` so they are
+    withheld from responses.
 
-    Inspects 2xx response schemas for paths containing ``/subscriptions``
-    and checks for ``sinkCredential`` in their properties (including
-    ``allOf`` compositions).
+    Detection is a schema-definition check, not a response traversal:
+    ``sinkCredential`` is typed as the polymorphic base
+    ``SinkCredential``, so a response-schema check resolves to the base
+    and never sees the secrets, which live on the discriminator
+    subtypes (``allOf: [$ref SinkCredential, {props}]``). Scanning
+    ``components.schemas`` for SinkCredential subtypes is path-agnostic
+    — it covers explicit and implicit subscription uniformly (implicit
+    has no ``/subscriptions`` path; ``sinkCredential`` rides inside the
+    ``Resource`` schema) and passes trivially on common-``$ref`` specs
+    with no local subtype.
     """
     api = context.apis[0]
 
-    if api.api_pattern != "explicit-subscription":
+    if api.api_pattern not in ("explicit-subscription", "implicit-subscription"):
         return []
 
     spec = load_yaml_safe(repo_path / api.spec_file)
     if spec is None:
         return []
 
-    findings: List[dict] = []
-    seen_schemas: set[str] = set()
+    schemas = spec.get("components", {}).get("schemas", {})
+    if not isinstance(schemas, dict):
+        return []
 
-    for path, method, status_code, schema in iter_response_schemas(
-        spec, "/subscriptions"
-    ):
-        # Only check 2xx success responses
-        if not status_code.startswith("2"):
+    findings: List[dict] = []
+
+    for schema_name, schema_def in schemas.items():
+        if not isinstance(schema_def, dict):
+            continue
+        if not _is_sinkcredential_subtype(schema_def):
             continue
 
-        # Collect properties from the resolved schema
-        all_props = collect_schema_properties(spec, schema)
-        if "sinkCredential" in all_props:
-            # Deduplicate: same underlying schema may appear in multiple
-            # responses (e.g. POST 201 and GET 200 both use Subscription)
-            schema_id = id(schema)
-            if schema_id in seen_schemas:
+        props = collect_schema_properties(spec, schema_def)
+        for field_name in _SINKCREDENTIAL_SECRET_FIELDS:
+            field_def = props.get(field_name)
+            if field_def is None:
                 continue
-            seen_schemas.add(schema_id)
-
-            findings.append(
-                make_finding(
-                    engine_rule="check-sinkcredential-not-in-response",
-                    level="error",
-                    message=(
-                        f"sinkCredential found in {method.upper()} "
-                        f"{path} {status_code} response schema — "
-                        f"sinkCredential MUST NOT appear in responses"
-                    ),
-                    path=api.spec_file,
-                    line=1,
-                    api_name=api.api_name,
+            if not isinstance(field_def, dict) or field_def.get("writeOnly") is not True:
+                findings.append(
+                    make_finding(
+                        engine_rule="check-sinkcredential-secrets-writeonly",
+                        level="warn",
+                        message=(
+                            f"{schema_name}.{field_name} must be writeOnly: "
+                            f"true — sinkCredential secret fields must not "
+                            f"be exposed in responses"
+                        ),
+                        path=api.spec_file,
+                        line=1,
+                        api_name=api.api_name,
+                    )
                 )
-            )
 
     return findings
 
