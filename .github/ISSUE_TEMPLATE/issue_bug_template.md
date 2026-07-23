@@ -1,8 +1,8 @@
 ---
 name: ‼ Bug 🐛
-about: Describe the bug in Provider Implementation
+about: Describe the bug in tooling implementation
 title: ''
-labels: 'implementation:bug'
+labels: 'bug'
 assignees: ''
 
 ---
@@ -22,12 +22,6 @@ assignees: ''
 
 **Screenshots**
 <!-- If applicable, add screenshots to help explain the problem. -->
-
-**Environment:**
-<!-- - Network Capability Provider: [e.g. NEF, proprietary function]
- - Vendor: [e.g. Nokia, Ericsson]
- - Version [e.g. 22] 
- - -->
 
 **Additional context**
 <!-- Add any other context about the problem here. -->
