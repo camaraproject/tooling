@@ -2,6 +2,7 @@
 
 ## Table of Contents
 
+- **[v0.8.0](#v080)**
 - **[v0.7.1](#v071)**
 - **[v0.7.0](#v070)**
 - **[v0.6.0](#v060)**
@@ -12,6 +13,32 @@
 - **[v0.2.2](#v022)**
 - **[v0.2.1](#v021)**
 - **[v0.2.0](#v020)**
+
+# v0.8.0
+
+## Release Notes
+
+**v0.8.0 is a minor release for the CAMARA tooling repository.**
+
+This release adds x-correlator documentation checks (new rules S-039 and S-040) and rewrites the behavior of three existing rules: discriminator-aware unused-component detection (S-211), a per-field `sinkCredential` writeOnly check (P-016), and S-036 parameter casing to allow the Design-Guide-defined filtering-operation suffixes (`.gte`, `.gt`, `.lte`, `.lt`).
+
+### Added
+
+* Check x-correlator documentation — new rules S-039 (request header undocumented) and S-040 (response header undocumented) by @LarryHu0217 in https://github.com/camaraproject/tooling/pull/376
+
+### Changed
+
+* Make unused-component detection discriminator-aware (S-211) by @LarryHu0217 in https://github.com/camaraproject/tooling/pull/378
+* Migrate P-006/P-007/P-008 severity ramp to `target_api_status` (no behavior change) by @hdamker in https://github.com/camaraproject/tooling/pull/381
+* Rewrite P-016 as a per-field `sinkCredential` writeOnly check by @hdamker in https://github.com/camaraproject/tooling/pull/383
+* Allow Design-Guide-defined filtering-operation suffixes (`.gte`, `.gt`, `.lte`, `.lt`) in S-036 parameter casing by @hdamker in https://github.com/camaraproject/tooling/pull/389
+* Bump @redocly/cli from 2.37.0 to 2.39.0 by @dependabot in https://github.com/camaraproject/tooling/pull/374
+* Bump actions/setup-python from 6 to 7 by @dependabot in https://github.com/camaraproject/tooling/pull/384
+* Bump actions/setup-node from 6 to 7 by @dependabot in https://github.com/camaraproject/tooling/pull/385
+* Bump @stoplight/spectral-cli from 6.16.1 to 6.16.2 by @dependabot in https://github.com/camaraproject/tooling/pull/386
+* Bump fast-uri, brace-expansion to patched versions (security) by @hdamker in https://github.com/camaraproject/tooling/pull/391
+
+**Full Changelog**: https://github.com/camaraproject/tooling/compare/v0.7.1...v0.8.0
 
 # v0.7.1
 
