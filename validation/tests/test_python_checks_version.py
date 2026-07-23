@@ -557,6 +557,26 @@ class TestCheckFeatureFileUrlVersion:
         lines = {f["line"] for f in findings}
         assert lines == {2, 3}
 
+    def test_main_same_line_api_name_reused_as_resource_segment(
+        self, tmp_path: Path
+    ):
+        """Regression (tooling#394): the api-name may legitimately reappear
+        later in the same line as a resource-collection segment (e.g. a
+        ``qos-profiles`` API whose ``getQosProfile`` resource path is also
+        named ``qos-profiles``). Only the first ``{api-name}/…`` occurrence
+        per line is the version segment; a second occurrence must not be
+        misread as one. Distinct from ``test_multiple_lines_collect_all_findings``
+        above, which covers separate lines each contributing their own
+        finding — that must keep working unchanged."""
+        _write_spec(tmp_path, "qos-profiles", "wip")
+        _write_feature(
+            tmp_path, "qos-profiles.feature",
+            "Feature: QoS Profiles, vwip\n"
+            '  Given the resource "/qos-profiles/vwip/qos-profiles/{name}"\n',
+        )
+        ctx = _make_context("qos-profiles", branch_type="main", version="wip")
+        assert check_feature_file_url_version(tmp_path, ctx) == []
+
     def test_spec_missing_returns_no_findings(self, tmp_path: Path):
         """No spec file => silent skip (filename/presence checks report)."""
         _write_feature(
