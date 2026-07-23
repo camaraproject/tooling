@@ -292,6 +292,52 @@ class TestGroupA:
         findings = _run_spectral(spec)
         assert "camara-parameter-name-casing-convention" not in _codes(findings)
 
+    @pytest.mark.parametrize("suffix", ["gte", "gt", "lte", "lt"])
+    def test_parameter_name_filter_suffix_passes(self, suffix):
+        # Design Guide §4.3.2 filtering-operation suffixes must not be flagged.
+        spec = _VALID_SPEC.replace(
+            "      summary: Get test",
+            "      parameters:\n"
+            f"        - name: creationDate.{suffix}\n"
+            "          in: query\n"
+            "          required: false\n"
+            "          schema:\n"
+            "            type: string\n"
+            "      summary: Get test",
+        )
+        findings = _run_spectral(spec)
+        assert "camara-parameter-name-casing-convention" not in _codes(findings)
+
+    def test_parameter_name_unrecognized_suffix_fails(self):
+        # Only the four documented filter suffixes are exempted.
+        spec = _VALID_SPEC.replace(
+            "      summary: Get test",
+            "      parameters:\n"
+            "        - name: creationDate.foo\n"
+            "          in: query\n"
+            "          required: false\n"
+            "          schema:\n"
+            "            type: string\n"
+            "      summary: Get test",
+        )
+        findings = _run_spectral(spec)
+        assert "camara-parameter-name-casing-convention" in _codes(findings)
+
+    def test_parameter_name_bad_base_with_valid_suffix_fails(self):
+        # A valid filter suffix does not excuse a badly-cased base name.
+        spec = _VALID_SPEC.replace(
+            "      summary: Get test",
+            "      parameters:\n"
+            "        - name: CreationDate.gte\n"
+            "          in: query\n"
+            "          required: false\n"
+            "          schema:\n"
+            "            type: string\n"
+            "      summary: Get test",
+        )
+        findings = _run_spectral(spec)
+        assert "camara-parameter-name-casing-convention" in _codes(findings)
+
 
 class TestGroupB:
     """Group B: Error code checks."""

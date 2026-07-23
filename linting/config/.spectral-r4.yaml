@@ -318,14 +318,17 @@ rules:
     recommended: true  # Set to true/false to enable/disable this rule
 
   camara-parameter-name-casing-convention:
-    description: Parameter names (path and query) must be lowerCamelCase.
+    description: >
+      Parameter names (path and query) must be lowerCamelCase. The Design Guide's
+      filtering-operation suffixes (.gte, .gt, .lte, .lt) are allowed as an exact
+      tail on an otherwise lowerCamelCase name.
     message: "{{property}} is not lowerCamelCase: {{error}}"
     severity: warn
     given: $.paths[*][*].parameters[?(@.in != 'header')].name
     then:
       function: pattern
       functionOptions:
-        match: "^[a-z][a-zA-Z0-9]*$"
+        match: "^[a-z][a-zA-Z0-9]*(\\.(gte|gt|lte|lt))?$"
     recommended: true
 
   camara-schema-type-check:
