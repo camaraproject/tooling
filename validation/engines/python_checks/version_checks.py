@@ -318,25 +318,35 @@ def check_feature_file_url_version(
             continue
 
         for line_number, line in enumerate(lines, start=1):
-            for match in seg_re.finditer(line):
-                actual_segment = match.group(1)
-                if actual_segment.lower() == expected_lower:
-                    continue
-                findings.append(
-                    make_finding(
-                        engine_rule="check-feature-file-url-version",
-                        level="error",
-                        message=(
-                            f"Scenario-step URL version segment "
-                            f"'/{actual_segment}' does not match expected "
-                            f"'/{expected_segment}' (derived from "
-                            f"info.version '{info_version}')"
-                        ),
-                        path=f"{_TEST_DIR}/{feature_file.name}",
-                        line=line_number,
-                        api_name=api.api_name,
-                    )
+            # A comment is not a scenario step (e.g. a `# Operation: GET
+            # /{api-name}/{id}` line documenting the raw route) and carries
+            # no version segment to check.
+            if line.lstrip().startswith("#"):
+                continue
+            # First match only (tooling#394): the api-name may recur later in
+            # the same line as a resource-collection segment (e.g. a
+            # `qos-profiles` API's own `/qos-profiles/{name}` resource).
+            match = seg_re.search(line)
+            if match is None:
+                continue
+            actual_segment = match.group(1)
+            if actual_segment.lower() == expected_lower:
+                continue
+            findings.append(
+                make_finding(
+                    engine_rule="check-feature-file-url-version",
+                    level="error",
+                    message=(
+                        f"Scenario-step URL version segment "
+                        f"'/{actual_segment}' does not match expected "
+                        f"'/{expected_segment}' (derived from "
+                        f"info.version '{info_version}')"
+                    ),
+                    path=f"{_TEST_DIR}/{feature_file.name}",
+                    line=line_number,
+                    api_name=api.api_name,
                 )
+            )
 
     return findings
 
