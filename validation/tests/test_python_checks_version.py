@@ -577,6 +577,24 @@ class TestCheckFeatureFileUrlVersion:
         ctx = _make_context("qos-profiles", branch_type="main", version="wip")
         assert check_feature_file_url_version(tmp_path, ctx) == []
 
+    def test_main_comment_line_skipped(self, tmp_path: Path):
+        """A ``#`` comment documenting the raw operation (e.g.
+        ``# Operation: GET /network-access-devices/{id}``) is not a scenario
+        step — it carries no version segment at all — and must not be
+        misread as one. Observed on camaraproject/NetworkAccessManagement's
+        ``network-access-devices-getNetworkAccessDevice.feature``."""
+        _write_spec(tmp_path, "network-access-devices", "wip")
+        _write_feature(
+            tmp_path, "network-access-devices.feature",
+            "Feature: Network Access Devices, vwip\n"
+            "  # Operation: GET /network-access-devices/{networkAccessDeviceId}\n"
+            '  Given the resource "/network-access-devices/vwip/network-access-devices/{networkAccessDeviceId}"\n',
+        )
+        ctx = _make_context(
+            "network-access-devices", branch_type="main", version="wip"
+        )
+        assert check_feature_file_url_version(tmp_path, ctx) == []
+
     def test_spec_missing_returns_no_findings(self, tmp_path: Path):
         """No spec file => silent skip (filename/presence checks report)."""
         _write_feature(
