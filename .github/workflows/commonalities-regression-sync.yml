@@ -1,0 +1,304 @@
+# CommonalitiesTest Regression Sync — Reusable Workflow
+#
+# Owns the whole pipeline: diff-check Commonalities main against
+# CommonalitiesTest's synced state, sync code/common/ to CommonalitiesTest
+# main, cherry-pick that same commit onto every regression/* branch with no
+# exception, regenerate the mirror branch's templates on the same trigger,
+# then sweep every regression/* branch for a fixture deviation.
+# CommonalitiesTest itself carries no bespoke automation code of its own —
+# this workflow (and validation-regression.yml, which also calls it) is the
+# only place this pipeline lives.
+#
+# The diff-check is path-scoped content compare, not a HEAD-moved check —
+# Commonalities main can move for reasons outside artifacts/common/ and
+# artifacts/api-templates/, so a raw SHA comparison is neither necessary nor
+# sufficient. Each sync only runs when its own diff is non-empty; `force`
+# gates exactly one thing — whether the sweep runs when neither diff fired.
+#
+# Two jobs, not five: diff/sync/cherry-pick/mirror-regen run as steps in one
+# `sync` job, not separate jobs or a cherry-pick matrix. A single job is the
+# unit concurrency can safely serialize across runs — only one job-run ever
+# requests its group at a time, so there's no risk of the "cancel whatever
+# was previously pending" rule racing sibling jobs (or matrix instances)
+# against each other and silently dropping some of them. It also drops the
+# repeated per-job runner/checkout/setup-python overhead the earlier
+# multi-job version paid four times over, and lets cherry-pick reuse one
+# clone across every branch instead of a fresh checkout per branch.
+
+name: CommonalitiesTest Regression Sync
+
+on:
+  workflow_call:
+    inputs:
+      force:
+        description: >-
+          Run the sweep even when neither diff-check fired. Callers whose
+          trigger has no correlation with Commonalities' content (a tooling
+          push) should pass true unconditionally.
+        type: boolean
+        required: false
+        default: false
+
+env:
+  PYTHON_VERSION: "3.14"
+  TEST_REPO: camaraproject/CommonalitiesTest
+  MIRROR_BRANCH: regression/commonalities-main-mirror
+
+permissions:
+  contents: read
+
+jobs:
+  # ── Sync: diff-check, sync-common, cherry-pick, mirror-regen ────────────
+  sync:
+    name: Diff, sync, cherry-pick, regenerate mirror templates
+    runs-on: ubuntu-latest
+    # Fixed group name, not one keyed on github.ref: this job is reached
+    # from three places (the scheduled/dispatch caller, the tooling-push job
+    # in validation-regression.yml, and any manual dispatch of either) that
+    # each have a different ref, but all push to the same CommonalitiesTest
+    # branches and must never overlap. cancel-in-progress is false: this
+    # pushes a multi-branch sequence (main, then every regression/* branch);
+    # cancelling mid-sequence could leave main synced but branches not yet
+    # cherry-picked, with no later run able to notice. Queueing instead
+    # means a newer trigger just waits for the in-flight sequence to finish,
+    # then reads current (already-synced) state.
+    concurrency:
+      group: commonalities-regression-sync-write
+      cancel-in-progress: false
+    outputs:
+      common_changed: ${{ steps.diff-common.outputs.common_changed }}
+      templates_changed: ${{ steps.diff-templates.outputs.templates_changed }}
+    steps:
+      # camara-validation has no contents permission; camara-release-automation
+      # already has contents:write and is installed org-wide, so it mints the
+      # push-capable token here even though this pipeline is not release
+      # automation. It needs its own bypass-actor entry on CommonalitiesTest's
+      # code-owner-review ruleset for the direct push to main to succeed.
+      - name: Mint release automation app token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          owner: camaraproject
+          repositories: CommonalitiesTest
+
+      - name: Checkout tooling
+        uses: actions/checkout@v7
+        with:
+          sparse-checkout: |
+            validation/scripts
+            requirements.txt
+
+      - name: Setup Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install script dependencies
+        run: pip install --quiet -r requirements.txt
+
+      - name: Checkout Commonalities main
+        uses: actions/checkout@v7
+        with:
+          repository: camaraproject/Commonalities
+          ref: main
+          sparse-checkout: |
+            artifacts/common
+            artifacts/api-templates
+          path: _commonalities
+
+      - name: Record Commonalities HEAD
+        id: commonalities-head
+        run: echo "sha=$(git -C _commonalities rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      # Full (non-sparse) checkouts, not read-only sparse ones: this same
+      # clone is reused later in the job to commit and push, so it needs the
+      # full working tree (release-plan.yaml included) up front.
+      - name: Checkout CommonalitiesTest main
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ env.TEST_REPO }}
+          ref: main
+          path: _test_main
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Checkout CommonalitiesTest mirror branch
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ env.TEST_REPO }}
+          ref: ${{ env.MIRROR_BRANCH }}
+          path: _test_mirror
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Diff common
+        id: diff-common
+        run: |
+          python3 validation/scripts/commonalities_regression_sync.py diff-common \
+            --source _commonalities/artifacts/common \
+            --dest _test_main/code/common \
+            --github-output "$GITHUB_OUTPUT"
+
+      - name: Diff templates
+        id: diff-templates
+        run: |
+          python3 validation/scripts/commonalities_regression_sync.py diff-templates \
+            --source _commonalities/artifacts/api-templates \
+            --dest _test_mirror/code/API_definitions \
+            --github-output "$GITHUB_OUTPUT"
+
+      - name: Sync code/common and push to main
+        id: sync-common
+        if: steps.diff-common.outputs.common_changed == 'true'
+        run: |
+          python3 validation/scripts/commonalities_regression_sync.py sync-common \
+            --source _commonalities/artifacts/common \
+            --dest _test_main/code/common \
+            --release-plan _test_main/release-plan.yaml
+
+          cd _test_main
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add code/common/
+          if git diff --cached --quiet; then
+            echo "::error::diff-check reported common_changed=true but nothing to commit"
+            exit 1
+          fi
+          git commit -m "chore: sync common files from Commonalities main@${COMMONALITIES_HEAD:0:7}"
+          git push origin main
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+        env:
+          COMMONALITIES_HEAD: ${{ steps.commonalities-head.outputs.sha }}
+
+      # Reuses the _test_main clone for every branch — one fetch + checkout
+      # + cherry-pick + push per branch, not a fresh clone each time. The
+      # explicit refspec on `git fetch` is required: a bare `git fetch origin
+      # <branch>` only updates FETCH_HEAD, not refs/remotes/origin/<branch>,
+      # so `origin/<branch>` wouldn't exist yet for checkout to read.
+      - name: Cherry-pick onto every regression/* branch
+        if: steps.diff-common.outputs.common_changed == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          SYNC_SHA: ${{ steps.sync-common.outputs.sha }}
+        run: |
+          cd _test_main
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          BRANCHES=$(gh api "repos/${{ env.TEST_REPO }}/branches" --paginate \
+            --jq '.[].name | select(startswith("regression/"))' | sort)
+          if [ -z "$BRANCHES" ]; then
+            echo "::error::No regression/* branches found on ${{ env.TEST_REPO }}"
+            exit 1
+          fi
+
+          for branch in $BRANCHES; do
+            echo "Cherry-picking onto $branch"
+            git fetch origin "$branch:refs/remotes/origin/$branch"
+            git checkout -B "$branch" "origin/$branch"
+            git cherry-pick -x "$SYNC_SHA"
+            git push origin "$branch"
+          done
+
+      - name: Regenerate mirror templates and push
+        if: steps.diff-templates.outputs.templates_changed == 'true'
+        env:
+          COMMONALITIES_HEAD: ${{ steps.commonalities-head.outputs.sha }}
+        run: |
+          python3 validation/scripts/commonalities_regression_sync.py sync-templates \
+            --source _commonalities/artifacts/api-templates \
+            --dest _test_mirror/code/API_definitions
+
+          cd _test_mirror
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add code/API_definitions/
+          if git diff --cached --quiet; then
+            echo "::error::diff-check reported templates_changed=true but nothing to commit"
+            exit 1
+          fi
+          git commit -m "chore: regenerate templates from Commonalities main@${COMMONALITIES_HEAD:0:7}"
+          git push origin "${{ env.MIRROR_BRANCH }}"
+
+      - name: Record diagnostic trail
+        if: always()
+        run: |
+          {
+            echo "## CommonalitiesTest regression sync"
+            echo ""
+            echo "- Commonalities HEAD: \`${{ steps.commonalities-head.outputs.sha }}\`"
+            echo "- common_changed: \`${{ steps.diff-common.outputs.common_changed }}\`"
+            echo "- templates_changed: \`${{ steps.diff-templates.outputs.templates_changed }}\`"
+            echo "- force: \`${{ inputs.force }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ── Sweep: regression_runner.py against every regression/* branch ──────
+  sweep:
+    name: Sweep CommonalitiesTest
+    needs: sync
+    if: >-
+      always() &&
+      needs.sync.result == 'success' &&
+      (needs.sync.outputs.common_changed == 'true' ||
+       needs.sync.outputs.templates_changed == 'true' ||
+       inputs.force == true)
+    runs-on: ubuntu-latest
+    # Separate group from the write job, and cancel-in-progress: true — same
+    # reasoning as validation-regression.yml's own canary job: this only
+    # dispatches and diffs, so killing a stale sweep in favor of a fresher
+    # one is safe. Decoupled from the write lock so a new trigger's write
+    # phase doesn't also have to wait out a previous run's ~4-branch sweep.
+    concurrency:
+      group: commonalities-regression-sync-sweep
+      cancel-in-progress: true
+    steps:
+      - name: Checkout tooling
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install runner dependencies
+        run: |
+          pip install --upgrade pip
+          pip install --quiet -r requirements.txt
+
+      - name: Mint validation app token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.VALIDATION_APP_CLIENT_ID }}
+          private-key: ${{ secrets.VALIDATION_APP_PRIVATE_KEY }}
+          owner: camaraproject
+          repositories: CommonalitiesTest
+
+      - name: Run regression runner
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          python3 validation/scripts/regression_runner.py \
+            --repo ${{ env.TEST_REPO }} \
+            --branch-filter 'regression/*' \
+            --summary-file commonalities-regression-summary.md
+
+      - name: Publish summary
+        if: always()
+        run: |
+          if [ -f commonalities-regression-summary.md ]; then
+            cat commonalities-regression-summary.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::warning::commonalities-regression-summary.md not produced (runner likely failed before writing)"
+          fi
+
+      - name: Upload summary artifact
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: commonalities-regression-summary
+          path: commonalities-regression-summary.md
+          if-no-files-found: warn
+          retention-days: 30
