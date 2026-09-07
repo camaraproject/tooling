@@ -112,12 +112,20 @@ def test_diff_missing_source_dir_raises(tmp_path: Path) -> None:
 
 def test_read_commonalities_release(tmp_path: Path) -> None:
     path = tmp_path / "release-plan.yaml"
-    _write(path, "commonalities_release: r4.4\nrelease_track: independent\n")
+    _write(path, "dependencies:\n  commonalities_release: r4.4\nrelease_track: independent\n")
 
     assert read_commonalities_release(path) == "r4.4"
 
 
 def test_read_commonalities_release_missing_key_raises(tmp_path: Path) -> None:
+    path = tmp_path / "release-plan.yaml"
+    _write(path, "dependencies:\n  identity_consent_management_release: r4.2\n")
+
+    with pytest.raises(KeyError):
+        read_commonalities_release(path)
+
+
+def test_read_commonalities_release_missing_dependencies_raises(tmp_path: Path) -> None:
     path = tmp_path / "release-plan.yaml"
     _write(path, "release_track: independent\n")
 

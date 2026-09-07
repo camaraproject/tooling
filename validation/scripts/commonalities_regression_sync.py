@@ -83,7 +83,7 @@ def read_commonalities_release(release_plan_path: Path) -> str:
     release, instead of also hardcoding the value into the pipeline.
     """
     data = yaml.safe_load(release_plan_path.read_text(encoding="utf-8"))
-    return data["commonalities_release"]
+    return data["dependencies"]["commonalities_release"]
 
 
 def sync_common(source: Path, dest: Path, release_label: str) -> dict[str, str]:
