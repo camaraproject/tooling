@@ -1,10 +1,11 @@
 # CommonalitiesTest Regression Sync — Reusable Workflow
 #
 # Owns the whole pipeline: diff-check Commonalities main against
-# CommonalitiesTest's synced state, sync code/common/ to CommonalitiesTest
-# main, cherry-pick that same commit onto every regression/* branch with no
-# exception, regenerate the mirror branch's templates on the same trigger,
-# then sweep every regression/* branch for a fixture deviation.
+# CommonalitiesTest's synced state, regenerate the mirror branch's
+# templates, sync code/common/ to CommonalitiesTest main, converge every
+# regression/* branch's code/common/ onto main's (including the mirror
+# branch, so its commons commit lands on top of its fresh template
+# commit), then sweep every regression/* branch for a fixture deviation.
 # CommonalitiesTest itself carries no bespoke automation code of its own —
 # this workflow (and validation-regression.yml, which also calls it) is the
 # only place this pipeline lives.
@@ -16,13 +17,23 @@
 # own diff is non-empty; `force` controls one thing — whether the sweep
 # still runs when neither diff fired.
 #
-# The `sync` job runs diff-check, sync, cherry-pick, and mirror-template
-# regeneration as sequential steps in a single job rather than as separate
-# jobs or a matrix. A concurrency group only keeps one run pending at a
-# time — a newer pending request cancels an older one — so several jobs (or
-# matrix instances) sharing a group would cancel each other's queued slot
-# and silently drop work. A single job has exactly one requester per
-# trigger, so it can be queued safely across overlapping triggers.
+# The branch-convergence step is deliberately ungated (unlike main's sync
+# and the mirror's template regen): it re-checks every regression/*
+# branch's code/common/ against main's current content on every run and
+# is a no-op commit-wise where they already match. That makes it
+# self-healing after a run that pushed main but failed partway through the
+# branch loop, and it is the only path that picks up a newly added
+# regression/* branch — one produces no diff on main's own paths, so a
+# main-gated step would never sync it.
+#
+# The `sync` job runs diff-check, mirror-template regeneration, main sync,
+# and branch convergence as sequential steps in a single job rather than
+# as separate jobs or a matrix. A concurrency group only keeps one run
+# pending at a time — a newer pending request cancels an older one — so
+# several jobs (or matrix instances) sharing a group would cancel each
+# other's queued slot and silently drop work. A single job has exactly one
+# requester per trigger, so it can be queued safely across overlapping
+# triggers.
 
 name: CommonalitiesTest Regression Sync
 
@@ -47,7 +58,7 @@ permissions:
   contents: read
 
 jobs:
-  # ── Sync: diff-check, sync-common, cherry-pick, mirror-regen ────────────
+  # ── Sync: diff-check, mirror-regen, sync-common, branch convergence ────
   sync:
     name: Sync
     runs-on: ubuntu-latest
@@ -57,9 +68,11 @@ jobs:
     # dispatch of either), each with a different ref, but all of them push
     # to the same CommonalitiesTest branches and must not run at the same
     # time. cancel-in-progress is false because this job pushes a sequence
-    # (main, then every regression/* branch) — cancelling it midway could
-    # leave main synced but branches not yet cherry-picked, with no later
-    # run able to detect that. Queueing lets a newer trigger wait for the
+    # (mirror templates, then main, then every regression/* branch) —
+    # cancelling it midway could leave main synced but branches not yet
+    # converged. The branch-convergence step is self-healing across runs
+    # (see below), but not within one: a cancelled run still leaves that
+    # run's own loop half-done. Queueing lets a newer trigger wait for the
     # current run to finish before it reads state.
     concurrency:
       group: commonalities-regression-sync-write
@@ -67,6 +80,7 @@ jobs:
     outputs:
       common_changed: ${{ steps.diff-common.outputs.common_changed }}
       templates_changed: ${{ steps.diff-templates.outputs.templates_changed }}
+      branches_changed: ${{ steps.converge.outputs.branches_changed }}
     steps:
       # camara-validation has no contents permission. camara-release-automation
       # has contents:write and is installed org-wide, so it provides the
@@ -146,59 +160,12 @@ jobs:
             --dest _test_mirror/code/API_definitions \
             --github-output "$GITHUB_OUTPUT"
 
-      - name: Sync code/common and push to main
-        id: sync-common
-        if: steps.diff-common.outputs.common_changed == 'true'
-        run: |
-          python3 validation/scripts/commonalities_regression_sync.py sync-common \
-            --source _commonalities/artifacts/common \
-            --dest _test_main/code/common \
-            --release-plan _test_main/release-plan.yaml
-
-          cd _test_main
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add code/common/
-          if git diff --cached --quiet; then
-            echo "::error::diff-check reported common_changed=true but nothing to commit"
-            exit 1
-          fi
-          git commit -m "chore: sync common files from Commonalities main@${COMMONALITIES_HEAD:0:7}"
-          git push origin main
-          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-        env:
-          COMMONALITIES_HEAD: ${{ steps.commonalities-head.outputs.sha }}
-
-      # Reuses the _test_main clone for every branch instead of a separate
-      # checkout per branch. The explicit refspec on `git fetch` is
-      # required: `git fetch origin <branch>` on its own only updates
-      # FETCH_HEAD, not refs/remotes/origin/<branch>, so `origin/<branch>`
-      # would not exist yet for the following checkout.
-      - name: Cherry-pick onto every regression/* branch
-        if: steps.diff-common.outputs.common_changed == 'true'
-        env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
-          SYNC_SHA: ${{ steps.sync-common.outputs.sha }}
-        run: |
-          cd _test_main
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-          BRANCHES=$(gh api "repos/${{ env.TEST_REPO }}/branches" --paginate \
-            --jq '.[].name | select(startswith("regression/"))' | sort)
-          if [ -z "$BRANCHES" ]; then
-            echo "::error::No regression/* branches found on ${{ env.TEST_REPO }}"
-            exit 1
-          fi
-
-          for branch in $BRANCHES; do
-            echo "Cherry-picking onto $branch"
-            git fetch origin "$branch:refs/remotes/origin/$branch"
-            git checkout -B "$branch" "origin/$branch"
-            git cherry-pick -x "$SYNC_SHA"
-            git push origin "$branch"
-          done
-
+      # Runs before main sync and branch convergence: the mirror branch is
+      # also one of the regression/* branches the convergence step below
+      # fetches and rewrites, and that step must see this commit already
+      # pushed so the mirror ends up with the template commit followed by
+      # the commons commit, not the reverse (which a stale local clone of
+      # _test_mirror pushed after convergence would silently overwrite).
       - name: Regenerate mirror templates and push
         if: steps.diff-templates.outputs.templates_changed == 'true'
         env:
@@ -219,6 +186,75 @@ jobs:
           git commit -m "chore: regenerate templates from Commonalities main@${COMMONALITIES_HEAD:0:7}"
           git push origin "${{ env.MIRROR_BRANCH }}"
 
+      - name: Sync code/common and push to main
+        id: sync-common
+        if: steps.diff-common.outputs.common_changed == 'true'
+        run: |
+          python3 validation/scripts/commonalities_regression_sync.py sync-common \
+            --source _commonalities/artifacts/common \
+            --dest _test_main/code/common \
+            --release-plan _test_main/release-plan.yaml
+
+          cd _test_main
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add code/common/
+          if git diff --cached --quiet; then
+            echo "::error::diff-check reported common_changed=true but nothing to commit"
+            exit 1
+          fi
+          git commit -m "chore: sync common files from Commonalities main@${COMMONALITIES_HEAD:0:7}"
+          git push origin main
+        env:
+          COMMONALITIES_HEAD: ${{ steps.commonalities-head.outputs.sha }}
+
+      # Ungated (runs every trigger, not just when common_changed is
+      # true) and idempotent: each branch is reset from its own remote
+      # state, then code/common/ is overwritten from local main and
+      # committed only if that produces a diff. That makes this the one
+      # step able to recover a branch left behind by a run that pushed
+      # main but failed partway through this loop, and the one step that
+      # picks up a newly added regression/* branch, which produces no
+      # diff on main's own paths and so would never be seen by a
+      # main-gated step. Reuses the _test_main clone for every branch
+      # instead of a separate checkout per branch. The explicit refspec on
+      # `git fetch` is required: `git fetch origin <branch>` on its own
+      # only updates FETCH_HEAD, not refs/remotes/origin/<branch>, so
+      # `origin/<branch>` would not exist yet for the following checkout.
+      - name: Sync code/common onto every regression/* branch
+        id: converge
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          COMMONALITIES_HEAD: ${{ steps.commonalities-head.outputs.sha }}
+        run: |
+          cd _test_main
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          BRANCHES=$(gh api "repos/${{ env.TEST_REPO }}/branches" --paginate \
+            --jq '.[].name | select(startswith("regression/"))' | sort)
+          if [ -z "$BRANCHES" ]; then
+            echo "::error::No regression/* branches found on ${{ env.TEST_REPO }}"
+            exit 1
+          fi
+
+          any_changed=false
+          for branch in $BRANCHES; do
+            git fetch origin "$branch:refs/remotes/origin/$branch"
+            git checkout -B "$branch" "origin/$branch"
+            git checkout main -- code/common/
+            git add code/common/
+            if git diff --cached --quiet; then
+              echo "$branch already matches main's code/common/"
+              continue
+            fi
+            echo "Syncing code/common/ onto $branch"
+            git commit -m "chore: sync common files from Commonalities main@${COMMONALITIES_HEAD:0:7}"
+            git push origin "$branch"
+            any_changed=true
+          done
+          echo "branches_changed=$any_changed" >> "$GITHUB_OUTPUT"
+
       - name: Record diagnostic trail
         if: always()
         run: |
@@ -228,6 +264,7 @@ jobs:
             echo "- Commonalities HEAD: \`${{ steps.commonalities-head.outputs.sha }}\`"
             echo "- common_changed: \`${{ steps.diff-common.outputs.common_changed }}\`"
             echo "- templates_changed: \`${{ steps.diff-templates.outputs.templates_changed }}\`"
+            echo "- branches_changed: \`${{ steps.converge.outputs.branches_changed }}\`"
             echo "- force: \`${{ inputs.force }}\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -240,6 +277,7 @@ jobs:
       needs.sync.result == 'success' &&
       (needs.sync.outputs.common_changed == 'true' ||
        needs.sync.outputs.templates_changed == 'true' ||
+       needs.sync.outputs.branches_changed == 'true' ||
        inputs.force == true)
     runs-on: ubuntu-latest
     # A separate group from the sync job, with cancel-in-progress: true:
