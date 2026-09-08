@@ -316,9 +316,14 @@ class TestFormatFindingLocation:
         f["schema_path"] = "components.schemas.QosProfile"
         assert format_finding_location(f) == "spec.yaml:42 (QosProfile)"
 
-    def test_non_component_schema_path_unchanged(self):
+    def test_non_component_schema_path_gets_inline_label(self):
         f = _make_finding(path="spec.yaml", line=42)
         f["schema_path"] = "paths./foo.get.parameters.0.schema"
+        assert format_finding_location(f) == "spec.yaml:42 (inline definition)"
+
+    def test_absent_schema_path_unchanged(self):
+        f = _make_finding(path="spec.yaml", line=42)
+        assert "schema_path" not in f
         assert format_finding_location(f) == "spec.yaml:42"
 
 

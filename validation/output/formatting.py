@@ -273,7 +273,10 @@ def format_finding_location(finding: dict) -> str:
 
     When ``schema_path`` identifies a named OpenAPI component (Spectral-engine
     findings only), the component name is appended in parens, e.g.
-    ``spec.yaml:42 (QosProfile)``.
+    ``spec.yaml:42 (QosProfile)``. When ``schema_path`` is present but does not
+    resolve to a named component (e.g. an inline parameter or body schema),
+    ``(inline definition)`` is appended instead, so the reader still knows the
+    hit isn't a defined component to look up elsewhere in the spec.
     """
     path = finding.get("path", "")
     line = finding.get("line", 0)
@@ -282,9 +285,12 @@ def format_finding_location(finding: dict) -> str:
         location = f"{path}:{line}:{column}"
     else:
         location = f"{path}:{line}"
-    match = _COMPONENT_PATH_RE.match(finding.get("schema_path") or "")
+    schema_path = finding.get("schema_path") or ""
+    match = _COMPONENT_PATH_RE.match(schema_path)
     if match:
         return f"{location} ({match.group(1)})"
+    if schema_path:
+        return f"{location} (inline definition)"
     return location
 
 
