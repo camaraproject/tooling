@@ -74,13 +74,18 @@ _RULE_CANONICAL_MISSING = "check-info-description-canonical-missing"
 # ---------------------------------------------------------------------------
 
 
-# Cache: { canonical_path: (mtime_ns, {template_name: [normalised_paragraph, ...]}) }
-_canonical_cache: Dict[Path, Tuple[int, Dict[str, List[str]]]] = {}
+# Per-template canonical data: normalised paragraphs plus whether the
+# canonical content itself opens with a blank line after BEGIN (the r4.4
+# spacer convention — absent in r4.3 canonical files).
+_CanonicalEntry = Tuple[List[str], bool]
+
+# Cache: { canonical_path: (mtime_ns, {template_name: _CanonicalEntry}) }
+_canonical_cache: Dict[Path, Tuple[int, Dict[str, _CanonicalEntry]]] = {}
 
 
 def _load_canonical(
     repo_path: Path, fallback_path: Optional[str] = None
-) -> Optional[Dict[str, List[str]]]:
+) -> Optional[Dict[str, _CanonicalEntry]]:
     """Load and paragraph-normalise the canonical templates.
 
     Resolution is two-tier:
@@ -95,8 +100,8 @@ def _load_canonical(
        ``code/common/``.  On main / working-branch / local runs no fallback is
        injected, so resolution falls through to ``None`` and P-031 fires.
 
-    Returns ``{template_name: [normalised_paragraph, ...]}`` or ``None`` when
-    neither source resolves.
+    Returns ``{template_name: (normalised_paragraphs, begin_blank_line)}`` or
+    ``None`` when neither source resolves.
 
     Cached by (path, mtime_ns) so each file is read at most once per
     validation run regardless of how many specs the repo contains.
@@ -111,7 +116,7 @@ def _load_canonical(
 
 def _load_canonical_from(
     canonical_path: Path,
-) -> Optional[Dict[str, List[str]]]:
+) -> Optional[Dict[str, _CanonicalEntry]]:
     """Read and normalise one canonical templates file.
 
     Returns ``None`` if the file does not exist or is not valid YAML mapping.
@@ -136,7 +141,7 @@ def _load_canonical_from(
     if not isinstance(data, dict):
         return None
 
-    result: Dict[str, List[str]] = {}
+    result: Dict[str, _CanonicalEntry] = {}
     for name, entry in data.items():
         if not isinstance(entry, dict):
             continue
@@ -146,7 +151,7 @@ def _load_canonical_from(
         body = _strip_markers(content, name)
         if body is None:
             continue
-        result[name] = _normalize_paragraphs(body)
+        result[name] = (_normalize_paragraphs(body), _first_line_blank(body))
 
     _canonical_cache[canonical_path] = (mtime, result)
     return result
@@ -165,8 +170,25 @@ def _strip_markers(content: str, template_name: str) -> Optional[str]:
     if begin_marker not in content or end_marker not in content:
         return None
     after_begin = content.split(begin_marker, 1)[1]
+    # Drop the newline that ends the BEGIN marker's own line so the result's
+    # first line is the first line *after* BEGIN, aligned with how
+    # _extract_markers builds a spec block's body (which never includes the
+    # BEGIN line itself). Without this, ``_first_line_blank`` would need two
+    # different rules for canonical vs. spec bodies.
+    if after_begin.startswith("\n"):
+        after_begin = after_begin[1:]
     body = after_begin.split(end_marker, 1)[0]
     return body
+
+
+def _first_line_blank(body: str) -> bool:
+    """True if *body* opens with a blank (or whitespace-only) line.
+
+    *body* must already be aligned to "first line = the line directly
+    after BEGIN", as both ``_strip_markers`` and ``_extract_markers``
+    produce.
+    """
+    return body.split("\n", 1)[0].strip() == ""
 
 
 # ---------------------------------------------------------------------------
@@ -535,8 +557,27 @@ def check_info_description_templates(
         if name not in canonical:
             continue
         block = occurrences[0]
+        canonical_paragraphs, canonical_begin_blank = canonical[name]
         found_paragraphs = _normalize_paragraphs(block["body"])
-        canonical_paragraphs = canonical[name]
+
+        if canonical_begin_blank and not _first_line_blank(block["body"]):
+            findings.append(
+                make_finding(
+                    engine_rule=_RULE_DRIFT,
+                    level="warn",
+                    message=(
+                        f"info.description template {name!r} has no blank "
+                        f"line directly after its BEGIN marker. Swagger "
+                        f"Editor will not render the following Markdown "
+                        f"heading without it. Add one blank line after "
+                        f"'<!-- CAMARA:MANDATORY:{name}:BEGIN -->'."
+                    ),
+                    path=spec_file,
+                    line=block["begin_line"],
+                    api_name=api.api_name,
+                )
+            )
+
         if found_paragraphs == canonical_paragraphs:
             continue
         diff_msg = _format_drift_message(
