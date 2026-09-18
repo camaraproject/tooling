@@ -312,10 +312,12 @@ class TestNS27InfoDescriptionMandatory:
         ]
         assert drift == []
 
-    def test_begin_marker_spacer_in_canonical_passes_with_old_spec(
+    def test_begin_marker_missing_blank_line_fires_when_canonical_has_it(
         self, tmp_path: Path
     ) -> None:
-        """A presentation spacer after BEGIN in canonical is not drift."""
+        """r4.4 canonical requires the BEGIN spacer; a spec without it (the
+        r4.3-era shape, unchanged from validation-rules/025) now fires a
+        dedicated finding rather than being silently tolerated."""
         spaced_canonical = _CANONICAL_YAML.replace(
             "<!-- CAMARA:MANDATORY:authorization-and-authentication:BEGIN -->\n"
             "    # Authorization and authentication",
@@ -325,6 +327,35 @@ class TestNS27InfoDescriptionMandatory:
         )
         _write_canonical(tmp_path, spaced_canonical)
         body = "\n\n".join([_BLOCK_AUTH, _BLOCK_ERRORS, _BLOCK_STRICTNESS])
+        _write_spec(tmp_path, "sample-service", body)
+        findings = check_info_description_templates(tmp_path, _make_context())
+        drift = [
+            f for f in findings
+            if f["engine_rule"] == "check-info-description-mandatory-drift"
+        ]
+        assert len(drift) == 1
+        assert "authorization-and-authentication" in drift[0]["message"]
+        assert "blank line" in drift[0]["message"]
+
+    def test_begin_marker_blank_line_present_on_both_passes(
+        self, tmp_path: Path
+    ) -> None:
+        """Canonical and spec both carry the r4.4 BEGIN spacer — no finding."""
+        spaced_canonical = _CANONICAL_YAML.replace(
+            "<!-- CAMARA:MANDATORY:authorization-and-authentication:BEGIN -->\n"
+            "    # Authorization and authentication",
+            "<!-- CAMARA:MANDATORY:authorization-and-authentication:BEGIN -->\n"
+            "\n"
+            "    # Authorization and authentication",
+        )
+        _write_canonical(tmp_path, spaced_canonical)
+        spaced_auth = _BLOCK_AUTH.replace(
+            "<!-- CAMARA:MANDATORY:authorization-and-authentication:BEGIN -->\n"
+            "# Authorization and authentication",
+            "<!-- CAMARA:MANDATORY:authorization-and-authentication:BEGIN -->\n\n"
+            "# Authorization and authentication",
+        )
+        body = "\n\n".join([spaced_auth, _BLOCK_ERRORS, _BLOCK_STRICTNESS])
         _write_spec(tmp_path, "sample-service", body)
         findings = check_info_description_templates(tmp_path, _make_context())
         drift = [
@@ -373,6 +404,34 @@ class TestNS27InfoDescriptionMandatory:
             if f["engine_rule"] == "check-info-description-mandatory-drift"
         ]
         assert drift == []
+
+    def test_begin_marker_missing_blank_line_and_content_drift_both_fire(
+        self, tmp_path: Path
+    ) -> None:
+        """Missing blank line and real content drift are independent findings."""
+        spaced_canonical = _CANONICAL_YAML.replace(
+            "<!-- CAMARA:MANDATORY:authorization-and-authentication:BEGIN -->\n"
+            "    # Authorization and authentication",
+            "<!-- CAMARA:MANDATORY:authorization-and-authentication:BEGIN -->\n"
+            "\n"
+            "    # Authorization and authentication",
+        )
+        _write_canonical(tmp_path, spaced_canonical)
+        drifted_auth = _BLOCK_AUTH.replace(
+            "Paragraph one of the authorization template.",
+            "Paragraph one with a WRONG word inserted here.",
+        )
+        body = "\n\n".join([drifted_auth, _BLOCK_ERRORS, _BLOCK_STRICTNESS])
+        _write_spec(tmp_path, "sample-service", body)
+        findings = check_info_description_templates(tmp_path, _make_context())
+        drift = [
+            f for f in findings
+            if f["engine_rule"] == "check-info-description-mandatory-drift"
+            and "authorization-and-authentication" in f["message"]
+        ]
+        assert len(drift) == 2
+        assert any("blank line" in f["message"] for f in drift)
+        assert any("drifted from canonical" in f["message"] for f in drift)
 
     def test_duplicate_marker_pair_fires_p028(self, tmp_path: Path) -> None:
         _write_canonical(tmp_path)
