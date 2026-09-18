@@ -1009,16 +1009,18 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
-      # `cache: npm` for the same reason as in the validation reusable
-      # workflow: pre-snapshot validation runs the same composite action
-      # and the same `npm ci`.  Note the `_tooling` checkout prefix here,
-      # not the validation workflow's `.tooling`.
+      # Deliberately no `cache: npm` here, unlike the validation reusable
+      # workflow.  Snapshot creation is slash-command driven, so this job
+      # always runs on an `issue_comment` event, and the Actions cache
+      # token for that event is read-only ("cache write denied: token has
+      # no writable scopes").  The step could therefore never populate a
+      # cache, and no default-branch entry exists to restore from, so the
+      # only observable effect was a failed-save warning annotation on
+      # every release run.
       - name: Setup Node
         uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-          cache-dependency-path: _tooling/validation/package-lock.json
 
       # ── Central validation settings (main) ─────────────────────────
       #
