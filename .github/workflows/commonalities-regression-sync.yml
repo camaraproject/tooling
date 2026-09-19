@@ -99,6 +99,7 @@ jobs:
       - name: Checkout tooling
         uses: actions/checkout@v7
         with:
+          repository: camaraproject/tooling
           sparse-checkout: |
             validation/scripts
             requirements.txt
@@ -292,6 +293,7 @@ jobs:
       - name: Checkout tooling
         uses: actions/checkout@v7
         with:
+          repository: camaraproject/tooling
           persist-credentials: false
 
       - name: Setup Python
