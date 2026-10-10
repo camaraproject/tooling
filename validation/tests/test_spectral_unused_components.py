@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import json
-import os
 import subprocess
 import tempfile
 from pathlib import Path
 
 import pytest
+
+from validation.engines import node_tools
 
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -18,7 +19,6 @@ _RULESETS = [
     _REPO_ROOT / "linting" / "config" / ".spectral-r3.4.yaml",
     _RULESET,
 ]
-_NODE_MODULES = _REPO_ROOT / "validation" / "node_modules"
 _RULE = "camara-discriminator-aware-unused-component"
 
 
@@ -28,16 +28,12 @@ def _run_spectral(spec: str, ruleset: Path = _RULESET) -> list[dict]:
         file.flush()
         spec_path = Path(file.name)
 
-    env = {
-        "PATH": os.environ.get("PATH", ""),
-        "NODE_PATH": str(_NODE_MODULES),
-        "HOME": os.environ.get("HOME", ""),
-    }
+    env = node_tools.spectral_env()
     try:
         result = subprocess.run(
             [
                 "node",
-                str(_NODE_MODULES / ".bin" / "spectral"),
+                str(node_tools.spectral_bin()),
                 "lint",
                 str(spec_path),
                 "-r",

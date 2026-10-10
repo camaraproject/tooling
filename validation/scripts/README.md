@@ -13,6 +13,16 @@ modify its CLI or exit codes without updating that action.
 python3 validate-release-plan.py <release-plan-file> [--check-files]
 ```
 
+## `validate_local.py`
+
+Runs the full orchestrator against a local clone of an API repository, as a
+`workflow_dispatch` run of its checked-out branch. Usage, prerequisites and
+exit codes: [contributor guide](../docs/contributor-guide.md#running-validation-locally).
+
+```
+python3 validation/scripts/validate_local.py <repo-path> [--out <dir>]
+```
+
 ## `regression_runner.py`
 
 Dispatches the validation framework against `regression/*` branches of a test

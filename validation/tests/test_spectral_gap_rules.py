@@ -16,13 +16,14 @@ from pathlib import Path
 
 import pytest
 
+from validation.engines import node_tools
+
 # ---------------------------------------------------------------------------
 # Paths & helpers
 # ---------------------------------------------------------------------------
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 _RULESET = _REPO_ROOT / "linting" / "config" / ".spectral-r4.yaml"
-_NODE_MODULES = _REPO_ROOT / "validation" / "node_modules"
 
 
 def _run_spectral(yaml_content: str) -> list[dict]:
@@ -32,15 +33,11 @@ def _run_spectral(yaml_content: str) -> list[dict]:
         f.flush()
         tmp_path = f.name
 
-    env = {
-        "PATH": subprocess.os.environ.get("PATH", ""),
-        "NODE_PATH": str(_NODE_MODULES),
-        "HOME": subprocess.os.environ.get("HOME", ""),
-    }
+    env = node_tools.spectral_env()
     result = subprocess.run(
         [
             "node",
-            str(_NODE_MODULES / ".bin" / "spectral"),
+            str(node_tools.spectral_bin()),
             "lint",
             tmp_path,
             "-r", str(_RULESET),
@@ -925,16 +922,12 @@ def _run_spectral_raw(yaml_content: str) -> subprocess.CompletedProcess:
         f.write(yaml_content)
         f.flush()
         tmp_path = f.name
-    env = {
-        "PATH": subprocess.os.environ.get("PATH", ""),
-        "NODE_PATH": str(_NODE_MODULES),
-        "HOME": subprocess.os.environ.get("HOME", ""),
-    }
+    env = node_tools.spectral_env()
     try:
         return subprocess.run(
             [
                 "node",
-                str(_NODE_MODULES / ".bin" / "spectral"),
+                str(node_tools.spectral_bin()),
                 "lint", tmp_path, "-r", str(_RULESET), "--format", "json",
             ],
             capture_output=True, text=True, env=env, timeout=30,

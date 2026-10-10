@@ -17,6 +17,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 
+from validation.engines import node_tools
 from validation.engines.spectral_adapter import parse_spectral_output
 
 # ---------------------------------------------------------------------------
@@ -27,7 +28,6 @@ from validation.engines.spectral_adapter import parse_spectral_output
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 _RULESET = _REPO_ROOT / "linting" / "config" / ".spectral-r4.yaml"
-_NODE_MODULES = _REPO_ROOT / "validation" / "node_modules"
 
 
 def _run_spectral(yaml_content: str) -> list[dict]:
@@ -36,15 +36,11 @@ def _run_spectral(yaml_content: str) -> list[dict]:
         f.flush()
         tmp_path = f.name
 
-    env = {
-        "PATH": subprocess.os.environ.get("PATH", ""),
-        "NODE_PATH": str(_NODE_MODULES),
-        "HOME": subprocess.os.environ.get("HOME", ""),
-    }
+    env = node_tools.spectral_env()
     result = subprocess.run(
         [
             "node",
-            str(_NODE_MODULES / ".bin" / "spectral"),
+            str(node_tools.spectral_bin()),
             "lint",
             tmp_path,
             "-r", str(_RULESET),
@@ -72,15 +68,11 @@ def _run_spectral_multi_file(entry_content: str, sibling_files: dict[str, str]) 
         for name, content in sibling_files.items():
             (Path(tmp_dir) / name).write_text(content)
 
-        env = {
-            "PATH": subprocess.os.environ.get("PATH", ""),
-            "NODE_PATH": str(_NODE_MODULES),
-            "HOME": subprocess.os.environ.get("HOME", ""),
-        }
+        env = node_tools.spectral_env()
         result = subprocess.run(
             [
                 "node",
-                str(_NODE_MODULES / ".bin" / "spectral"),
+                str(node_tools.spectral_bin()),
                 "lint",
                 str(entry_path),
                 "-r", str(_RULESET),

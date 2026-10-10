@@ -148,7 +148,7 @@ tooling/
 
 Maintained by **Commonalities Working Group**.
 
-To add or modify a CAMARA Validation check, start with the [contributor guide](validation/docs/contributor-guide.md) and the [architecture overview](validation/docs/architecture-overview.md).
+To add or modify a CAMARA Validation check, start with the [contributor guide](validation/docs/contributor-guide.md) and the [architecture overview](validation/docs/architecture-overview.md). To run CAMARA Validation against a local API repository clone, see [Running validation locally](validation/docs/contributor-guide.md#running-validation-locally).
 
 * Meetings of the working group are held virtually
   * Schedule: see [Commonalities Working Group wiki page](https://lf-camaraproject.atlassian.net/wiki/x/_QPe)
