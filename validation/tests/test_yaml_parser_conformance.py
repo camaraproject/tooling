@@ -330,6 +330,17 @@ class TestNodeModulesResolution:
 
         assert [f["reason"] for f in findings] == ["fake js-yaml"]
 
+    def test_helper_follows_a_symlinked_install(self, tmp_path: Path, monkeypatch):
+        node_modules = _make_fake_js_yaml(tmp_path / "install")
+        link = tmp_path / "shared-install"
+        link.symlink_to(node_modules, target_is_directory=True)
+        _write_api_definition(tmp_path, "sample", _VALID_OPENAPI)
+        monkeypatch.setenv("CAMARA_NODE_MODULES", str(link))
+
+        findings = _run_helper(tmp_path, "code/API_definitions/sample.yaml")
+
+        assert [f["reason"] for f in findings] == ["fake js-yaml"]
+
     def test_check_passes_the_resolved_install_to_the_helper(self, tmp_path: Path, monkeypatch):
         from validation.engines.python_checks import yaml_parser_conformance_checks
 
