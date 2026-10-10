@@ -8,10 +8,7 @@ from pathlib import Path
 from unittest.mock import Mock
 
 from validation.context import ApiContext, ValidationContext
-
-
-_REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-_REDOCLY_BIN_DIR = _REPO_ROOT / "validation" / "node_modules" / ".bin"
+from validation.engines import node_tools
 
 
 def _make_context(api_name: str | None = None) -> ValidationContext:
@@ -340,7 +337,7 @@ class TestComponentRenamingConflictIntegration:
     def _run_with_real_redocly(self, tmp_path, monkeypatch, api_name):
         from validation.engines.python_checks import bundling_checks
 
-        monkeypatch.setenv("PATH", f"{_REDOCLY_BIN_DIR}{os.pathsep}{os.environ['PATH']}")
+        monkeypatch.setenv("PATH", f"{node_tools.bin_dir()}{os.pathsep}{os.environ['PATH']}")
         return bundling_checks.check_component_renaming_conflict(
             tmp_path, _make_context(api_name)
         )
