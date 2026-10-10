@@ -7,11 +7,13 @@ and reports parser failures as advisory Validation findings.
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 from pathlib import Path
 from typing import List
 
 from validation.context import ValidationContext
+from validation.engines import node_tools
 
 from ._types import make_finding
 
@@ -68,6 +70,7 @@ def _run_helper(repo_path: Path, spec_file: str) -> list[dict] | dict:
         result = subprocess.run(
             ["node", str(_HELPER), spec_file],
             cwd=repo_path,
+            env={**os.environ, node_tools.ENV_VAR: str(node_tools.node_modules_dir())},
             capture_output=True,
             text=True,
             timeout=_TIMEOUT_SECONDS,

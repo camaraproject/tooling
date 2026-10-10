@@ -302,3 +302,47 @@ class TestCheckYamlParserConformance:
         assert findings[0]["engine_rule"] == "yaml-parser-conformance-execution-error"
         assert findings[0]["level"] == "error"
         assert "helper failed" in findings[0]["message"]
+
+
+def _make_fake_js_yaml(root: Path) -> Path:
+    """Create a ``node_modules`` whose ``js-yaml`` rejects every document."""
+    node_modules = root / "node_modules"
+    package = node_modules / "js-yaml"
+    package.mkdir(parents=True)
+    (package / "package.json").write_text('{"name": "js-yaml", "main": "index.js"}', encoding="utf-8")
+    (package / "index.js").write_text(
+        'exports.load = () => { throw new Error("fake js-yaml"); };\n', encoding="utf-8"
+    )
+    (node_modules / ".bin").mkdir()
+    spectral = node_modules / ".bin" / "spectral"
+    spectral.write_text("", encoding="utf-8")
+    spectral.chmod(0o755)
+    return node_modules
+
+
+class TestNodeModulesResolution:
+    def test_helper_loads_js_yaml_from_camara_node_modules(self, tmp_path: Path, monkeypatch):
+        node_modules = _make_fake_js_yaml(tmp_path / "install")
+        _write_api_definition(tmp_path, "sample", _VALID_OPENAPI)
+        monkeypatch.setenv("CAMARA_NODE_MODULES", str(node_modules))
+
+        findings = _run_helper(tmp_path, "code/API_definitions/sample.yaml")
+
+        assert [f["reason"] for f in findings] == ["fake js-yaml"]
+
+    def test_check_passes_the_resolved_install_to_the_helper(self, tmp_path: Path, monkeypatch):
+        from validation.engines.python_checks import yaml_parser_conformance_checks
+
+        node_modules = _make_fake_js_yaml(tmp_path / "install")
+        _write_api_definition(tmp_path, "sample", _VALID_OPENAPI)
+        monkeypatch.delenv("CAMARA_NODE_MODULES", raising=False)
+        monkeypatch.setenv("PATH", f"{node_modules / '.bin'}:{subprocess.os.environ['PATH']}")
+
+        findings = yaml_parser_conformance_checks.check_yaml_parser_conformance(
+            tmp_path,
+            _make_context("sample"),
+        )
+
+        assert [f["message"] for f in findings] == [
+            "OpenAPI YAML fails parser conformance: fake js-yaml"
+        ]
