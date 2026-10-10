@@ -82,6 +82,32 @@ step (2–4 above), but the check logic itself lives in that engine's native con
 (`linting/config/.spectral-r4.yaml`, `.gplintrc`, `.yamllint.yaml`) or adapter
 (`validation/engines/*_adapter.py`), not in `python_checks/`.
 
+## Running validation locally
+
+To see the full verdict for an API repository before opening a PR, run the orchestrator
+against a local clone:
+
+```
+pip install -r requirements.txt
+(cd validation && npm ci)
+python3 validation/scripts/validate_local.py <path-to-api-repo> [--out <dir>]
+```
+
+The script validates the clone's checked-out branch with this tooling checkout, as a
+`workflow_dispatch` run, and enables validation regardless of
+`config/validation-settings.yaml`. The ruleset follows the repository's
+`release-plan.yaml`, as in CI. It prints the verdict and the findings per file, and leaves
+`summary.json`, `findings.json` and `findings.tsv` in `<dir>/diagnostics/`. Exit code 0 is
+pass or advisory, 1 is fail, 2 is an error.
+
+Node tools (Spectral, gplint, Redocly) and the pinned `js-yaml` are read from
+`validation/node_modules`. To use an install elsewhere, for example one shared by several
+worktrees, set `CAMARA_NODE_MODULES` to that `node_modules` directory; the tests resolve
+it the same way.
+
+The PR check remains the authoritative result: a local run has no PR context, so rules that
+depend on the base branch or a Release Review PR do not fire.
+
 ## Regression testing
 
 Unit tests verify one check in isolation. Regression testing verifies the framework's

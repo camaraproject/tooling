@@ -1,0 +1,8 @@
+# Settings override for validate_local.py: enables validation for any
+# repository, including forks and repos not yet onboarded in
+# config/validation-settings.yaml.
+version: 1
+defaults:
+  stage: enabled
+  pr_profile: standard
+  release_profile: standard
