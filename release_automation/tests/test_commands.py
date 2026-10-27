@@ -88,3 +88,13 @@ def test_actions_for_each_state():
 def test_actions_for_without_release_pr_url():
     assert "→ **Update, review, and merge Release PR to create draft release**" in actions_for(
         config.STATE_SNAPSHOT_ACTIVE, "r1.4")
+
+
+def test_actions_for_a_stale_cache_offers_the_sync_instead_of_create_snapshot():
+    # /create-snapshot is refused while the cache is stale (command_policy._check_cache)
+    assert actions_for(config.STATE_PLANNED, "r1.4", common_cache_stale=True, common_sync_pr_url=PR) == (
+        f"**Valid actions:**<br>→ **Merge the [common sync PR]({PR}) — `/create-snapshot` is blocked until "
+        "`code/common/` is in sync**"
+    )
+    assert "`/sync-issue`" in actions_for(config.STATE_PLANNED, "r1.4", common_cache_stale=True)
+    assert "discard-snapshot" in actions_for(config.STATE_SNAPSHOT_ACTIVE, "r1.4", PR, common_cache_stale=True)

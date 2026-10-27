@@ -262,6 +262,38 @@ class TestRealTemplates:
         # User is not shown in compact format
         assert "snapshot-active" in result
 
+    def test_common_sync_pr_created_names_the_line(self, bot_responder):
+        from release_automation.scripts.bot_context import build_context
+        context = build_context(
+            release_tag="r1.9", state="planned", base_branch="maintenance/r1",
+            common_sync_pr_url="https://github.com/org/repo/pull/138",
+            common_cache_details="manifest missing", common_cache_status="stale",
+        )
+        result = bot_responder.render("common_sync_pr_created", context)
+        assert "[sync PR](https://github.com/org/repo/pull/138) into `maintenance/r1` created" in result
+        assert "`/create-snapshot` is blocked until common files on `maintenance/r1` are in sync" in result
+
+    def test_common_sync_cleared_template(self, bot_responder):
+        from release_automation.scripts.bot_context import build_context
+        context = build_context(
+            release_tag="r1.9", state="planned", base_branch="maintenance/r1",
+            commonalities_release="r4.4", common_cache_status="in_sync",
+        )
+        result = bot_responder.render("common_sync_cleared", context)
+        assert "Common files in sync on `maintenance/r1`" in result
+        assert "`/create-snapshot` — begin the release process" in result
+
+    def test_stale_cache_rejection_does_not_offer_create_snapshot(self, bot_responder):
+        from release_automation.scripts.bot_context import build_context
+        context = build_context(
+            command="create-snapshot", release_tag="r1.9", state="planned", base_branch="maintenance/r1",
+            error_message="Common file cache is stale: manifest missing. Merge the sync PR: u",
+            common_cache_status="stale", common_sync_pr_url="https://github.com/org/repo/pull/138",
+        )
+        result = bot_responder.render("command_rejected", context)
+        assert "`/create-snapshot` — begin the release process" not in result
+        assert "[common sync PR](https://github.com/org/repo/pull/138)" in result
+
     def test_snapshot_failed_template(self, bot_responder):
         """snapshot_failed template renders with error message."""
         from release_automation.scripts.bot_context import build_context

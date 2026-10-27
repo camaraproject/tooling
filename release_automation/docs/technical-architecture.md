@@ -67,6 +67,7 @@ tooling/
 │   ├── templates/
 │   │   ├── bot_messages/
 │   │   │   ├── command_rejected.md
+│   │   │   ├── common_sync_cleared.md
 │   │   │   ├── common_sync_failed.md
 │   │   │   ├── common_sync_pr_created.md
 │   │   │   ├── config_error.md
@@ -537,7 +538,8 @@ Keeps `code/common/` in sync with the Commonalities release declared under `depe
 **Notifications:**
 - `common_sync_pr_created.md` — bot comment on the Release Issue when a new sync PR is created (fires once per creation, not once per stale-detection)
 - `common_sync_failed.md` — bot comment when checkout from Commonalities fails (for example, the declared tag has not yet been published)
-- The Release Issue config section shows the `stale` warning on every sync-issue update until the cache converges
+- `common_sync_cleared.md` — bot comment when a run finds the cache in sync while the Release Issue still shows it stale (typically the push that merges the sync PR)
+- The Release Issue config section shows the `stale` warning on every sync-issue update until the cache converges; while it is stale, the ACTIONS block and a `/create-snapshot` rejection offer the sync PR instead of `/create-snapshot`
 
 **Boundary with validation framework:**
 - RA owns detection and the common sync (writes common files, creates/updates sync PR, writes manifest)

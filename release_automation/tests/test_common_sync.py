@@ -234,9 +234,9 @@ This PR was created by release automation because the cached Commonalities files
   - *(recommended)* fix the errors on `main`, then re-trigger the sync; this PR is rebuilt from the new `main` HEAD with the corrected content.
   - merge this PR with the errors and fix them on `main` afterwards.
 
-To re-trigger the sync, run the **CAMARA Release Automation** workflow from the repository's **Actions** tab.
+To re-trigger the sync, run the **CAMARA Release Automation** workflow from the repository's **Actions** tab with **Use workflow from** `main` and action `sync-issue`.
 
-`/create-snapshot` is blocked until common files are in sync."""
+`/create-snapshot` for the release on `main` is blocked until common files on `main` are in sync."""
 
 
 @pytest.fixture
@@ -483,6 +483,9 @@ def test_sync_on_a_maintenance_branch_opens_its_pr_into_that_branch(tmp_path, re
     assert (created["head"], created["base"]) == (branch, MB)
     assert f"rebuilt from `{MB}` on every run" in created["body"]
     assert f"fix the errors on `{MB}`" in created["body"]
+    assert created["title"] == "Sync common files from Commonalities r4.3 on maintenance/r1"
+    assert f"**Use workflow from** `{MB}` and action `sync-issue`" in created["body"]
+    assert f"`/create-snapshot` for the release on `{MB}` is blocked" in created["body"]
 
 
 def test_lines_do_not_close_each_others_sync_prs(tmp_path, remotes):

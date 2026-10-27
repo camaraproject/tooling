@@ -1205,17 +1205,29 @@ def check_release_plan_active_release_state(
             state_detail += f" (Release Issue #{active_release.release_issue_number})"
         details.append(state_detail)
 
+    where = f"on '{context.base_ref}'" if context.base_ref else "on this branch"
+    command = "/delete-draft" if active_state == "draft-ready" else "/discard-snapshot"
+    issue = (
+        f"Release Issue #{active_release.release_issue_number}"
+        if active_release.release_issue_number is not None
+        else "the Release Issue"
+    )
     return [
         make_finding(
             engine_rule="check-release-plan-active-release-state",
             level="error",
             message=(
-                "release-plan.yaml cannot be changed while an active release "
-                f"exists ({'; '.join(details)}). Finish, discard, or publish "
-                "the active snapshot before changing release-plan.yaml."
+                f"release-plan.yaml {where} cannot be changed while that branch "
+                f"has an active release ({'; '.join(details)})."
             ),
             path=_RELEASE_PLAN_PATH,
             line=1,
+            suggestion=(
+                "Merge this change once the release is published, or return "
+                f"the release to planned first with {command} on {issue}. "
+                "Changes to other files need not wait: move them to a "
+                "separate PR without release-plan.yaml."
+            ),
         )
     ]
 

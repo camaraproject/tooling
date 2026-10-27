@@ -197,6 +197,12 @@ def copy_common_files(source_dir: Path, api_repo: Path, release: str) -> Dict[st
     return files
 
 
+def pr_title(release: str, base_branch: str) -> str:
+    """The sync PR title; a line other than main is named, as in the Release Issue title."""
+    title = f"Sync common files from Commonalities {release}"
+    return title if base_branch == MAIN_BRANCH else f"{title} on {base_branch}"
+
+
 def pr_body(release: str, base_branch: str, unexpected: Tuple[str, ...] = ()) -> str:
     body = (
         "> [!WARNING]\n"
@@ -220,9 +226,10 @@ def pr_body(release: str, base_branch: str, unexpected: Tuple[str, ...] = ()) ->
         f"  - merge this PR with the errors and fix them on `{base_branch}` afterwards.\n"
         "\n"
         "To re-trigger the sync, run the **CAMARA Release Automation** workflow from the repository's "
-        "**Actions** tab.\n"
+        f"**Actions** tab with **Use workflow from** `{base_branch}` and action `sync-issue`.\n"
         "\n"
-        "`/create-snapshot` is blocked until common files are in sync."
+        f"`/create-snapshot` for the release on `{base_branch}` is blocked until common files on "
+        f"`{base_branch}` are in sync."
     )
     if unexpected:
         names = ", ".join(f"`{name}`" for name in unexpected)
@@ -321,7 +328,7 @@ def sync_common(
 
     try:
         number, url = gh.create_pr(
-            title=f"Sync common files from Commonalities {release}",
+            title=pr_title(release, base_branch),
             body=pr_body(release, base_branch, unexpected),
             head=branch,
             base=base_branch,

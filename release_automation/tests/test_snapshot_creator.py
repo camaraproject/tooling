@@ -1497,6 +1497,32 @@ class TestReleaseDocumentation:
         assert "QualityOnDemand" in body
         assert "r4.1" in body
 
+    @pytest.mark.parametrize("base_branch, title, heading", [
+        ("maintenance/r1", "Release Review: {repo} r1.9 (rc) on maintenance/r1",
+         "## Release Review: r1.9 rc on maintenance/r1"),
+        ("main", "Release Review: {repo} r1.9 (rc)", "## Release Review: r1.9 rc\n"),
+    ])
+    def test_create_release_pr_names_a_maintenance_line(
+        self, snapshot_creator, mock_github_client, base_branch, title, heading
+    ):
+        """Title and body heading name the line, as the Release Issue title does; main stays unnamed."""
+        mock_git_ops = Mock()
+        mock_git_ops.create_pr.return_value = PullRequestInfo(number=1, url="url")
+        mock_github_client.get_file_content.return_value = None
+        release_plan = {
+            "repository": {"target_release_type": "pre-release-rc"},
+            "apis": [{"api_name": "sample-service", "target_api_status": "rc"}],
+        }
+
+        snapshot_creator._create_release_pr(
+            mock_git_ops, "r1.9", "r1.9-abc1234", {"sample-service": "0.1.3-rc.1"}, release_plan,
+            base_branch=base_branch,
+        )
+
+        kwargs = mock_git_ops.create_pr.call_args.kwargs
+        assert kwargs["title"] == title.format(repo=mock_github_client.repo.split("/")[-1])
+        assert heading in kwargs["body"]
+
     def test_create_release_pr_no_seeded_from_note_when_baseline_resolved(
         self, snapshot_creator, mock_github_client
     ):

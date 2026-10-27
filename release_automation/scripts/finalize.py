@@ -190,6 +190,8 @@ def notifications(run: Run, sync: WorkflowSync, common: Optional[CommonSyncOutco
             }))
         elif common.status == "failed":
             posts.append(("common_sync_failed", issue, {}))
+    if sync.cache_cleared and issue:
+        posts.append(("common_sync_cleared", issue, {}))
     return posts
 
 
