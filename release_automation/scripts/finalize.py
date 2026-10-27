@@ -15,6 +15,10 @@ after plan for push, workflow_dispatch and /sync-issue. In order:
 4. after a publication: the published Release Issue — STATE/ACTIONS, label,
    closed only when the sync PR was created (issue_sync)
 
+/sync-issue or the sync-issue dispatch on a published release whose Release
+Issue is still open runs 1 and 4 again instead of the issue sync: a finalize
+that failed after the publication is finished this way (tooling#513).
+
 What ran before comes from toJSON(needs): the plan job's plan document, and
 the result and JSON outcome of the snapshot or act job that executed its
 action (Run.from_needs).
@@ -31,7 +35,7 @@ import json
 import os
 import sys
 import tempfile
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -134,6 +138,16 @@ def issue_sync_due(run: Run) -> bool:
     )
 
 
+def finish_due(run: Run) -> bool:
+    """/sync-issue or the sync-issue dispatch (not a push) on a published release whose Release Issue is still open."""
+    return (
+        run.plan.trigger.command == "sync-issue"
+        and run.plan.trigger.trigger_type in ("slash_command", "workflow_dispatch")
+        and run.plan.state == config.STATE_PUBLISHED
+        and bool(run.plan.release_issue_number)
+    )
+
+
 def result_due(run: Run) -> bool:
     """Result comment: an allowed slash command whose acknowledgment was updated by plan."""
     return run.plan.trigger.trigger_type == "slash_command" and run.result_comment_id != ""
@@ -205,6 +219,8 @@ def result_template(run: Run, sync: Optional[WorkflowSync] = None) -> str:
         return "internal_error"
     if not cmd.job:
         # Finalize alone (/sync-issue): the result is the issue sync's
+        if sync and sync.issue_action == "skipped":
+            return "issue_sync_skipped"
         return cmd.ok if sync and sync.issue_action != "error" else cmd.failed
     return cmd.ok if run.action == cmd.name and run.out("success") == "true" else cmd.failed
 
@@ -419,28 +435,79 @@ def run_merge_publication(run: Run, clients: Clients, report: Report) -> None:
 
 def finalize_published(run: Run, clients: Clients, report: Report) -> None:
     """After a publication: STATE/ACTIONS, label, and the close when the sync PR was created."""
+    if run.published and run.plan.release_issue_number:
+        finalize_published_issue(run, clients, report, run.out("release_url"), run.out("reference_tag"),
+                                 run.out("error_message"))
+
+
+def finalize_published_issue(run: Run, clients: Clients, report: Report, release_url: str, reference_tag: str,
+                             publish_warnings: str) -> None:
     from .issue_manager import IssueManager
     from .issue_sync import IssueSyncManager
 
-    if run.published and run.plan.release_issue_number:
-        sync = report.sync_pr or SyncPrOutcome(status="")
-        print(f"Updating release issue #{run.plan.release_issue_number} after publish (sync status: {sync.status})")
-        report.issue_finalized = IssueSyncManager(
-            clients.issues, issue_manager=IssueManager(), base_branch=run.plan.base_branch,
-        ).finalize_published_issue(
-            issue_number=int(run.plan.release_issue_number),
-            release_tag=run.plan.release_tag,
-            release_url=run.out("release_url"),
-            reference_tag=run.out("reference_tag"),
-            sync_pr_url=sync.pr_url,
-            main_sync_pr_url=sync.main_pr_url,
-            sync_status=sync.status,
-            publish_warnings=run.out("error_message"),
-        )
+    sync = report.sync_pr or SyncPrOutcome(status="")
+    print(f"Updating release issue #{run.plan.release_issue_number} after publish (sync status: {sync.status})")
+    report.issue_finalized = IssueSyncManager(
+        clients.issues, issue_manager=IssueManager(), base_branch=run.plan.base_branch,
+    ).finalize_published_issue(
+        issue_number=int(run.plan.release_issue_number),
+        release_tag=run.plan.release_tag,
+        release_url=release_url,
+        reference_tag=reference_tag,
+        sync_pr_url=sync.pr_url,
+        main_sync_pr_url=sync.main_pr_url,
+        sync_status=sync.status,
+        publish_warnings=publish_warnings,
+    )
+
+
+def finish_publication(run: Run, clients: Clients, report: Report) -> None:
+    """
+    The publish-side finalize again (tooling#513): sync PR(s), reusing an open
+    one, the result on the Release Issue, then STATE/ACTIONS, label and close.
+    """
+    tag = run.plan.release_tag
+    sync = run_sync_pr(run, clients)
+    print(f"Post-release sync PR (retry): {sync.status} {sync.pr_url}")
+    if sync.status == "no_changes":
+        # After a publication this means the earlier sync PR, or one made by hand, was merged
+        sync = replace(sync, status="created")
+    report.sync_pr = sync
+    reference_tag = f"source/{tag}"
+    if not clients.gh.tag_exists(reference_tag):
+        reference_tag = ""
+    release_url = f"{run.server_url}/{run.repository}/releases/tag/{tag}"
+    delta = {
+        "state": config.STATE_PUBLISHED,
+        "release_url": release_url,
+        "sync_pr_url": sync.pr_url,
+        "sync_pr_number": sync.pr_number,
+        "main_sync_pr_url": sync.main_pr_url,
+        "main_sync_pr_number": sync.main_pr_number,
+    }
+    warnings = post_publish_warnings("", sync.status)
+    if warnings:
+        delta["publish_warnings"] = warnings
+    report.result_template = "publication_finished"
+    # A slash command updates its acknowledgment; a dispatch reports on the Release Issue
+    slash = result_due(run)
+    try:
+        post_comment(clients, run, report.result_template,
+                     run.plan.trigger.issue_number if slash else run.plan.release_issue_number,
+                     delta, comment_id=run.result_comment_id if slash else "")
+    except Exception as e:
+        print(f"::error::Could not post the result comment: {e}")
+        report.errors.append("result comment failed")
+        return
+    finalize_published_issue(run, clients, report, release_url, reference_tag, "")
 
 
 def finalize(run: Run, clients: Clients, summary_path: str = "") -> Report:
     report = Report()
+    if finish_due(run):
+        finish_publication(run, clients, report)
+        write_summary(run, report, summary_path)
+        return report
     if run.published:
         report.sync_pr = run_sync_pr(run, clients)
         print(f"Post-release sync PR: {report.sync_pr.status} {report.sync_pr.pr_url}")

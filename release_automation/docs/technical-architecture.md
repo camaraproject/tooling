@@ -77,7 +77,9 @@ tooling/
 │   │   │   ├── internal_error.md
 │   │   │   ├── issue_created.md
 │   │   │   ├── issue_reopened.md
+│   │   │   ├── issue_sync_skipped.md
 │   │   │   ├── issue_synced.md
+│   │   │   ├── publication_finished.md
 │   │   │   ├── publish_confirmation.md
 │   │   │   ├── publish_failed.md
 │   │   │   ├── release_published.md
@@ -284,6 +286,8 @@ Renders bot messages from Mustache templates using pystache with strict mode (`m
 | `issue_reopened.md` | Issue auto-reopened because active artifacts exist |
 | `issue_synced.md` | Result of `/sync-issue` |
 | `issue_sync_failed.md` | `/sync-issue` could not update the Release Issue |
+| `issue_sync_skipped.md` | `/sync-issue` with nothing to sync (e.g. a published release whose Release Issue is closed) |
+| `publication_finished.md` | `/sync-issue` or the `sync-issue` dispatch ran the post-release steps of a published release again (its Release Issue was still open) |
 | `state_not_planned.md` | Release set to NOT_PLANNED (`target_release_type: none`) |
 | `publish_confirmation.md` | Confirmation prompt before publication |
 | `release_published.md` | Release published successfully |

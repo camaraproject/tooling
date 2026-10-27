@@ -709,7 +709,7 @@ class TestFinalizePublishedIssue:
     @pytest.mark.parametrize(
         "sync_status,warning,action",
         [
-            ("failed", "Post-release sync PR creation failed — create manually", "Create post-release sync PR manually"),
+            ("failed", "Post-release sync PR creation failed — create manually", "Run `/sync-issue` to retry"),
             ("no_changes", "Post-release sync skipped (no changes detected) — verify README/CHANGELOG", "Verify README and CHANGELOG"),
             ("", "Post-release sync status unknown — verify README/CHANGELOG", "Verify post-release sync status"),
             ("unexpected", "Post-release sync status unknown — verify README/CHANGELOG", "Verify post-release sync status"),
