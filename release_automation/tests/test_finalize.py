@@ -317,6 +317,7 @@ def test_result_template(command, jobs, template):
 
 @pytest.mark.parametrize("issue_action,template", [
     ("updated", "issue_synced"), ("unchanged", "issue_synced"), ("error", "issue_sync_failed"),
+    ("skipped", "issue_sync_skipped"),
 ])
 def test_sync_issue_result_follows_the_issue_sync(issue_action, template):
     # F7 (#499): /sync-issue reports a result instead of staying at "Processing";
@@ -508,6 +509,9 @@ class FakeGitHub:
 
     def close_issue(self, number, state_reason="completed"):
         self.events.append(("close", number, state_reason))
+
+    def tag_exists(self, tag):
+        return True
 
 
 @pytest.fixture
@@ -808,3 +812,97 @@ def test_failed_publish_on_merge_posts_publish_failed(stubs, tmp_path):
     assert kinds(gh) == ["comment"]
     assert report.result_template == "publish_failed"
     assert "Failed to publish release: 422" in gh.events[0][2]
+
+
+# ── /sync-issue finishes a publication whose finalize failed (tooling#513) ──
+
+FINISH_PLAN = {"command": "sync-issue", "state": "published", "release_issue_number": "42"}
+
+
+def test_sync_issue_in_published_with_an_open_issue_finishes_the_publication(stubs, tmp_path):
+    gh = FakeGitHub()
+    summary = tmp_path / "summary"
+
+    report = run_finalize(make_run(FINISH_PLAN), clients(gh, tmp_path), str(summary))
+
+    assert kinds(gh) == ["sync-pr", "update", "issue-body", "remove-labels", "add-labels", "close"]
+    _, comment_id, body = gh.events[1]
+    assert comment_id == 555
+    assert body.startswith("<!-- release-bot:r4.1 -->\n**🔁 Post-release steps run again — State: `published`**")
+    assert "Post-release sync PR: [#20](https://github.com/camaraproject/Example/pull/20)" in body
+    assert "This issue is closed." in body
+    issue_body = gh.events[2][2]
+    assert "[r4.1](https://github.com/camaraproject/Example/releases/tag/r4.1)" in issue_body
+    assert "[`source/r4.1`](https://github.com/camaraproject/Example/tree/source/r4.1)" in issue_body
+    assert gh.events[5] == ("close", 42, "completed")
+    assert report.result_template == "publication_finished"
+    assert report.issue_finalized is True and report.errors == []
+    assert "| Published issue | updated |" in summary.read_text()
+
+
+def test_sync_issue_dispatch_finishes_a_case_b_publication_on_the_release_issue(stubs, tmp_path):
+    stubs["sync_pr_outcomes"] = {"maintenance/r1": LINE_PR}
+    gh = FakeGitHub()
+    run = make_run({**FINISH_PLAN, "trigger_type": "workflow_dispatch", "issue_number": "", "result_comment_id": "",
+                    "base_branch": "maintenance/r1", "release_tag": "r1.10"})
+
+    run_finalize(run, clients(gh, tmp_path))
+
+    assert [s["base_branch"] for s in stubs["sync_prs"]] == ["maintenance/r1", "main"]
+    assert kinds(gh) == ["sync-pr", "sync-pr", "comment", "issue-body", "remove-labels", "add-labels", "close"]
+    _, issue, body = gh.events[2]
+    assert issue == 42
+    assert "[#21](https://github.com/camaraproject/Example/pull/21)" in body
+    assert "[#20](https://github.com/camaraproject/Example/pull/20) into main" in body
+
+
+def test_retry_without_changes_closes_the_issue(stubs, tmp_path):
+    # The earlier sync PR (or one made by hand) was merged: nothing is left to sync
+    stubs["sync_pr_outcome"] = SyncPrOutcome(status="no_changes")
+    gh = FakeGitHub()
+
+    run_finalize(make_run(FINISH_PLAN), clients(gh, tmp_path))
+
+    assert ("close", 42, "completed") in gh.events
+    body = gh.events[1][2]
+    assert "The post-release content is already on `main`; no sync PR was needed." in body
+    assert "Warnings" not in gh.events[2][2]
+
+
+def test_failed_retry_leaves_the_issue_open_and_says_so(stubs, tmp_path):
+    stubs["sync_pr_outcome"] = SyncPrOutcome(status="failed")
+    gh = FakeGitHub()
+
+    report = run_finalize(make_run(FINISH_PLAN), clients(gh, tmp_path))
+
+    assert "close" not in kinds(gh)
+    body = gh.events[1][2]
+    assert "Post-release sync PR creation failed — create manually" in body
+    assert "This issue stays open; `/sync-issue` retries." in body
+    assert "Run `/sync-issue` to retry" in gh.events[2][2]
+    assert report.errors == []
+
+
+def test_sync_issue_in_published_without_an_open_issue_is_skipped(stubs, monkeypatch, tmp_path):
+    stubs["issue_sync_outcome"] = WorkflowSync()
+    gh = FakeGitHub()
+
+    report = run_finalize(make_run({**FINISH_PLAN, "release_issue_number": ""}), clients(gh, tmp_path))
+
+    assert "sync_prs" not in stubs
+    assert kinds(gh) == ["issue-sync", "update"]
+    body = gh.events[1][2]
+    assert body.startswith("<!-- release-bot:r4.1 -->\n**ℹ️ Nothing to sync — State: `published`**")
+    assert "Release Issue synced" not in body
+    assert report.result_template == "issue_sync_skipped"
+
+
+def test_a_push_in_published_does_not_rerun_the_post_release_steps(stubs, tmp_path):
+    # A push is a sync-issue trigger too; only the codeowner's /sync-issue or dispatch retries
+    gh = FakeGitHub()
+
+    run_finalize(make_run({**FINISH_PLAN, "trigger_type": "push", "issue_number": "", "result_comment_id": ""}),
+                 clients(gh, tmp_path))
+
+    assert "sync_prs" not in stubs
+    assert "close" not in kinds(gh)

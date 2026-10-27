@@ -381,12 +381,16 @@ class IssueManager:
             return "_No actions available - release is published._"
         if sync_status == "failed":
             return (
-                "**Manual action required:** Create post-release sync PR manually "
-                "(update README and CHANGELOG on main), then close this issue."
+                "**Manual action required:** Run `/sync-issue` to retry the post-release sync PR; this issue "
+                "closes once it exists. Or create the sync PR manually (update README and CHANGELOG on main), "
+                "then close this issue."
             )
         if sync_status == "no_changes":
             return (
                 "**Manual action required:** Verify README and CHANGELOG on main are correct, "
                 "then close this issue."
             )
-        return "**Manual action required:** Verify post-release sync status, then close this issue."
+        return (
+            "**Manual action required:** Verify post-release sync status, then close this issue, "
+            "or run `/sync-issue` to retry the post-release sync PR."
+        )
