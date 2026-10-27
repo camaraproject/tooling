@@ -331,7 +331,7 @@ Closure behavior depends on the current release state:
 | PLANNED | Yes | No semantic effect; issue treated as historical |
 | SNAPSHOT_ACTIVE | No | Auto-reopened with `issue_reopened.md` message |
 | DRAFT_READY | No | Auto-reopened with `issue_reopened.md` message |
-| PUBLISHED | Yes | Normal closure (automatic after success message is posted) |
+| PUBLISHED | Yes | Normal closure (automatic once the post-release sync PRs exist; otherwise open until `/sync-issue` finishes the post-release steps or a human closes it) |
 | NOT_PLANNED | Yes | Humans close manually |
 
 **Key rules:**
@@ -499,8 +499,8 @@ Handles publication of draft releases via the `/publish-release` command.
 2. Finalize `release-metadata.yaml` (set `release_date` to ISO 8601 UTC timestamp)
 3. Commit finalization to snapshot branch
 4. Update draft to published (creates tag `rX.Y`)
-5. Set `make_latest` explicitly — `"true"` only for a release that is not a pre-release and has no later cycle with a public or maintenance release, otherwise `"false"`; a separate API call from the draft→published transition
-6. Create reference tag `source/rX.Y` on main at the source commit SHA
+5. Set `make_latest` explicitly — `"true"` only for a release that is not a pre-release and has no later cycle with a public or maintenance release, otherwise `"false"`; a separate API call from the draft→published transition. GitHub makes a published release Latest anyway and `"false"` does not demote it, so when a release that must not be Latest became it, the release that was Latest before is set back
+6. Create reference tag `source/rX.Y` at the source commit SHA on the base branch (`main`, or `maintenance/rX` for a release from a maintenance line)
 
 **GitHub API note:** `make_latest` is ignored when sent in the same PATCH as `draft=false`. Publication and latest-marking must be separate API calls.
 
@@ -510,7 +510,7 @@ Handles publication of draft releases via the `/publish-release` command.
 
 Keeps `code/common/` in sync with the Commonalities release declared under `dependencies.commonalities_release` in `release-plan.yaml`. Detection runs in the `plan` job and the common sync in the `finalize` job. For repositories declaring `commonalities_release >= r4.2` it checks the cache and acts on drift; for earlier releases (which don't consume common files via `$ref`) it reports `common_cache_status = ""` (unchecked) and exits without action.
 
-**Location:** [`common_sync.py`](../scripts/common_sync.py), called from two phase jobs of [release-automation-reusable.yml](../../.github/workflows/release-automation-reusable.yml). The `plan` job runs detection (step *Check common cache sync*) and carries the result in the plan; it blocks `/create-snapshot` while the cache is stale. The `finalize` job runs the common sync when the plan reports `stale`, before the Release Issue sync, so the cache converges on every RA invocation that reaches `finalize` (push, `workflow_dispatch`, slash commands ending in a state update). The module takes a git client and a GitHub client and uses no release-automation types, so it can move to a repository reconcile workflow; the release-state gate stays with the calling job.
+**Location:** [`common_sync.py`](../scripts/common_sync.py), called from two phase jobs of [release-automation-reusable.yml](../../.github/workflows/release-automation-reusable.yml). The `plan` job runs detection (step *Check common cache sync*) and carries the result in the plan; it blocks `/create-snapshot` while the cache is stale. The `finalize` job runs the common sync when the plan reports `stale`, before the Release Issue sync, so the cache converges on every RA invocation that syncs the Release Issue (see the trigger table below). The module takes a git client and a GitHub client and uses no release-automation types, so it can move to a repository reconcile workflow; the release-state gate stays with the calling job.
 
 **Signal model:** Detection yields `common_cache_status` with three values:
 
@@ -520,18 +520,22 @@ Keeps `code/common/` in sync with the Commonalities release declared under `depe
 | `in_sync` | Cache matches the declared tag |
 | `stale` | Drift detected (tag mismatch, missing files, or modified files); `common_cache_details` carries the reason |
 
-**Trigger x state matrix:** Sync-PR creation is state-dependent to avoid mixing concerns with an active release:
+**Per release line, in any state:** each line (`main`, every `maintenance/rX`) has its own detection, sync branch and sync PR; a run sees only the line of its base branch ([§3.4](#34-release-lines-maintenance-branches)). A stale cache opens or updates the line's sync PR in every release state: the PR goes into the base branch and never touches an open snapshot, which is a separate branch. Only `/create-snapshot` on that line is blocked while the cache is stale.
 
-| Release state | Push to `release-plan.yaml` or `code/common/**` | `/create-snapshot` | `/discard-snapshot` or `/delete-draft` | `workflow_dispatch` |
-|---------------|------------------------------------------------|--------------------|---------------------------------------|---------------------|
-| `NOT_PLANNED` / `PLANNED` / `PUBLISHED` | Create / update sync PR | Block (command rejected when stale) | n/a | Create / update sync PR |
-| `SNAPSHOT_ACTIVE` / `DRAFT_READY` | Drift warning in Release Issue only | n/a | Create / update sync PR | Create / update sync PR |
+| Trigger on the line | Stale cache |
+|---------------------|-------------|
+| Push to `release-plan.yaml`, `code/common/**` or the caller workflow | Sync PR created / updated |
+| `sync-issue` dispatch, `/sync-issue` | Sync PR created / updated — except on a published release whose Release Issue is still open, where they run the post-release steps again instead ([§3.2](#32-caller-workflow-api-repositories)) |
+| `/create-snapshot` | Rejected; the reply and the Release Issue's ACTIONS offer the sync PR |
+| `/discard-snapshot`, `/delete-draft`, Release PR merge (draft created) — when successful | Sync PR created / updated |
+| Release Issue closed or reopened | Sync PR created / updated |
+| `/publish-release` | No common sync; the next push or sync on the line does it |
 
 **Sync PR model:**
 - Per release line: detection checks out the base branch (`main` or `maintenance/rX`) and its plan's `commonalities_release`; the PR targets that branch
 - Branch: `sync-common/{tag}` on `main` (e.g., `sync-common/r4.2`), `sync-common/{base_branch}/{tag}` on a maintenance branch (e.g., `sync-common/maintenance/r1/r4.2`); lookup and superseded-PR cleanup stay within the line
 - Author: `camara-release-automation` App bot
-- No force-push — codeowners may push fix commits to the PR before merge
+- Rebuilt from the base branch on every run (force-push, RA owns the branch): fixes go to the base branch, then the sync is re-triggered; the PR body says so
 - Stale PRs (wrong tag after a dependency bump) are closed automatically when a new sync is needed
 - Standard CODEOWNERS review applies (one codeowner approval is sufficient; bot is author)
 
@@ -587,10 +591,11 @@ Keeps `code/common/` in sync with the Commonalities release declared under `depe
 │            │ release-snapshot│──── Yes ──► Draft release creation       │
 │            └─────────────────┘                                          │
 │                                                                          │
-│         push (main branch, release-plan.yaml changed)                   │
+│  push (main or maintenance/rX: release-plan.yaml, code/common/**)       │
+│  workflow_dispatch (action sync-issue | create-maintenance-branch)      │
 │                      │                                                   │
 │                      ▼                                                   │
-│            Auto-trigger sync-issue                                      │
+│            sync-issue of the branch's line                              │
 │                                                                          │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
@@ -606,10 +611,10 @@ Each API repository has a minimal caller workflow that forwards events to the re
 | `issue_comment` (created) | Slash command on release issue | Command execution |
 | `issues` (closed/reopened) | Issue has `release-state:*` label | Closure policy enforcement |
 | `pull_request` (closed) | Merged into `release-snapshot/*` branch | Draft release creation |
-| `push` (main, `maintenance/**`) | `release-plan.yaml` changed | Auto sync-issue of the pushed line |
+| `push` (main, `maintenance/**`) | `release-plan.yaml`, `code/common/**` or the caller workflow changed | Auto sync-issue of the pushed line |
 | `workflow_dispatch` | Manual trigger, input `action` | `sync-issue` (default): recovery; `create-maintenance-branch` with input `cycle` |
 
-**Concurrency:** Global concurrency group per repository (`release-automation-{repo}`) with `cancel-in-progress: false`. This prevents overlapping workflow runs from producing inconsistent state.
+**Concurrency:** One concurrency group per repository (`release-automation-{repo}`, `cancel-in-progress: false`) on the caller's job, for all lines. At job level, runs skipped by the job's `if:` (the RA bot's own issue events) never join the group. GitHub keeps 1 running + 1 pending run per group; a third arrival replaces the pending one, so parallel lines are stepped one run at a time.
 
 **Permissions:** Caller workflows grant `contents`, `issues` and `pull-requests` write; no OIDC token is read.
 
@@ -623,7 +628,7 @@ Each API repository has a minimal caller workflow that forwards events to the re
 | `/publish-release` | Request publication confirmation | DRAFT_READY | Codeowner |
 | `/publish-release --confirm <tag>` | Publish release, create sync PR | DRAFT_READY | Codeowner |
 
-**Note:** `sync-issue` is an internal workflow action, not a user-facing slash command. It runs automatically after state changes and on push to main when `release-plan.yaml` changes. Available via `workflow_dispatch` for recovery only.
+**`sync-issue`:** runs automatically after state changes and on a push to the line. Manually it is the `sync-issue` dispatch (select the line's branch under *Use workflow from*) or the hidden slash command `/sync-issue` (accepted in every state, not listed in the valid actions); both sync the Release Issue of their line and reply with the result. On a published release whose Release Issue is still open — its post-release steps failed, e.g. the sync PR — they run those steps again instead: the sync PR(s), reusing an open one, the published Release Issue update and the close once the sync PR(s) exist (`publication_finished`). A push never does this. The ACTIONS block of such an issue names `/sync-issue` as the retry.
 
 ### 3.3 Reusable Workflow (Tooling Repository)
 
@@ -670,6 +675,45 @@ All three stages edit the same comment: `plan` passes the acknowledgment's comme
 **The plan document** (`plan_document.py`):
 
 `plan` derives the release state once and writes one typed `PlanDocument` (trigger, derived release, common cache, base branch, the decision) as its `plan` output. `snapshot`, `act` and `finalize` read it with `from_json()` and never derive state again; each derives the bot message base context from it with `bot_context(plan)`. A command's outcome fields (for example `release_pr_url`) are passed to `finalize` as delta context for the result comment.
+
+### 3.4 Release lines (maintenance branches)
+
+A release cycle X with a public release is maintained on `maintenance/rX` once that branch exists, otherwise on `main` (`release_line.line_of`). Without a branch, a maintenance release of an older cycle is planned and released from `main` like any other release, as long as `main` holds no changes intended for a new cycle. Once a later cycle has a release, the older cycle is maintained only on `maintenance/rX`.
+
+**Base branch of a run** (`release_line.base_branch_for`, *Resolve* step of `plan`):
+
+| Trigger | Base branch |
+|---------|-------------|
+| `push`, `workflow_dispatch` | The branch the run is on: `maintenance/rX`, otherwise `main` |
+| Slash command, Release Issue closed / reopened | Line of the tag in the issue's release-tag marker |
+| Release PR merge | Line of the tag of the `release-snapshot/rX.Y-…` branch |
+
+Everything the run reads is that line's: `release-plan.yaml`, the release state (`derive_state(base_branch)`), the Release Issue and the common cache. `main` planning any `rX.*` tag while `maintenance/rX` exists is a configuration error. Validation's P-033 derives the state of the PR's base branch, so an active snapshot on one line does not block `release-plan.yaml` changes on another.
+
+**Release Issues:** one per line and release, side by side; a line's issue names the line in its title ("Release r1.9 (maintenance) on maintenance/r1") and in its checklist. Sync, superseded cleanup and close stay within the line.
+
+**Creating a line:** preconditions are that `main` has moved on to a later cycle — `target_release_tag` in `main`'s `release-plan.yaml` is a tag of a later cycle, whatever its release type (`none` included) or state; a tag of cycle X blocks also when it is already `published` — that cycle X has a public release whose newest release is not a pre-release (finish an rc from `main` first), that this release was created by release automation (`src_commit_sha` in its `release-metadata.yaml`), and that `maintenance/rX` does not exist yet. A codeowner then dispatches the caller from `main` with action `create-maintenance-branch` and input `cycle` (e.g. `r1`). When a precondition is not met, the dispatch ran on another branch or the actor lacks write access, `plan` refuses: the run fails and the step summary says why. Otherwise `act` (App token, bypass actor of the `maintenance-branch-protection` ruleset) creates `maintenance/rX` at the `src_commit_sha` of the patched release — the newest public or maintenance release of the cycle — and commits once onto it: `main`'s caller workflows, `CHANGELOG/CHANGELOG-rX.md` from the patched release's tag and `release-plan.yaml` parked at `rX.(N+1)` with `target_release_type: none`. No PR is opened; the step summary names the next step. The codeowner's first PR into the branch plans the release (`maintenance-release`, or `pre-release-rc` first, with patch versions); its merge creates the line's Release Issue.
+
+**CHANGELOG compare base** (`snapshot_creator._get_compare_base`), each the newest release with a lower tag version (cycle, then number — not the date):
+
+| Release type | Compare base |
+|--------------|--------------|
+| `pre-release-alpha` | Previous release of any type |
+| `pre-release-rc`, first of its cycle | Previous public release; on a maintenance line the patched release |
+| `pre-release-rc`, later | Previous rc of the cycle |
+| `public-release` | Previous public release |
+| `maintenance-release` | Patched release (newest public or maintenance release of the cycle) |
+
+The snapshot prepends the section to `CHANGELOG/CHANGELOG-rX.md` of the base branch.
+
+**Publication:** `source/rX.Y` at the release's `src_commit_sha` on the line; pointer branch `release/rX.Y` or `pre-release/rX.Y`; Latest as in [§2.11](#211-release-publisher-release_publisherpy). A patch of an older cycle stays behind a later cycle's public or maintenance release and takes Latest only while that cycle has pre-releases alone.
+
+**Post-release sync** (`finalize`):
+- From `main`: one PR into `main` with the README release-information block and `CHANGELOG/CHANGELOG-rX.md` from the tag.
+- From `maintenance/rX`: `CHANGELOG/CHANGELOG-rX.md` from the tag into the line (the next release on the line builds on it) and into `main`; no README change.
+- The Release Issue closes once all sync PRs exist; otherwise it stays open and `/sync-issue` retries ([§3.2](#32-caller-workflow-api-repositories)).
+
+**Retiring a line:** no RA action. Park the line's plan at `target_release_type: none` first (closing a `planned` Release Issue recreates it), then close the issue; an admin deletes `maintenance/rX` through the ruleset bypass. The `release/rX.Y` pointer branches keep every tagged commit reachable.
 
 ---
 
@@ -803,7 +847,7 @@ stateDiagram-v2
 - Auto-reopen only applies when snapshot or draft is active (prevents orphaned artifacts)
 - NOT_PLANNED is derived from `target_release_type: none`, not from issue closure
 
-**Plan changes during a snapshot:** An active snapshot is not affected by a later `release-plan.yaml` edit on main — it carries its own `release-metadata.yaml`. Validation blocks `release-plan.yaml` edits while a snapshot is active, and only `/create-snapshot` is gated on the common-file cache check.
+**Plan changes during a snapshot:** An active snapshot is not affected by a later `release-plan.yaml` edit on its base branch — it carries its own `release-metadata.yaml`. Validation blocks `release-plan.yaml` edits while a snapshot is active, and only `/create-snapshot` is gated on the common-file cache check.
 
 ### 5.3 Context Data Flow
 
@@ -886,6 +930,7 @@ Permission checks use the GitHub API (`GET /repos/{owner}/{repo}/collaborators/{
 |----------------|------------|
 | `release-snapshot/*` | Push: automation only; Delete: automation only |
 | `release-review/*` | Push: codeowners + automation; Delete: automation |
+| `maintenance/*` | Create, delete: automation (admins for retirement); changes by PR with codeowner review |
 
 **Release PR approval requirements:**
 - At least one **codeowner** approval required
@@ -903,11 +948,11 @@ Repository rulesets enforce these protections. GitHub Actions is configured as a
 
 ## 8. Release Plan Changes in Pull Requests
 
-When `release-plan.yaml` changes in a PR, CAMARA Validation (the validation workflow of the API repository) runs the release-plan checks. After the PR merges and `release-plan.yaml` lands on main, the push trigger runs the release automation workflow.
+When `release-plan.yaml` changes in a PR, CAMARA Validation (the validation workflow of the API repository) runs the release-plan checks. After the PR merges and `release-plan.yaml` lands on the PR's base branch (`main` or `maintenance/rX`), the push trigger runs the release automation workflow for that line.
 
 ### 8.1 Active Release Check
 
-Rule P-033 (`check-release-plan-active-release-state`) blocks the PR with an error while a release is active: a `release-snapshot/<release_tag>-*` branch exists, or the derived release state is `snapshot-active` or `draft-ready`. The release automation workflow derives the state; the validation check consumes it offline.
+Rule P-033 (`check-release-plan-active-release-state`) blocks the PR with an error while a release of the PR's base branch is active: a `release-snapshot/<release_tag>-*` branch exists, or the derived release state is `snapshot-active` or `draft-ready`. A release active on another line does not block it. The release automation workflow derives the state; the validation check consumes it offline.
 
 ### 8.2 State Transition Cases
 

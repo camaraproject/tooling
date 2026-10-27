@@ -1,6 +1,6 @@
 # Branching and Versioning Model
 
-**Last Updated**: 2026-10-24
+**Last Updated**: 2026-10-27
 
 `tooling/main` is the only long-lived branch. All development happens on fork branches that merge into `main` via pull request.
 
@@ -23,7 +23,7 @@ Two canaries verify the framework on every push to `main` that touches their dec
 | Workflow | Scope |
 |---|---|
 | [`validation-regression.yml`](../../.github/workflows/validation-regression.yml) | Diffs validation findings against committed expected fixtures on each `regression/*` branch of [`camaraproject/ReleaseTest`](https://github.com/camaraproject/ReleaseTest) |
-| [`release-automation-regression.yml`](../../.github/workflows/release-automation-regression.yml) | sync-issue (dispatch and slash), a rejected command, and a `/create-snapshot` + `/discard-snapshot` round-trip with issue-close auto-reopen, and a closing issue close that recreates the Release Issue on ReleaseTest, matched against expected bot replies |
+| [`release-automation-regression.yml`](../../.github/workflows/release-automation-regression.yml) | sync-issue (dispatch and slash), a `sync-issue` dispatch on a `maintenance/rX` branch when the test repository has one (`main`'s Release Issue must stay untouched), a rejected command, a `/create-snapshot` + `/discard-snapshot` round-trip with issue-close auto-reopen, and a closing issue close that recreates the Release Issue on ReleaseTest, matched against expected bot replies |
 
 Both use a short-lived `camara-validation` GitHub App installation token for cross-repo access to ReleaseTest.
 
@@ -47,7 +47,7 @@ Standard CAMARA contribution flow:
 
 Long-lived feature branches in the upstream repository are not the default. They may be appropriate for cross-cutting initiatives whose scope justifies the additional coordination overhead (sync PRs, configuration parallelism, regression-canary pinning), and are decided case-by-case.
 
-Current long-lived branch: `release-automation-refactor` — restructures `release-automation-reusable.yml` into Python-backed phase jobs; its RA canary runs on pushes to the branch against [`camaraproject/ReleaseTest2`](https://github.com/camaraproject/ReleaseTest2), and pilot repositories use it through the tag `ra-v1-rc2`.
+Current long-lived branch: `release-automation-refactor` — restructures `release-automation-reusable.yml` into Python-backed phase jobs and adds maintenance releases on `maintenance/rX` branches of API repositories; its RA canary runs on pushes to the branch against [`camaraproject/ReleaseTest2`](https://github.com/camaraproject/ReleaseTest2), which keeps a `maintenance/r1` line next to `main`, and pilot repositories use it through the tag `ra-v1-rc2`. The tag-move gates above apply to `ra-v1-rc2` with ReleaseTest2 in place of ReleaseTest; a change to the maintenance-line paths (line routing, `create-maintenance-branch`, publication and sync from a line) needs its end-to-end run on the line as well as on `main`.
 
 ## 4. Hotfixes
 

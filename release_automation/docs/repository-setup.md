@@ -36,12 +36,13 @@ This document defines the required configuration for each API repository. It ser
 
 ## Repository Rulesets
 
-Four rulesets protect branches and tags managed by the release automation:
+Five rulesets protect branches and tags managed by the release automation:
 
 1. **Snapshot branch protection** — protects `release-snapshot/**` branches with branch protection rules and PR review requirements
 2. **Release pointer branch protection** — protects `release/**` pointer branches (fully immutable)
 3. **Pre-release pointer branch protection** — protects `pre-release/**` pointer branches (immutable but deletable by codeowners)
 4. **Release tag protection** — protects `r*` release tags (only the automation creates them)
+5. **Maintenance branch protection** — protects `maintenance/**` branches (only the automation creates them; changes by pull request)
 
 The `camara-release-automation` GitHub App is the bypass actor for all rulesets, allowing the workflow to create and manage these branches and tags while humans are governed by protection rules.
 
@@ -120,6 +121,19 @@ Declared payloads: [`release-pointer-protection.json`](https://github.com/camara
 Rules: restrict creations, restrict deletions, restrict updates, block force pushes. Release tags are created by the automation at publication; a manual tag or release publish is refused.
 
 Declared payload: [`release-tag-protection.json`](https://github.com/camaraproject/project-administration/blob/main/config/rulesets/release-tag-protection.json)
+
+### Maintenance Branch Protection
+
+| Property | Value |
+|----------|-------|
+| **Name** | `maintenance-branch-protection` |
+| **Enforcement** | Active |
+| **Target** | Include branches matching: `maintenance/**` |
+| **Bypass actors** | `camara-release-automation` GitHub App (always), Organization admins (always) |
+
+Rules: restrict creations, restrict deletions, block force pushes, require a pull request with code owner review. The automation creates `maintenance/rX` with `create-maintenance-branch` and commits its set-up directly; codeowners change the branch by pull request; an admin deletes a retired line through the bypass.
+
+Declared payload: [`maintenance-branch-protection.json`](https://github.com/camaraproject/project-administration/blob/main/config/rulesets/maintenance-branch-protection.json)
 
 ### Applying rulesets
 
