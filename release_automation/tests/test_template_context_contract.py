@@ -15,6 +15,7 @@ from release_automation.scripts.bot_context import build_context
 
 KNOWN_TEMPLATES = [
     "command_rejected",
+    "common_sync_cleared",
     "common_sync_failed",
     "common_sync_pr_created",
     "config_error",

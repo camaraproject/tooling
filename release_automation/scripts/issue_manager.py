@@ -13,6 +13,10 @@ from . import config
 from .commands import actions_for
 from .config import MAIN_BRANCH
 
+# Shown in the CONFIG section while the common-file cache is stale; the issue
+# sync looks for it to tell when a push has cleared a reported stale cache.
+CACHE_STALE_MARKER = "**Common file cache stale**"
+
 
 class IssueManager:
     """
@@ -186,7 +190,8 @@ class IssueManager:
 
         return "\n".join(lines)
 
-    def generate_actions_section(self, state: str, release_pr_url: str = "", release_tag: str = "") -> str:
+    def generate_actions_section(self, state: str, release_pr_url: str = "", release_tag: str = "",
+                                 common_cache_stale: bool = False, common_sync_pr_url: str = "") -> str:
         """
         Generate content for the ACTIONS section showing valid actions.
 
@@ -194,11 +199,14 @@ class IssueManager:
             state: Current release state
             release_pr_url: Release PR URL (for snapshot-active state)
             release_tag: Release tag (for draft-ready publish command)
+            common_cache_stale: /create-snapshot is refused; the sync PR is offered instead
+            common_sync_pr_url: The open common sync PR, if any
 
         Returns:
             Formatted actions section content
         """
-        return actions_for(state.lower().replace("_", "-"), release_tag, release_pr_url)
+        return actions_for(state.lower().replace("_", "-"), release_tag, release_pr_url,
+                           common_cache_stale, common_sync_pr_url)
 
     def generate_config_section(
         self,
@@ -273,12 +281,12 @@ class IssueManager:
             detail = f" \u2014 {common_cache_details}" if common_cache_details else ""
             if common_sync_pr_url:
                 lines.append(
-                    f"\u26a0\ufe0f **Common file cache stale**{detail}. "
+                    f"\u26a0\ufe0f {CACHE_STALE_MARKER}{detail}. "
                     f"[Sync PR]({common_sync_pr_url}) pending."
                 )
             else:
                 lines.append(
-                    f"\u26a0\ufe0f **Common file cache stale**{detail}. "
+                    f"\u26a0\ufe0f {CACHE_STALE_MARKER}{detail}. "
                     f"Run `/sync-issue` to trigger the sync."
                 )
 

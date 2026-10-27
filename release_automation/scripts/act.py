@@ -127,8 +127,9 @@ def maintenance_branch_summary(plan: PlanDocument, outcome: Dict[str, str]) -> s
             )),
             ("Release plan", f"parked at {bp.next_tag}, target_release_type: none"),
             ("Next step", (
-                f"Open a PR into {branch} that sets target_release_type: maintenance-release and raises the "
-                f"patch version of each API the release fixes; its merge creates the Release Issue for {bp.next_tag}."
+                f"Open a PR into {branch} that sets target_release_type to maintenance-release, or to "
+                f"pre-release-rc for a release candidate first, and raises the patch version of each API the "
+                f"release fixes; its merge creates the Release Issue for {bp.next_tag}."
             )),
         ]
     else:

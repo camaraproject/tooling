@@ -17,7 +17,7 @@ from .config import RELEASE_ISSUE_LABEL, RELEASE_TAG_MARKER_RE, WORKFLOW_MARKER 
 from .github_client import GitHubClient
 from .release_line import line_of
 from .state_manager import ReleaseState
-from .issue_manager import IssueManager
+from .issue_manager import CACHE_STALE_MARKER, IssueManager
 from .labels import RELEASE_ISSUE_LABELS, ensure_labels
 from .plan_document import PlanDocument
 
@@ -72,10 +72,12 @@ class SyncResult:
         action: Action taken ('created', 'updated', 'none')
         issue: Issue dict if an issue was created or updated
         reason: Reason when action is 'none' (e.g., 'up_to_date', 'no_planned_release')
+        cache_cleared: The issue showed a stale common-file cache that is now in sync
     """
     action: str  # 'created', 'updated', 'none'
     issue: Optional[Dict[str, Any]] = None
     reason: Optional[str] = None
+    cache_cleared: bool = False
 
 
 class IssueSyncManager:
@@ -183,11 +185,12 @@ class IssueSyncManager:
 
         # Issue exists - check if update needed
         if view.refresh or self._needs_update(issue, state, release_plan):
+            cache_cleared = view.common_cache_status == "in_sync" and CACHE_STALE_MARKER in (issue.get("body") or "")
             self._update_release_issue(issue, state, release_plan, view)
             # Refetch issue after update
             updated_issue = self.gh.get_issue(issue["number"])
             self.cleanup_stale_workflow_owned_issues(release_tag, updated_issue)
-            return SyncResult(action="updated", issue=updated_issue)
+            return SyncResult(action="updated", issue=updated_issue, cache_cleared=cache_cleared)
 
         self.cleanup_stale_workflow_owned_issues(release_tag, issue)
         return SyncResult(action="none", reason="up_to_date")
@@ -459,7 +462,9 @@ class IssueSyncManager:
         new_actions_content = self.issue_manager.generate_actions_section(
             state=state.value,
             release_pr_url=release_pr_url,
-            release_tag=release_tag
+            release_tag=release_tag,
+            common_cache_stale=view.common_cache_status == "stale",
+            common_sync_pr_url=view.common_sync_pr_url,
         )
         updated_body = self.issue_manager.update_section(
             updated_body, "ACTIONS", new_actions_content
@@ -591,10 +596,11 @@ def post_publish_warnings(publish_warnings: str, sync_status: str) -> str:
 @dataclass(frozen=True)
 class WorkflowSync:
     """Release Issue sync as the workflow sees it; issue_action is
-    created | updated | unchanged | skipped | error."""
+    created | updated | unchanged | skipped | error; cache_cleared as in SyncResult."""
     issue_number: str = ""
     issue_action: str = "skipped"
     issue_url: str = ""
+    cache_cleared: bool = False
 
 
 def _summary(path: str, text: str) -> None:
@@ -714,6 +720,7 @@ def sync_for_workflow(gh: GitHubClient, plan: PlanDocument, view: ReleaseView, s
         url = result.issue.get("html_url", "")
         print(f"Issue {result.action}: #{number}")
         print(f"  URL: {url}")
-        return WorkflowSync(issue_number=str(number), issue_action=result.action, issue_url=url)
+        return WorkflowSync(issue_number=str(number), issue_action=result.action, issue_url=url,
+                            cache_cleared=result.cache_cleared)
     print(f"Action {result.action} but no issue returned")
     return WorkflowSync(issue_action=result.action)

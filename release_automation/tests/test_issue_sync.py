@@ -9,7 +9,7 @@ import pytest
 from unittest.mock import MagicMock
 
 from release_automation.scripts.github_client import GitHubClientError
-from release_automation.scripts.issue_manager import IssueManager
+from release_automation.scripts.issue_manager import CACHE_STALE_MARKER, IssueManager
 from release_automation.scripts.labels import RELEASE_ISSUE_LABELS
 from release_automation.scripts.issue_sync import (
     IssueSyncManager,
@@ -133,6 +133,24 @@ class TestSyncReleaseIssue:
         gh.remove_labels.assert_called_with(1, ["release-state:planned"])
         gh.add_labels.assert_called_with(1, ["release-state:snapshot-active"])
 
+    @pytest.mark.parametrize("cache_status, body_stale, cleared", [
+        ("in_sync", True, True),
+        ("in_sync", False, False),
+        ("stale", True, False),
+        ("", True, False),
+    ])
+    def test_cache_cleared_when_a_reported_stale_cache_is_in_sync(self, cache_status, body_stale, cleared):
+        manager, gh, _ = self._create_manager()
+        body = f"{WORKFLOW_MARKER}\n<!-- release-automation:release-tag:r4.1 -->"
+        if body_stale:
+            body += f"\n\u26a0\ufe0f {CACHE_STALE_MARKER} \u2014 manifest missing."
+        gh.get_issue.return_value = self.issue(body=body)
+
+        result = manager.sync_release_issue(
+            self.PLAN, ReleaseView(state="planned", issue_number="1", common_cache_status=cache_status))
+
+        assert (result.action, result.cache_cleared) == ("updated", cleared)
+
     def test_issue_event_without_a_change_is_up_to_date(self):
         # An issue close or reopen refreshes only on a state change (refresh=False)
         manager, gh, _ = self._create_manager()
@@ -226,6 +244,7 @@ class TestSyncReleaseIssue:
         )
         issue_manager.generate_actions_section.assert_called_once_with(
             state="snapshot-active", release_pr_url="https://github.com/org/repo/pull/12", release_tag="r4.1",
+            common_cache_stale=True, common_sync_pr_url="u",
         )
 
     def test_without_a_snapshot_the_dependencies_come_from_the_plan(self):
@@ -787,6 +806,13 @@ class TestSyncForWorkflow:
         assert outcome == WorkflowSync(issue_number="7", issue_action="created", issue_url="https://github.com/o/r/issues/7")
         assert calls["release_plan"]["repository"]["target_release_tag"] == "r4.1"
         assert calls["view"] is view
+
+    def test_cache_cleared_is_passed_on(self, monkeypatch, tmp_path):
+        issue = {"number": 7, "html_url": "u"}
+
+        outcome, _, _, _ = self.run(monkeypatch, tmp_path, SyncResult(action="updated", issue=issue, cache_cleared=True))
+
+        assert outcome == WorkflowSync(issue_number="7", issue_action="updated", issue_url="u", cache_cleared=True)
 
     def test_reads_the_plan_of_the_base_branch(self, monkeypatch, tmp_path):
         _, calls, _, gh = self.run(monkeypatch, tmp_path, SyncResult(action="none"), base_branch="maintenance/r4")

@@ -613,13 +613,16 @@ class SnapshotCreator:
         Returns:
             PullRequestInfo with PR number and URL
         """
-        # Build PR title: "Release Review: RepoName rX.Y (short_type meta_release)"
+        # Build PR title: "Release Review: RepoName rX.Y (short_type meta_release)",
+        # followed by " on maintenance/rX" for a release from a maintenance branch
         repo_name = self.gh.repo.split("/")[-1]
         release_type = release_plan.get("repository", {}).get("target_release_type", "")
         meta_release = release_plan.get("repository", {}).get("meta_release", "")
         short_type = config.short_type(release_type)
         type_suffix = f" ({short_type} {meta_release})" if meta_release else f" ({short_type})" if short_type else ""
-        title = f"Release Review: {repo_name} {release_tag}{type_suffix}"
+        maintenance_line = base_branch if base_branch and base_branch != config.MAIN_BRANCH else ""
+        line_suffix = f" on {maintenance_line}" if maintenance_line else ""
+        title = f"Release Review: {repo_name} {release_tag}{type_suffix}{line_suffix}"
 
         # Build PR body from template with enriched context
         seeded_from = release_plan.get("seeded_from") or {}
@@ -679,6 +682,7 @@ class SnapshotCreator:
         body = render_template("release_review_pr", {
             "release_tag": release_tag,
             "base_branch": base_branch,
+            "maintenance_line": maintenance_line,
             "snapshot_id": snapshot_id,
             "snapshot_branch_url": snapshot_branch_url,
             "release_issue_url": release_issue_url,

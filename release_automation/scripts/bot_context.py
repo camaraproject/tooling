@@ -132,7 +132,8 @@ class BotContext:
         self.has_publish_warnings = bool(self.publish_warnings)
         self.common_cache_stale = self.common_cache_status == "stale"
         self.has_common_sync_pr = bool(self.common_sync_pr_url)
-        self.valid_actions = actions_for(self.state, self.release_tag, self.release_pr_url)
+        self.valid_actions = actions_for(self.state, self.release_tag, self.release_pr_url,
+                                         self.common_cache_stale, self.common_sync_pr_url)
         if not self.src_commit_sha_short:
             self.src_commit_sha_short = self.src_commit_sha[:7]
         if not self.short_type:

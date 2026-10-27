@@ -237,9 +237,9 @@ def test_create_maintenance_branch_summary_names_the_branch_and_the_next_step():
     assert ("| Maintenance branch | maintenance/r1 created at aaaaaaa, the source commit of r1.8; "
             "set-up commit c1d2e3f |") in text
     assert "| Release plan | parked at r1.9, target_release_type: none |" in text
-    assert ("| Next step | Open a PR into maintenance/r1 that sets target_release_type: maintenance-release "
-            "and raises the patch version of each API the release fixes; its merge creates the Release Issue "
-            "for r1.9. |") in text
+    assert ("| Next step | Open a PR into maintenance/r1 that sets target_release_type to maintenance-release, "
+            "or to pre-release-rc for a release candidate first, and raises the patch version of each API the "
+            "release fixes; its merge creates the Release Issue for r1.9. |") in text
     assert "| Warning | source/r1.8 points to fffffff |" in text
 
 

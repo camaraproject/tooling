@@ -1915,11 +1915,13 @@ def _context_with_active_release_state(
     release_issue_number: int | None = None,
     trigger_type: str = "pr",
     release_plan_changed: bool | None = True,
+    base_ref: str | None = None,
 ) -> ValidationContext:
     return dataclasses.replace(
         _make_context(),
         trigger_type=trigger_type,
         release_plan_changed=release_plan_changed,
+        base_ref=base_ref,
         active_release_state=ActiveReleaseState(
             state=state,
             snapshot_branch=snapshot_branch,
@@ -1978,6 +1980,31 @@ class TestCheckReleasePlanActiveReleaseState:
         assert "release-snapshot/r4.3-abc1234" in findings[0]["message"]
         assert "#23" in findings[0]["message"]
         assert "draft-ready" in findings[0]["message"]
+
+    def test_message_names_the_line_and_suggestion_gives_the_way_out(self, tmp_path: Path):
+        context = _context_with_active_release_state(
+            state="snapshot-active",
+            snapshot_branch="release-snapshot/r1.9-abc1234",
+            release_issue_number=120,
+            base_ref="maintenance/r1",
+        )
+
+        [finding] = check_release_plan_active_release_state(tmp_path, context)
+
+        assert finding["message"].startswith(
+            "release-plan.yaml on 'maintenance/r1' cannot be changed while that branch has an active release"
+        )
+        assert "/discard-snapshot" in finding["suggestion"]
+        assert "#120" in finding["suggestion"]
+        assert "release-plan.yaml" in finding["suggestion"] and "separate PR" in finding["suggestion"]
+
+    def test_message_without_base_ref_says_this_branch(self, tmp_path: Path):
+        context = _context_with_active_release_state(state="draft-ready")
+
+        [finding] = check_release_plan_active_release_state(tmp_path, context)
+
+        assert finding["message"].startswith("release-plan.yaml on this branch cannot be changed")
+        assert "/delete-draft" in finding["suggestion"]
 
     def test_planned_state_does_not_block(self, tmp_path: Path):
         context = _context_with_active_release_state(

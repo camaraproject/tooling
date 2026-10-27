@@ -107,9 +107,21 @@ def _row(row: str, release_tag: str, release_pr_url: str) -> str:
     return row.format(release_pr=release_pr)
 
 
-def actions_for(state: str, release_tag: str, release_pr_url: str = "") -> str:
+def _cache_row(common_sync_pr_url: str) -> str:
+    """Replaces /create-snapshot while the common-file cache is stale (the command is refused)."""
+    if common_sync_pr_url:
+        return f"Merge the [common sync PR]({common_sync_pr_url}) — `/create-snapshot` is blocked until `code/common/` is in sync"
+    return "Run `/sync-issue` to sync `code/common/` — `/create-snapshot` is blocked until it is in sync"
+
+
+def actions_for(state: str, release_tag: str, release_pr_url: str = "",
+                common_cache_stale: bool = False, common_sync_pr_url: str = "") -> str:
     """The "Valid actions" block for a state, the first action bold; "" when there is none."""
-    rows = [_row(row, release_tag, release_pr_url) for row in STATE_ACTIONS.get(state, ())]
+    rows = [
+        _cache_row(common_sync_pr_url) if common_cache_stale and row == "create-snapshot"
+        else _row(row, release_tag, release_pr_url)
+        for row in STATE_ACTIONS.get(state, ())
+    ]
     if not rows:
         return ""
     rows[0] = f"**{rows[0]}**"

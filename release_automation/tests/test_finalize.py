@@ -265,6 +265,15 @@ def test_common_sync_pr_created_notification():
     ]
 
 
+def test_common_sync_cleared_notification():
+    # A push that brings code/common/ in sync after the issue reported it stale
+    run = make_run({"release_issue_number": "42"})
+
+    assert notifications(run, WorkflowSync(issue_number="42", issue_action="updated", cache_cleared=True), None) == [
+        ("common_sync_cleared", "42", {}),
+    ]
+
+
 @pytest.mark.parametrize("status", ["updated", "no_changes"])
 def test_no_common_sync_notification_without_new_pr(status):
     assert notifications(make_run(), WorkflowSync(issue_action="unchanged"), CommonSyncOutcome(status=status)) == []
@@ -715,7 +724,7 @@ def test_stale_cache_runs_common_sync_before_the_issue_sync(stubs, tmp_path):
     assert stubs["issue_sync"].common_sync_pr_url == "https://github.com/camaraproject/Example/pull/40"
     _, issue, body = gh.events[2]
     assert issue == 42
-    assert body.startswith("<!-- release-bot:r4.1 -->\n**Common file sync: [sync PR](https://github.com/camaraproject/Example/pull/40) created**")
+    assert body.startswith("<!-- release-bot:r4.1 -->\n**Common file sync: [sync PR](https://github.com/camaraproject/Example/pull/40) into `main` created**")
     assert "code/common/.sync-manifest.yaml is missing" in body
 
 
