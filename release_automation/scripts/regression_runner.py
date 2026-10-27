@@ -5,8 +5,10 @@ CAMARA Release Automation — Regression Runner
 Exercises the release-automation-reusable.yml workflow on a persistent
 test repository (default: camaraproject/ReleaseTest) via publish-free paths:
 
-    planned:          sync-issue via workflow_dispatch, /sync-issue,
-                      /discard-snapshot (expected to be rejected)
+    planned:          sync-issue via workflow_dispatch, the same on an
+                      existing maintenance line (main's Release Issue
+                      untouched), /sync-issue, /discard-snapshot
+                      (expected to be rejected)
     round trip:       /create-snapshot, Release Issue close in
                       snapshot-active (expected auto-reopen),
                       /discard-snapshot
@@ -667,9 +669,63 @@ def get_issue_open_state(repo: str, issue_number: int) -> str:
     ).strip()
 
 
-def dispatch_workflow(repo: str, workflow_file: str) -> None:
-    """Trigger *workflow_file* on *repo* via workflow_dispatch (default branch)."""
-    gh(["workflow", "run", workflow_file, "--repo", repo])
+def dispatch_workflow(repo: str, workflow_file: str, ref: str | None = None) -> None:
+    """Trigger *workflow_file* on *repo* via workflow_dispatch (default branch unless *ref*)."""
+    args = ["workflow", "run", workflow_file, "--repo", repo]
+    if ref:
+        args += ["--ref", ref]
+    gh(args)
+
+
+def run_head_branch(repo: str, run_id: str) -> str:
+    """The branch a run was dispatched on."""
+    return gh(["run", "view", run_id, "--repo", repo, "--json", "headBranch", "--jq", ".headBranch"]).strip()
+
+
+def maintenance_line(repo: str) -> str | None:
+    """The first maintenance/rX branch of *repo*, None without one."""
+    lines = sorted(name for name in _branch_names(repo) if re.fullmatch(r"maintenance/r[1-9]\d*", name))
+    return lines[0] if lines else None
+
+
+def planned_release_type(repo: str, ref: str) -> str:
+    """target_release_type of release-plan.yaml on *ref* ("" when unreadable)."""
+    text = gh([
+        "api", f"repos/{repo}/contents/release-plan.yaml?ref={ref}",
+        "-H", "Accept: application/vnd.github.raw",
+    ])
+    try:
+        plan = yaml.safe_load(text) or {}
+    except yaml.YAMLError:
+        return ""
+    return str((plan.get("repository") or {}).get("target_release_type") or "")
+
+
+def open_release_issues(repo: str) -> set[int]:
+    """Numbers of all open workflow-owned Release Issues, of any line."""
+    data = gh(
+        [
+            "api", f"repos/{repo}/issues",
+            "-X", "GET",
+            "-f", "state=open",
+            "-f", f"labels={_RELEASE_ISSUE_LABEL}",
+            "--paginate",
+            "--jq", "[.[] | select(.pull_request == null) | {number, body}]",
+        ],
+        parse_json=True,
+    )
+    return {item["number"] for item in data if _RELEASE_ISSUE_BODY_MARKER in (item.get("body") or "")}
+
+
+def issue_fingerprint(repo: str, issue_number: int) -> dict[str, Any]:
+    """What a write to the issue changes: updated_at, state and labels."""
+    return gh(
+        [
+            "api", f"repos/{repo}/issues/{issue_number}",
+            "--jq", "{updated_at, state, labels: [.labels[].name]}",
+        ],
+        parse_json=True,
+    )
 
 
 def find_job_conclusion(repo: str, run_id: str, job_name: str) -> str | None:
@@ -1003,6 +1059,93 @@ def phase_dispatch_sync_issue(
 
     report.passed = True
     report.detail = f"caller run and {_SYNC_ISSUE_JOB} job succeeded"
+    return report
+
+
+def phase_dispatch_sync_issue_on_line(
+    repo: str,
+    issue_number: int,
+    *,
+    poll_timeout: int,
+    dry_run: bool,
+) -> PhaseReport:
+    """Dispatch sync-issue on a maintenance line; main's Release Issue stays untouched.
+
+    The line is synced on its own (M7): main's issue keeps its updated_at,
+    state and labels, and no Release Issue is closed. A line parked at
+    target_release_type none (not-planned) must not get a Release Issue
+    either; a planned line may update its own.
+    """
+    report = PhaseReport(name="dispatch sync-issue on maintenance line")
+    if dry_run:
+        report.passed = True
+        report.detail = f"DRY-RUN: would dispatch {_RA_CALLER_WORKFLOW} on a maintenance line of {repo}"
+        return report
+
+    try:
+        line = maintenance_line(repo)
+        if line is None:
+            report.passed = True
+            report.detail = "no maintenance line — skipped"
+            return report
+        release_type = planned_release_type(repo, line)
+        before_issues = open_release_issues(repo)
+        before_main = issue_fingerprint(repo, issue_number)
+        marker = datetime.now(timezone.utc).replace(microsecond=0)
+        dispatch_workflow(repo, _RA_CALLER_WORKFLOW, ref=line)
+        logger.info("dispatched %s on %s@%s; polling for caller run", _RA_CALLER_WORKFLOW, repo, line)
+        run = find_recent_caller_run(
+            repo,
+            workflow_file=_RA_CALLER_WORKFLOW,
+            since=marker,
+            event="workflow_dispatch",
+        )
+    except InfrastructureError as exc:
+        report.detail = f"could not dispatch {_RA_CALLER_WORKFLOW} on the line: {exc}"
+        return report
+
+    run_id = str(run["databaseId"])
+    report.run_url = run.get("url")
+    try:
+        conclusion = poll_run(repo, run_id, interval=15, timeout=poll_timeout)
+    except InfrastructureError as exc:
+        report.detail = f"run {run_id} polling error: {exc}"
+        return report
+    report.run_conclusion = conclusion
+    if conclusion != "success":
+        report.detail = f"caller run concluded {conclusion!r} — RA workflow failed"
+        return report
+    if not _check_sync_job(report, repo, run_id):
+        return report
+
+    try:
+        head = run_head_branch(repo, run_id)
+        after_issues = open_release_issues(repo)
+        after_main = issue_fingerprint(repo, issue_number)
+    except InfrastructureError as exc:
+        report.detail = f"could not read the state after run {run_id}: {exc}"
+        return report
+    if head != line:
+        report.detail = f"run {run_id} ran on {head!r}, expected {line!r}"
+        return report
+    if after_main != before_main:
+        report.detail = f"main's Release Issue #{issue_number} changed: {before_main} → {after_main}"
+        return report
+    closed = before_issues - after_issues
+    if closed:
+        report.detail = f"Release Issue(s) closed by the line's sync: {sorted(closed)}"
+        return report
+    parked = release_type == "none"
+    created = after_issues - before_issues
+    if parked and created:
+        report.detail = f"{line} is parked at none but got Release Issue(s) {sorted(created)}"
+        return report
+
+    report.passed = True
+    report.detail = (
+        f"{line} {'parked at none, no Release Issue created' if parked else f'planned ({release_type})'}; "
+        f"#{issue_number} untouched"
+    )
     return report
 
 
@@ -1580,6 +1723,9 @@ def run_phases(
     # below gates /create-snapshot.
     reports.append(
         phase_dispatch_sync_issue(repo, poll_timeout=poll_timeout, dry_run=dry_run)
+    )
+    reports.append(
+        phase_dispatch_sync_issue_on_line(repo, issue_number, poll_timeout=poll_timeout, dry_run=dry_run)
     )
     sync_report, _sync_run_id = phase_fire_sync_issue(
         repo, issue_number,

@@ -33,6 +33,7 @@ from release_automation.scripts.regression_runner import (
     phase_close_auto_reopen,
     phase_close_recreate,
     phase_dispatch_sync_issue,
+    phase_dispatch_sync_issue_on_line,
     phase_fire_create_snapshot,
     phase_fire_rejected_discard,
     phase_fire_sync_issue,
@@ -1559,6 +1560,100 @@ class TestPhaseDispatchSyncIssue:
         assert "DRY-RUN" in report.detail
 
 
+_RELEASE_ISSUE_MARKER = "<!-- release-automation:workflow-owned -->"
+_MAIN_ISSUE = {"updated_at": "2026-04-23T04:00:00Z", "state": "open", "labels": ["release-issue", "release-state:planned"]}
+
+
+def _line_responses(*, plan_type="none", head="maintenance/r1", after_main=None, after_issues=(90,),
+                    conclusion="success", branches="main\nmaintenance/r1\n"):
+    """gh responses of the line phase; the open-issues and issue reads return before, then after."""
+    issues = iter([[{"number": 90, "body": _RELEASE_ISSUE_MARKER}],
+                   [{"number": n, "body": _RELEASE_ISSUE_MARKER} for n in after_issues]])
+    mains = iter([_MAIN_ISSUE, after_main or _MAIN_ISSUE])
+    return [
+        ("branches --paginate", branches),
+        ("contents/release-plan.yaml?ref=maintenance/r1",
+         f"repository:\n  target_release_tag: r1.12\n  target_release_type: {plan_type}\n"),
+        ("labels=release-issue", lambda _j: next(issues)),
+        ("issues/90 --jq", lambda _j: next(mains)),
+        ("workflow run", ""),
+        ("run list", [_run(7, "2026-04-23T05:00:05Z", "CAMARA Release Automation", conclusion)]),
+        ("status,conclusion", {"status": "completed", "conclusion": conclusion}),
+        ("--json jobs", _jobs("success")),
+        ("headBranch", f"{head}\n"),
+    ]
+
+
+class TestPhaseDispatchSyncIssueOnLine:
+    def _run_phase(self, responses):
+        calls: list[str] = []
+        router = _gh_router(responses)
+
+        def record(args, parse_json=False):
+            calls.append(" ".join(args))
+            return router(args, parse_json)
+
+        with patch("release_automation.scripts.regression_runner.gh", side_effect=record):
+            report = phase_dispatch_sync_issue_on_line("o/r", 90, poll_timeout=10, dry_run=False)
+        return report, calls
+
+    def test_parked_line_leaves_main_untouched_and_gets_no_issue(self, frozen_now):
+        report, calls = self._run_phase(_line_responses())
+
+        assert report.passed is True, report.detail
+        assert report.detail == "maintenance/r1 parked at none, no Release Issue created; #90 untouched"
+        assert "workflow run release-automation.yml --repo o/r --ref maintenance/r1" in calls
+
+    def test_planned_line_may_create_its_own_issue(self, frozen_now):
+        report, _ = self._run_phase(_line_responses(plan_type="maintenance-release", after_issues=(90, 95)))
+
+        assert report.passed is True, report.detail
+        assert "planned (maintenance-release)" in report.detail
+
+    def test_parked_line_must_not_get_an_issue(self, frozen_now):
+        report, _ = self._run_phase(_line_responses(after_issues=(90, 95)))
+
+        assert report.passed is False
+        assert "parked at none but got Release Issue(s) [95]" in report.detail
+
+    def test_fail_when_main_issue_changed(self, frozen_now):
+        report, _ = self._run_phase(_line_responses(after_main={**_MAIN_ISSUE, "updated_at": "2026-04-23T05:01:00Z"}))
+
+        assert report.passed is False
+        assert "main's Release Issue #90 changed" in report.detail
+
+    def test_fail_when_an_issue_was_closed(self, frozen_now):
+        report, _ = self._run_phase(_line_responses(after_issues=()))
+
+        assert report.passed is False
+        assert "closed by the line's sync: [90]" in report.detail
+
+    def test_fail_when_the_run_ran_elsewhere(self, frozen_now):
+        report, _ = self._run_phase(_line_responses(head="main"))
+
+        assert report.passed is False
+        assert "ran on 'main', expected 'maintenance/r1'" in report.detail
+
+    def test_fail_when_run_failed(self, frozen_now):
+        report, _ = self._run_phase(_line_responses(conclusion="failure"))
+
+        assert report.passed is False
+        assert "RA workflow failed" in report.detail
+
+    def test_skipped_without_a_maintenance_line(self, frozen_now):
+        report, calls = self._run_phase(_line_responses(branches="main\nmaintenance-r1\n"))
+
+        assert report.passed is True
+        assert report.detail == "no maintenance line — skipped"
+        assert not any("workflow run" in c for c in calls)
+
+    def test_dry_run(self):
+        report = phase_dispatch_sync_issue_on_line("o/r", 90, poll_timeout=10, dry_run=True)
+
+        assert report.passed is True
+        assert "DRY-RUN" in report.detail
+
+
 def _slash_responses(comment_body: str, sync_conclusion: str | None = None):
     responses = [
         ("{title: .title}", {"title": "Release for r1.2"}),
@@ -1784,6 +1879,7 @@ class TestRunPhases:
 
         monkeypatch.setattr(f"{self._MOD}.phase_pre_check", lambda *a, **k: ok("pre-check"))
         monkeypatch.setattr(f"{self._MOD}.phase_dispatch_sync_issue", lambda *a, **k: ok("dispatch"))
+        monkeypatch.setattr(f"{self._MOD}.phase_dispatch_sync_issue_on_line", lambda *a, **k: ok("line"))
         monkeypatch.setattr(f"{self._MOD}.phase_fire_sync_issue", lambda *a, **k: (ok("sync"), "1"))
         monkeypatch.setattr(f"{self._MOD}.phase_fire_rejected_discard", lambda *a, **k: (ok("rejected"), "2"))
         monkeypatch.setattr(f"{self._MOD}.phase_verify_planned_unchanged", lambda *a, **k: ok("planned"))
@@ -1798,13 +1894,13 @@ class TestRunPhases:
         self._patch_phases(monkeypatch)
         reports = run_phases("o/r", 90, poll_timeout=10, dry_run=False)
         assert [r.name for r in reports] == [
-            "pre-check", "dispatch", "sync", "rejected", "planned",
+            "pre-check", "dispatch", "line", "sync", "rejected", "planned",
             "create", "verify-create", "close", "discard", "verify-discard",
             "recreate",
         ]
 
     def test_publish_free_failure_does_not_stop_round_trip(self, monkeypatch):
-        self._patch_phases(monkeypatch, failing={"dispatch", "sync", "rejected"})
+        self._patch_phases(monkeypatch, failing={"dispatch", "line", "sync", "rejected"})
         reports = run_phases("o/r", 90, poll_timeout=10, dry_run=False)
         assert reports[-1].name == "recreate"
 
@@ -1829,7 +1925,7 @@ class TestRunPhases:
         self._patch_phases(monkeypatch)
         reports = run_phases("o/r", 90, poll_timeout=10, dry_run=True)
         assert [r.name for r in reports] == [
-            "pre-check", "dispatch", "sync", "rejected", "create",
+            "pre-check", "dispatch", "line", "sync", "rejected", "create",
         ]
 
 
