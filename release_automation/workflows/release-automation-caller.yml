@@ -114,5 +114,5 @@ jobs:
       group: release-automation-${{ github.repository }}
       cancel-in-progress: false
 
-    uses: camaraproject/tooling/.github/workflows/release-automation-reusable.yml@v1-rc
+    uses: camaraproject/tooling/.github/workflows/release-automation-reusable.yml@v1-rc2
     secrets: inherit

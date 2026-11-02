@@ -323,14 +323,14 @@ def test_ra_caller_dispatch_inputs_match_the_trigger_module():
     assert inputs["cycle"]["type"] == "string" and inputs["cycle"]["required"] is False
 
 
-def test_callers_need_no_oidc_token_and_stay_on_v1_rc():
+def test_callers_need_no_oidc_token_and_stay_on_v1_rc2():
     ra = yaml.safe_load(RA_CALLER.read_text(encoding="utf-8"))
     vf = yaml.safe_load(VF_CALLER.read_text(encoding="utf-8"))
 
     for caller, workflow in ((ra, "release-automation-reusable.yml"), (vf, "validation.yml")):
         assert "id-token" not in caller["permissions"]
         (job,) = caller["jobs"].values()
-        assert job["uses"] == f"camaraproject/tooling/.github/workflows/{workflow}@v1-rc"
+        assert job["uses"] == f"camaraproject/tooling/.github/workflows/{workflow}@v1-rc2"
         assert "with" not in job
     assert _on(vf)["pull_request"]["branches"] == ["main", "release-snapshot/**", "maintenance/**"]
 
