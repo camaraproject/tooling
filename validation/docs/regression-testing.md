@@ -323,7 +323,7 @@ can reasonably be exercised from the spec side.
 ### Target themes
 
 The r4.3 rule set partitions cleanly into seven themes (plus an optional
-eighth for test-file quality). The table records the current plan; each
+eighth for test-file quality and a ninth for security schemes). The table records the current plan; each
 theme becomes one `regression/r4.3-broken-spec-<theme>` branch.
 
 | # | Branch | Theme / target files | Rules covered | Rebase risk on minor bump |
@@ -336,6 +336,7 @@ theme becomes one `regression/r4.3-broken-spec-<theme>` branch.
 | 6 | `regression/r4.3-broken-spec-routing` | `sample-service.yaml` — paths, operationIds, HTTP methods, servers | S-002, S-003, S-007, S-008, S-010, S-204, S-214, S-217, S-218, S-220, S-222, S-224, S-225, S-226, S-227, S-301, S-306 | HIGH |
 | 7 | `regression/r4.3-broken-spec-subscriptions` | `sample-service-subscriptions.yaml` + `sample-implicit-events.yaml` — CloudEvent / Protocol / sink / notifications + Python subscription checks | S-032, S-033, S-034, S-035, P-014, P-015, P-016, P-020 | HIGH |
 | 8 (optional) | `regression/r4.3-broken-spec-test-files` | `release-plan.yaml` synthetic API + `sample-service.yaml` server URL + `sample-service-createResource.feature` gherkin defects | P-001, P-002, P-004, P-005, G-002, G-014, G-016, G-019, G-021, G-024, G-025 | LOW |
+| 9 | `regression/r4.3-broken-spec-security-scheme` | `sample-service.yaml` (`openId` as oauth2, one operation naming an undefined scheme), `sample-service-subscriptions.yaml` (`securitySchemes` removed), `sample-implicit-events.yaml` (non-HTTPS `openIdConnectUrl`) | S-041, S-042, S-043 | LOW |
 
 Rules **not** covered by any broken-spec branch:
 
