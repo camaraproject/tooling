@@ -18,6 +18,7 @@
 # - 08.07.2026: Reworded S-038 description and message to the OpenAPI Format Registry framing
 # - 15.07.2026: Added x-correlator documentation rules (S-039, S-040)
 # - 16.07.2026: Made unused-component detection discriminator-aware (S-211)
+# - 09.11.2026: Added security scheme rules (S-041..S-043)
 
 
 # Note: @stoplight/spectral-owasp-ruleset is installed via validation/package.json.
@@ -41,6 +42,7 @@ functions:
   - camara-integer-safe-range
   - camara-x-correlator-documentation
   - camara-discriminator-aware-unused-component
+  - camara-security-scheme
 functionsDir: "./lint_function"
 rules:
   #  Built-in OpenAPI Specification ruleset. Each rule then can be enabled individually.
@@ -592,6 +594,42 @@ rules:
       function: camara-x-correlator-documentation
       functionOptions:
         target: response
+    recommended: true
+
+  camara-security-requirement-defined:
+    description: "Every scheme named in a security requirement (root, operation, callback) MUST be defined in components.securitySchemes."
+    message: "{{error}}"
+    severity: error
+    formats: ["oas3"]
+    given: "$"
+    then:
+      function: camara-security-scheme
+      functionOptions:
+        check: requirement-defined
+    recommended: true
+
+  camara-security-openid-scheme:
+    description: "Secured APIs MUST define the openIdConnect scheme 'openId' and no oauth2 scheme."
+    message: "{{error}}"
+    severity: error
+    formats: ["oas3"]
+    given: "$"
+    then:
+      function: camara-security-scheme
+      functionOptions:
+        check: openid-scheme
+    recommended: true
+
+  camara-security-openid-url:
+    description: "openIdConnectUrl MUST use HTTPS and end in /.well-known/openid-configuration."
+    message: "{{error}}"
+    severity: warn
+    formats: ["oas3"]
+    given: "$"
+    then:
+      function: camara-security-scheme
+      functionOptions:
+        check: openid-url
     recommended: true
 
   # ===== OWASP API Security Top 10 2023 =====
