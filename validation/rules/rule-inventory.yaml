@@ -14,13 +14,13 @@ version: 1
 generated: 2026-04-07
 
 summary:
-  total_implemented: 152
+  total_implemented: 155
   total_gap: 0
   total_manual: 25
   total_pending: 0
-  total_tested: 97
+  total_tested: 100
   by_engine:
-    spectral: 86
+    spectral: 89
     gherkin: 25
     python: 28
     yamllint: 13
@@ -366,6 +366,9 @@ tested_rules:
   S-036: [regression/r4.3-broken-spec-routing]
   S-039: [regression/r4.3-broken-spec-error-handling]
   S-040: [regression/r4.3-broken-spec-error-handling]
+  S-041: [regression/r4.3-broken-spec-security-scheme]
+  S-042: [regression/r4.3-broken-spec-security-scheme]
+  S-043: [regression/r4.3-broken-spec-security-scheme]
   S-201: [regression/r4.3-broken-spec-api-metadata]
   S-210: [regression/r4.3-broken-spec-api-metadata]
   S-211: [regression/r4.3-broken-spec-subscriptions, regression/r4.3-broken-spec-yaml-fundamentals]

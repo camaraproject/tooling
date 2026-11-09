@@ -2,6 +2,8 @@
 
 ## Table of Contents
 
+- **[v0.11.2](#v0112)**
+- **[v0.11.1](#v0111)**
 - **[v0.11.0](#v0110)**
 - **[v0.10.0](#v0100)**
 - **[v0.9.0](#v090)**
@@ -17,6 +19,44 @@
 - **[v0.2.2](#v022)**
 - **[v0.2.1](#v021)**
 - **[v0.2.0](#v020)**
+
+# v0.11.2
+
+## Release Notes
+
+**v0.11.2 is a patch release for the CAMARA tooling repository.**
+
+This release corrects the security scheme rule S-042 introduced in v0.11.1: an operation secured only by the notification delivery scheme `notificationsBearerAuth`, such as the receiver-side notification endpoint template in Commonalities, no longer has to define the `openId` scheme. The Commonalities Artifacts Lint passes again with this ruleset.
+
+### Fixed
+
+* Exempt `notificationsBearerAuth`-only requirements from S-042 by @hdamker in https://github.com/camaraproject/tooling/pull/526
+
+**Full Changelog**: https://github.com/camaraproject/tooling/compare/v0.11.1...v0.11.2
+
+# v0.11.1
+
+## Release Notes
+
+**v0.11.1 is a patch release for the CAMARA tooling repository.**
+
+This release adds three Spectral rules to the r4 ruleset that check the security scheme of an API definition: every name in a `security` requirement must be defined in `components.securitySchemes` (S-041), a secured API must define the `openIdConnect` scheme `openId` and no `oauth2` scheme (S-042), and `openIdConnectUrl` must be an HTTPS discovery URL (S-043). The Release Automation canary gains publish-free regression paths. Three `/validation` dependency changes are included.
+
+### Added
+
+* Add security scheme rules S-041 to S-043 to the r4 ruleset by @hdamker in https://github.com/camaraproject/tooling/pull/523
+
+### Changed
+
+* Add publish-free paths (sync-issue, rejection, issue-close auto-reopen) to the Release Automation canary by @hdamker in https://github.com/camaraproject/tooling/pull/477
+
+### Dependencies
+
+* Bump @redocly/cli from 2.64.1 to 2.71.0 by @dependabot in https://github.com/camaraproject/tooling/pull/509
+* Bump @redocly/cli from 2.71.0 to 2.72.1 by @dependabot in https://github.com/camaraproject/tooling/pull/520
+* Bump fast-uri from 3.1.8 to 3.1.9 (security) by @dependabot in https://github.com/camaraproject/tooling/pull/521
+
+**Full Changelog**: https://github.com/camaraproject/tooling/compare/v0.11.0...v0.11.1
 
 # v0.11.0
 

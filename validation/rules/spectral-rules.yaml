@@ -229,6 +229,27 @@
   engine_rule: camara-x-correlator-response-header
   short_title: "x-correlator response header is undocumented"
 
+- id: S-041
+  engine: spectral
+  engine_rule: camara-security-requirement-defined
+  short_title: "Security requirement names an undefined scheme"
+  suggestion: 'Define the scheme under components.securitySchemes: openId: {$ref: "../common/CAMARA_common.yaml#/components/securitySchemes/openId"}. Repositories that copy the common definitions inline use the openIdConnect block from CAMARA_common.yaml.'
+  documentation_url: "https://github.com/camaraproject/tooling/blob/main/documentation/validation/faq.md#s-041-security-scheme"
+
+- id: S-042
+  engine: spectral
+  engine_rule: camara-security-openid-scheme
+  short_title: "API must define the openIdConnect scheme 'openId'"
+  suggestion: 'Define only the openIdConnect scheme under components.securitySchemes: openId: {$ref: "../common/CAMARA_common.yaml#/components/securitySchemes/openId"}. Repositories that copy the common definitions inline use the openIdConnect block from CAMARA_common.yaml. Flows and token endpoints are agreed at onboarding, not in the API definition.'
+  documentation_url: "https://github.com/camaraproject/tooling/blob/main/documentation/validation/faq.md#s-041-security-scheme"
+
+- id: S-043
+  engine: spectral
+  engine_rule: camara-security-openid-url
+  short_title: "openIdConnectUrl must be an HTTPS discovery URL"
+  suggestion: "Use the placeholder https://example.com/.well-known/openid-configuration. The provider substitutes the real URL at exposure."
+  documentation_url: "https://github.com/camaraproject/tooling/blob/main/documentation/validation/faq.md#s-041-security-scheme"
+
 # ===== Built-in OAS rules (S-200+) =====
 
 - id: S-200

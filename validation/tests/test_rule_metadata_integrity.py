@@ -42,6 +42,7 @@ _SPECTRAL_CONFIG = _LINTING_DIR / ".spectral.yaml"
 _SPECTRAL_R34_CONFIG = _LINTING_DIR / ".spectral-r3.4.yaml"
 _SPECTRAL_R4_CONFIG = _LINTING_DIR / ".spectral-r4.yaml"
 _GPLINT_CONFIG = _LINTING_DIR / ".gplintrc"
+_LEGACY_GHERKIN_CONFIG = _LINTING_DIR / ".gherkin-lintrc"
 _YAMLLINT_CONFIG = _LINTING_DIR / ".yamllint.yaml"
 
 # Rule ID pattern from schema
@@ -88,7 +89,7 @@ class TestStructuralIntegrity:
         for r in all_rules:
             counts[r.engine] = counts.get(r.engine, 0) + 1
         assert counts["python"] == 41
-        assert counts["spectral"] == 89
+        assert counts["spectral"] == 92
         assert counts["gherkin"] == 25
         assert counts["yamllint"] == 13
 
@@ -213,6 +214,14 @@ class TestEngineCoverage:
         """Load .gplintrc, allowing // comments."""
         return cls._load_jsonc_config(_GPLINT_CONFIG, "GPLint config not found")
 
+    @classmethod
+    def _load_legacy_gherkin_config(cls) -> dict:
+        """Load legacy .gherkin-lintrc, allowing // comments."""
+        return cls._load_jsonc_config(
+            _LEGACY_GHERKIN_CONFIG,
+            "legacy Gherkin config not found",
+        )
+
     def _get_gherkin_enabled_rules(self) -> set[str]:
         """Extract enabled GPLint rules for the gherkin validation engine."""
         data = self._load_gplint_config()
@@ -289,6 +298,15 @@ class TestEngineCoverage:
         assert config["scenario"] == ["/^@.*$/"]
         assert config["ignoreUntagged"] is False
 
+    def test_legacy_gherkin_lint_config_remains_v0_shape(self):
+        """Legacy v0 config must stay compatible with gherkin-lint."""
+        data = self._load_legacy_gherkin_config()
+        assert data["only-one-when"] == "off"
+        level, config = data["required-tags"]
+        assert level == "on"
+        assert config["tags"] == ["^@.*$"]
+        assert "scenario" not in config
+
     def test_yamllint_coverage(self, rule_index):
         """Every enabled yamllint rule has a metadata entry."""
         enabled = self._get_yamllint_enabled_rules()
@@ -335,8 +353,8 @@ class TestMetadataQuality:
         """
         with_suggestions = [r.id for r in all_rules if r.suggestion is not None]
         with_overrides = [r.id for r in all_rules if r.message_override is not None]
-        assert len(with_suggestions) == 29, (
-            f"Expected 29 explicit suggestions (update test if adding "
+        assert len(with_suggestions) == 32, (
+            f"Expected 32 explicit suggestions (update test if adding "
             f"suggestions): {with_suggestions}"
         )
         assert len(with_overrides) == 0, (

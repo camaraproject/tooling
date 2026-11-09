@@ -21,6 +21,32 @@ GET and DELETE operations must not declare a request body. The information that 
 
 </details>
 
+<a name="s-041-security-scheme"></a>
+<details>
+<summary>[S-041] [S-042] [S-043] Why is my security scheme rejected?</summary>
+
+Applies to: `[S-041] Security requirement names an undefined scheme`
+(error). A `security` entry at root, operation or callback level names a scheme that is not defined in `components.securitySchemes`.
+
+Applies to: `[S-042] API must define the openIdConnect scheme 'openId'`
+(error). Secured operations need the `openId` scheme with `type: openIdConnect`. Operations secured only by the notification delivery scheme `notificationsBearerAuth`, such as the receiver-side notification endpoint, do not count. A scheme of `type: oauth2` under any name is also reported. CAMARA APIs define only this scheme. Flows and token endpoints are agreed at onboarding and do not belong in the API definition.
+
+Applies to: `[S-043] openIdConnectUrl must be an HTTPS discovery URL`
+(warning). The `openIdConnectUrl` of an `openIdConnect` scheme must use HTTPS and end in `/.well-known/openid-configuration`. The value in the common definition is a placeholder that the API provider replaces when the API is exposed.
+
+**What you do:** reference the common definition in `components.securitySchemes`:
+
+```yaml
+components:
+  securitySchemes:
+    openId:
+      $ref: "../common/CAMARA_common.yaml#/components/securitySchemes/openId"
+```
+
+Repositories that copy the common definitions inline use the `openIdConnect` block from `CAMARA_common.yaml` instead. Then make sure every name in a `security` requirement matches a defined scheme.
+
+</details>
+
 <a name="s-222-operation-tag"></a>
 <details>
 <summary>[S-222] Why does my operation tag need to be listed globally?</summary>
