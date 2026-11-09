@@ -2,6 +2,7 @@
 
 ## Table of Contents
 
+- **[v0.11.2](#v0112)**
 - **[v0.11.1](#v0111)**
 - **[v0.11.0](#v0110)**
 - **[v0.10.0](#v0100)**
@@ -18,6 +19,20 @@
 - **[v0.2.2](#v022)**
 - **[v0.2.1](#v021)**
 - **[v0.2.0](#v020)**
+
+# v0.11.2
+
+## Release Notes
+
+**v0.11.2 is a patch release for the CAMARA tooling repository.**
+
+This release corrects the security scheme rule S-042 introduced in v0.11.1: an operation secured only by the notification delivery scheme `notificationsBearerAuth`, such as the receiver-side notification endpoint template in Commonalities, no longer has to define the `openId` scheme. The Commonalities Artifacts Lint passes again with this ruleset.
+
+### Fixed
+
+* Exempt `notificationsBearerAuth`-only requirements from S-042 by @hdamker in https://github.com/camaraproject/tooling/pull/526
+
+**Full Changelog**: https://github.com/camaraproject/tooling/compare/v0.11.1...v0.11.2
 
 # v0.11.1
 
