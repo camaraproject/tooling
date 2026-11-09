@@ -601,7 +601,6 @@ rules:
     message: "{{error}}"
     severity: error
     formats: ["oas3"]
-    resolved: false
     given: "$"
     then:
       function: camara-security-scheme
@@ -614,7 +613,6 @@ rules:
     message: "{{error}}"
     severity: error
     formats: ["oas3"]
-    resolved: false
     given: "$"
     then:
       function: camara-security-scheme
@@ -627,7 +625,6 @@ rules:
     message: "{{error}}"
     severity: warn
     formats: ["oas3"]
-    resolved: false
     given: "$"
     then:
       function: camara-security-scheme

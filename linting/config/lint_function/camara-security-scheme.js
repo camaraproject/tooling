@@ -10,9 +10,9 @@
 // The built-in oas3-operation-security-defined cannot be used: it also demands
 // every scope in flows.*.scopes, which an openIdConnect scheme does not have.
 //
-// The rule runs on the unresolved document. A scheme given as `$ref` (the
-// `../common/CAMARA_common.yaml` form) is accepted as present and is not
-// inspected further, so no finding points into code/common.
+// The rules run on the resolved document, so a scheme given as `$ref` (the
+// `../common/CAMARA_common.yaml` form) is checked through its target. A `$ref`
+// that Spectral could not resolve stays a `$ref` node and counts as present.
 
 const OPERATION_METHODS = ["get", "put", "post", "delete", "patch", "options"];
 const WELL_KNOWN_SUFFIX = "/.well-known/openid-configuration";
