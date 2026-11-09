@@ -13,7 +13,7 @@
 | Change scope | Required signal before tag move |
 |---|---|
 | `.github/workflows/`, `release_automation/`, `shared-actions/`, `tooling_lib/` | Full manual end-to-end test on [`camaraproject/ReleaseTest`](https://github.com/camaraproject/ReleaseTest) (`/create-snapshot` → release-review merge → draft build → `/publish-release` → cleanup) |
-| `validation/rules/`, `validation/engines/python_checks/`, `validation/context/` (rule-metadata only) | Validation Regression canary green |
+| `validation/rules/`, `validation/engines/python_checks/`, `validation/context/` (rule-metadata only), `linting/` (Spectral rulesets and functions) | Validation Regression canary green |
 | Documentation only | Tag does not move |
 
 ### Regression workflows
