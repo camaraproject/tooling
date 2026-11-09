@@ -2,8 +2,10 @@
 // Security scheme checks (option `check`):
 //   requirement-defined  every name in a `security:` requirement (root, operation,
 //                        callback operation) exists in components.securitySchemes
-//   openid-scheme        secured APIs define the openIdConnect scheme `openId`;
-//                        no oauth2 scheme under any name
+//   openid-scheme        APIs secured by anything other than the notification
+//                        delivery scheme `notificationsBearerAuth` define the
+//                        openIdConnect scheme `openId`; no oauth2 scheme under
+//                        any name
 //   openid-url           openIdConnectUrl is HTTPS and ends in
 //                        /.well-known/openid-configuration
 //
@@ -34,11 +36,18 @@ function requirementNames(requirement) {
   return isObject(requirement) ? Object.keys(requirement) : [];
 }
 
-// A requirement list is "secured" when at least one entry names a scheme.
-// `[{}]` alone means "no authentication".
+// Notification delivery (API provider -> consumer sink) uses the common scheme
+// `notificationsBearerAuth`. An operation secured only by it is a receiver-side
+// endpoint (a callback, or the notification template the consumer implements)
+// and does not need the provider's `openId` scheme.
+const NOTIFICATION_SCHEME = "notificationsBearerAuth";
+
+// A requirement list is "secured" when at least one entry names a scheme other
+// than the notification delivery scheme. `[{}]` alone means "no authentication".
 function isSecured(requirements) {
   return Array.isArray(requirements) &&
-    requirements.some((requirement) => requirementNames(requirement).length > 0);
+    requirements.some((requirement) =>
+      requirementNames(requirement).some((name) => name !== NOTIFICATION_SCHEME));
 }
 
 // Visits every operation (regular and callback). `visit(operation, ctx)` gets

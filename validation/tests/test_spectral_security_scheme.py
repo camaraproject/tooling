@@ -172,6 +172,19 @@ components:
 """
         assert _fired(_run_spectral(_spec(paths=paths, components=components))) == set()
 
+    def test_receiver_side_endpoint_does_not_demand_openid(self):
+        """Commonalities sample-notification.yaml: root security names only notificationsBearerAuth."""
+        security = "security:\n  - notificationsBearerAuth: []\n  - {}\n"
+        components = """\
+components:
+  securitySchemes:
+    notificationsBearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: "{$request.body#/sinkCredential.credentialType}"
+"""
+        assert _fired(_run_spectral(_spec(security=security, components=components))) == set()
+
     def test_callback_only_security_does_not_demand_openid(self):
         """S-042 looks at non-callback operations; a callback requirement alone is S-041 territory."""
         paths = _PATHS.replace(
@@ -286,6 +299,20 @@ components:
         hits = _hits(_run_spectral(_spec(components=components)), S042)
         assert len(hits) == 1
         assert "securitySchemes.OAuth2" in hits[0]["message"]
+
+    def test_other_bearer_scheme_still_demands_openid(self):
+        """Only notificationsBearerAuth is exempt; a provider API on another bearer scheme fires."""
+        security = "security:\n  - bearerAuth: []\n"
+        components = """\
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+"""
+        hits = _hits(_run_spectral(_spec(security=security, components=components)), S042)
+        assert len(hits) == 1
+        assert "does not define the 'openId' scheme" in hits[0]["message"]
 
     def test_openid_with_wrong_type(self):
         components = """\

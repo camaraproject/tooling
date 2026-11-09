@@ -19,6 +19,7 @@
 # - 15.07.2026: Added x-correlator documentation rules (S-039, S-040)
 # - 16.07.2026: Made unused-component detection discriminator-aware (S-211)
 # - 09.11.2026: Added security scheme rules (S-041..S-043)
+# - 10.11.2026: S-042 ignores requirements that name only notificationsBearerAuth (receiver-side endpoints)
 
 
 # Note: @stoplight/spectral-owasp-ruleset is installed via validation/package.json.
