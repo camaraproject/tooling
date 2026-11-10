@@ -29,6 +29,7 @@ on:
     branches: [main]
     paths:
       - 'validation/**'
+      - 'linting/**'
       - 'shared-actions/**'
       - 'tooling_lib/**'
       - '.github/workflows/validation.yml'
