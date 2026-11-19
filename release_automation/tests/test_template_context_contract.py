@@ -192,8 +192,10 @@ class TestTemplateContextContract:
 
 def test_templates_say_base_branch_not_main(responder):
     # F4 family: a maintenance-line codeowner reads the branch of the release, never a hard-coded main
+    # The one legitimate main: the post-release sync PR into main named next to the one into the base branch
     for template in responder.template_dir.glob("*.md"):
-        assert "`main`" not in template.read_text(encoding="utf-8"), template.name
+        text = template.read_text(encoding="utf-8").replace("sync_pr_url}}) into `main`", "")
+        assert "`main`" not in text, template.name
     body = responder.render("snapshot_failed", build_context(
         command="create-snapshot", state="planned", release_tag="r1.9", base_branch="maintenance/r1",
         error_message="Pre-snapshot validation failed",

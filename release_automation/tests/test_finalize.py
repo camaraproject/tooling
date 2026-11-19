@@ -628,8 +628,8 @@ def test_case_b_publish_syncs_the_changelog_into_both_lines_then_closes(stubs, t
         main_pr_url="https://github.com/camaraproject/Example/pull/20", main_pr_number="20",
     )
     body = gh.events[2][2]
-    assert "[#21](https://github.com/camaraproject/Example/pull/21)" in body
-    assert "[#20](https://github.com/camaraproject/Example/pull/20) into main" in body
+    assert ("Post-release sync PRs: [#21](https://github.com/camaraproject/Example/pull/21) into `maintenance/r1` "
+            "and [#20](https://github.com/camaraproject/Example/pull/20) into `main`") in body
     issue_body = gh.events[3][2]
     assert "🔄 **Sync PR:** [View PR](https://github.com/camaraproject/Example/pull/21)" in issue_body
     assert "🔄 **Sync PR into main:** [View PR](https://github.com/camaraproject/Example/pull/20)" in issue_body
@@ -852,8 +852,8 @@ def test_sync_issue_dispatch_finishes_a_case_b_publication_on_the_release_issue(
     assert kinds(gh) == ["sync-pr", "sync-pr", "comment", "issue-body", "remove-labels", "add-labels", "close"]
     _, issue, body = gh.events[2]
     assert issue == 42
-    assert "[#21](https://github.com/camaraproject/Example/pull/21)" in body
-    assert "[#20](https://github.com/camaraproject/Example/pull/20) into main" in body
+    assert ("Post-release sync PRs: [#21](https://github.com/camaraproject/Example/pull/21) into `maintenance/r1` "
+            "and [#20](https://github.com/camaraproject/Example/pull/20) into `main`") in body
 
 
 def test_retry_without_changes_closes_the_issue(stubs, tmp_path):

@@ -21,7 +21,7 @@ from validation.engines.python_checks.release_plan_checks import (
     check_release_plan_api_names_unique,
     check_release_plan_exclusivity,
     check_release_plan_maintenance_api_versions,
-    check_release_plan_maintenance_line,
+    check_release_plan_release_cycle,
     check_release_plan_published_history,
     check_release_plan_semantics,
     check_release_plan_terminal_api_status,
@@ -542,11 +542,11 @@ class TestCheckReleasePlanMaintenanceLine:
     def _findings(self, tmp_path: Path, plan: dict, history: dict, **ctx) -> list:
         _write_release_plan(tmp_path, plan)
         context = _context_with_release_history(history, **ctx)
-        return check_release_plan_maintenance_line(tmp_path, context)
+        return check_release_plan_release_cycle(tmp_path, context)
 
     def test_absent_history_skips(self, tmp_path: Path):
         _write_release_plan(tmp_path, _maintenance_plan("r1.9"))
-        assert check_release_plan_maintenance_line(tmp_path, _make_context()) == []
+        assert check_release_plan_release_cycle(tmp_path, _make_context()) == []
 
     # Spec 2.4 / 1.1: case A on main
     def test_case_a_maintenance_plan_on_main_ok(self, tmp_path: Path):
@@ -575,7 +575,7 @@ class TestCheckReleasePlanMaintenanceLine:
 
         assert len(findings) == 1
         assert findings[0]["level"] == "error"
-        assert findings[0]["engine_rule"] == "check-release-plan-maintenance-line"
+        assert findings[0]["engine_rule"] == "check-release-plan-release-cycle"
         assert "release cycle r1 already has a public release" in findings[0]["message"]
         assert f"'{release_type}'" in findings[0]["message"]
         # The message starts from the branch and the patched release; the suggestion names the alternative on main
