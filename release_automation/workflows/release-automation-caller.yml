@@ -11,7 +11,7 @@
 # - PR merge: on release-snapshot branches (creates draft release)
 # - Push to main or a maintenance/rX branch: on release-plan.yaml,
 #   code/common/**, or this caller workflow itself. All three paths end up
-#   running sync-issue for that branch's release line so the Release Issue
+#   running sync-issue for that branch so the Release Issue
 #   body reflects the current repo state — most notably, pushing to
 #   code/common/** (typically after a sync PR merge) refreshes the
 #   common-cache status in the Release Issue and clears any stale warning.

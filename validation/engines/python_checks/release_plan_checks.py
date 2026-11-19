@@ -637,7 +637,7 @@ def check_release_plan_published_history(
                 f"target_release_tag '{target_tag}' is lower than latest "
                 f"published release tag '{latest_tag}'.",
                 "Use a target_release_tag greater than the latest published "
-                "release tag for this release line.",
+                "release tag for this release cycle.",
             )
         ]
 
@@ -770,7 +770,7 @@ def check_release_plan_terminal_api_status(
 
 
 # ---------------------------------------------------------------------------
-# P-041: check-release-plan-maintenance-line
+# P-041: check-release-plan-release-cycle
 # ---------------------------------------------------------------------------
 
 _MAINTENANCE_LINE_TYPES = ("maintenance-release", "pre-release-rc")
@@ -787,7 +787,7 @@ def _maintenance_line_finding(
     context: ValidationContext, message: str, suggestion: str
 ) -> dict:
     return make_finding(
-        engine_rule="check-release-plan-maintenance-line",
+        engine_rule="check-release-plan-release-cycle",
         level="error",
         message=_prefix_pre_existing_release_plan_condition(context, message),
         path=_RELEASE_PLAN_PATH,
@@ -804,7 +804,7 @@ def _next_line_tag(context: ValidationContext, cycle: int) -> Optional[str]:
     return f"r{cycle}.{latest.parsed_tag.minor + 1}"
 
 
-def check_release_plan_maintenance_line(
+def check_release_plan_release_cycle(
     repo_path: Path, context: ValidationContext
 ) -> List[dict]:
     """Validate a plan against the maintenance line it belongs to (003 M1/M3/M6)."""
@@ -962,18 +962,18 @@ def _maintenance_api_version_message(
     if planned < patched:
         return f"{base}; a maintenance release must not lower the version."
     if planned[0] != patched[0]:
-        return f"{base}; a maintenance line allows no major version change."
+        return f"{base}; a maintenance release allows no major version change."
     if planned[1] == patched[1]:
         return None
     if patched[0] == 0:
         return (
             f"{base}; for 0.y.z versions the minor version is breaking, so a "
-            "maintenance line allows only patch versions."
+            "maintenance release allows only patch versions."
         )
     if _later_cycle_has_higher_major(context, cycle, api_name, patched[0]):
         return None
     return (
-        f"{base}, a new minor version; a maintenance line allows that only "
+        f"{base}, a new minor version; a maintenance release allows that only "
         "when a later release cycle has published a higher major version of "
         "the API."
     )

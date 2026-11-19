@@ -147,13 +147,13 @@ Applies to: `[P-022] release-plan.yaml must change in its own PR`
 
 </details>
 
-<a name="p-041-maintenance-line"></a>
+<a name="p-041-release-cycle"></a>
 <details>
 <summary>[P-041] Which releases can be planned in a release cycle that already has a public release?</summary>
 
-Applies to: `[P-041] release-plan must fit its maintenance line`
+Applies to: `[P-041] release-plan must fit its release cycle`
 
-Once a release cycle `rX` has a public release, every later `rX.*` release belongs to that cycle's maintenance line. New work starts the next cycle as `r(X+1).1`. For a plan whose `target_release_tag` is in such a cycle, the rule checks:
+Once a release cycle `rX` has a public release, every later `rX.*` release is part of that cycle's maintenance releases. New work starts the next cycle as `r(X+1).1`. For a plan whose `target_release_tag` is in such a cycle, the rule checks:
 
 - `target_release_type` is `maintenance-release` or `pre-release-rc` (a release candidate of the patch); `pre-release-alpha` and `public-release` are not allowed.
 - `target_release_tag` is the next tag of the cycle: `rX.(N+1)`, where `rX.N` is the newest published `rX.*` tag.
@@ -174,12 +174,12 @@ If the cycle needs `maintenance/rX` and the branch does not exist yet, a codeown
 
 Applies to: `[P-042] maintenance release API versions must be patches`
 
-A maintenance-line plan (see `[P-041]`) is compared with the release it patches: the newest public or maintenance release of the cycle (release candidates are skipped).
+A plan for a maintenance release (see `[P-041]`) is compared with the release it patches: the newest public or maintenance release of the cycle (release candidates are skipped).
 
 - The plan lists exactly the APIs of the patched release. Adding or removing an API is an error.
 - Each API keeps its published version or raises the patch version (`1.2.0` → `1.2.1`).
 - A major version change, or a lower version, is an error.
-- A minor version change (`1.2.0` → `1.3.0`) is an error, unless a later release cycle has already published a higher major version of that API (for example `2.0.0`): then the maintenance line is the only place to update the previous major version. For `0.y.z` versions the minor position is breaking, so only patch versions are allowed.
+- A minor version change (`1.2.0` → `1.3.0`) is an error, unless a later release cycle has already published a higher major version of that API (for example `2.0.0`): then the maintenance branch is the only place to update the previous major version. For `0.y.z` versions the minor position is breaking, so only patch versions are allowed.
 
 At least one API must change for a new release; `[P-035]` reports a plan whose API entries were all already published.
 

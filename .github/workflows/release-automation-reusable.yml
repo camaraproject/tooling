@@ -6,7 +6,7 @@
 #   /publish-release, /sync-issue
 # - Issue events: close (with auto-reopen if needed), reopen
 # - PR merge events: on release-snapshot branches (draft creation)
-# - Push: Release Issue sync of the pushed line (main or maintenance/rX)
+# - Push: Release Issue sync of the pushed branch (main or maintenance/rX)
 # - Manual dispatch: action input sync-issue (default) or
 #   create-maintenance-branch with a cycle input
 #
@@ -44,7 +44,7 @@ permissions:
 
 jobs:
   # ─────────────────────────────────────────────────────────────────────────────
-  # Plan — resolve the trigger and its release line, then derive the state,
+  # Plan — resolve the trigger and its base branch, then derive the state,
   # apply the command policy and post the one response (ack update,
   # rejection, config error or publish confirmation). Writes the plan document
   # the other jobs read; nothing is derived again after this job.
@@ -142,7 +142,7 @@ jobs:
 
       # The event → Trigger, and the branch whose release-plan.yaml the run
       # works on: main or maintenance/rX (the ref of a push or dispatch, the
-      # line of the tag the Release Issue or the snapshot branch names otherwise).
+      # branch of the tag the Release Issue or the snapshot branch names otherwise).
       - name: Resolve trigger and release line
         id: resolve
         if: steps.fork-guard.outputs.issues_enabled == 'true'
