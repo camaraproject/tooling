@@ -67,13 +67,13 @@ class ReleaseType:
     publishers: str
 
 
-# The one release-type table. Policy values expected to change (RM#675) are
-# publish_mode and publishers; the initial values reproduce the behaviour
-# before this table.
+# The one release-type table. publish_mode and publishers are the policy values
+# (RM#675, variant c1): pre-releases publish on Release PR merge; public and
+# maintenance releases stay a draft that codeowners publish with /publish-release.
 RELEASE_TYPES: Dict[str, ReleaseType] = {
     t.name: t for t in (
-        ReleaseType("pre-release-alpha", "alpha", "pre-release", True, PUBLISH_MODE_DRAFT, PUBLISHERS_CODEOWNERS),
-        ReleaseType("pre-release-rc", "rc", "release candidate", True, PUBLISH_MODE_DRAFT, PUBLISHERS_CODEOWNERS),
+        ReleaseType("pre-release-alpha", "alpha", "pre-release", True, PUBLISH_MODE_ON_MERGE, PUBLISHERS_CODEOWNERS),
+        ReleaseType("pre-release-rc", "rc", "release candidate", True, PUBLISH_MODE_ON_MERGE, PUBLISHERS_CODEOWNERS),
         ReleaseType("public-release", "public", "public release", False, PUBLISH_MODE_DRAFT, PUBLISHERS_CODEOWNERS),
         ReleaseType("maintenance-release", "maintenance", "maintenance release", False, PUBLISH_MODE_DRAFT,
                     PUBLISHERS_CODEOWNERS),
