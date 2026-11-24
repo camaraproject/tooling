@@ -1,15 +1,40 @@
 """
 README release information updater for CAMARA release automation.
 
-Updates the "Release Information" section in repository README files
-by replacing content between delimiter comments with rendered templates.
+Replaces the "Release Information" section between the delimiter comments of
+README.md with one of three views:
+
+- tag_view: the README on a release tag describes that release only
+- branch_view of main: the repository view (latest public release, preview of
+  an upcoming pre-release), rendered from the GitHub release list
+- branch_view of maintenance/rX: a warning that this is a maintenance branch
+  and the latest release of release cycle rX
 """
 
 import re
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import pystache
+
+from .config import MAIN_BRANCH, release_type as release_type_info
+from .release_line import (
+    MAINTENANCE_BRANCH_RE,
+    latest_public_release,
+    newest_pre_release,
+    releases_of_cycle,
+    tag_version,
+)
+
+ORG = "camaraproject"
+
+# Which release cycle belongs to which meta-release: decided by Release
+# Management, usually after the public release (never from release-plan.yaml)
+META_RELEASE_MAPPINGS_REPO = "camaraproject/project-administration"
+META_RELEASE_MAPPINGS_FILE = "config/meta-release-mappings.yaml"
+
+# Wording of a pre-release in the Upcoming Release Preview
+PRERELEASE_WORDING = {"pre-release-alpha": "alpha", "pre-release-rc": "release candidate"}
 
 
 class ReadmeUpdateError(Exception):
@@ -19,32 +44,24 @@ class ReadmeUpdateError(Exception):
 
 class ReadmeUpdater:
     """
-    Updates the Release Information section in repository README files.
-
-    Content between START and END delimiters is replaced with rendered
-    Mustache templates appropriate for the current release state.
+    Renders a view of the Release Information section and replaces the
+    content between the START and END delimiters of README.md with it.
 
     Example usage:
         updater = ReadmeUpdater()
-        apis = [{"file_name": "quality-on-demand", "version": "v1.1.0"}]
-        formatted = ReadmeUpdater.format_api_links(apis, "QualityOnDemand", "r3.2")
-        changed = updater.update_release_info("README.md", "public_release", {
-            "repo_name": "QualityOnDemand",
-            "latest_public_release": "r3.2",
-            "github_url": "https://github.com/camaraproject/QualityOnDemand/releases/tag/r3.2",
-            "meta_release": "Spring25",
-            "formatted_apis": formatted,
-        })
+        updater.update_release_info("README.md", *tag_view(repo, "r3.2", "public-release", api_versions))
     """
 
     DELIMITER_START = "<!-- CAMARA:RELEASE-INFO:START -->"
     DELIMITER_END = "<!-- CAMARA:RELEASE-INFO:END -->"
 
-    VALID_STATES = {
-        "no_release": "release-info-no-release",
-        "prerelease_only": "release-info-prerelease-only",
-        "public_release": "release-info-public",
-        "public_with_prerelease": "release-info-public-with-prerelease",
+    VIEWS = {
+        "tag": "release-info-tag",
+        "main_no_release": "release-info-main-no-release",
+        "main_prerelease_only": "release-info-main-prerelease-only",
+        "main_public": "release-info-main-public",
+        "main_public_with_prerelease": "release-info-main-public-with-prerelease",
+        "maintenance_branch": "release-info-maintenance-branch",
     }
 
     DEFAULT_TEMPLATE_DIR = Path(__file__).parent.parent / "templates" / "readme"
@@ -62,44 +79,31 @@ class ReadmeUpdater:
             escape=lambda x: x,     # Don't HTML-escape (markdown context)
         )
 
-    def update_release_info(
-        self, readme_path: str, release_state: str, data: Dict[str, Any]
-    ) -> bool:
-        """Update Release Information section in README.
-
-        Args:
-            readme_path: Path to README.md file
-            release_state: One of: no_release, prerelease_only,
-                          public_release, public_with_prerelease
-            data: Template data dict with release info fields
-
-        Returns:
-            True if file was modified, False if content unchanged
+    def update_release_info(self, readme_path: str, view: str, data: Dict[str, Any]) -> bool:
+        """Replace the block in a README file; True if the file changed.
 
         Raises:
             ReadmeUpdateError: If delimiters are missing from README
-            ValueError: If release_state is invalid
+            ValueError: If view is unknown
             FileNotFoundError: If readme_path does not exist
         """
-        if release_state not in self.VALID_STATES:
-            raise ValueError(
-                f"Invalid release_state: '{release_state}'. "
-                f"Must be one of: {', '.join(self.VALID_STATES.keys())}"
-            )
-
         readme = Path(readme_path)
         content = readme.read_text()
-
-        self._check_delimiters(content)
-
-        rendered = self._render_template(release_state, data)
-        new_content = self._replace_delimited_content(content, rendered)
-
+        new_content = self.replace_release_info(content, view, data)
         if new_content == content:
             return False
-
         readme.write_text(new_content)
         return True
+
+    def replace_release_info(self, content: str, view: str, data: Dict[str, Any]) -> str:
+        """README content with the block replaced by the rendered view.
+
+        Raises:
+            ReadmeUpdateError: If delimiters are missing from content
+            ValueError: If view is unknown
+        """
+        self._check_delimiters(content)
+        return self._replace_delimited_content(content, self.render(view, data))
 
     def _check_delimiters(self, content: str) -> None:
         """Verify START and END delimiters exist in content.
@@ -127,27 +131,17 @@ class ReadmeUpdater:
                 "Both START and END delimiters are required."
             )
 
-    def _render_template(self, release_state: str, data: Dict[str, Any]) -> str:
-        """Select and render the appropriate Mustache template.
-
-        Args:
-            release_state: Valid release state key
-            data: Template context data
-
-        Returns:
-            Rendered template string
-        """
-        template_name = self.VALID_STATES[release_state]
+    def render(self, view: str, data: Dict[str, Any]) -> str:
+        """Render one view's template with its data."""
+        if view not in self.VIEWS:
+            raise ValueError(f"Invalid view: '{view}'. Must be one of: {', '.join(self.VIEWS)}")
+        template_name = self.VIEWS[view]
         template_path = self.template_dir / f"{template_name}.mustache"
-
         if not template_path.exists():
             raise ReadmeUpdateError(
-                f"Template not found: {template_name}.mustache "
-                f"(looked in {self.template_dir})"
+                f"Template not found: {template_name}.mustache (looked in {self.template_dir})"
             )
-
-        template_content = template_path.read_text()
-        return self.renderer.render(template_content, data)
+        return self.renderer.render(template_path.read_text(), data)
 
     def _replace_delimited_content(self, content: str, new_content: str) -> str:
         """Replace text between START and END delimiters with new content.
@@ -166,7 +160,7 @@ class ReadmeUpdater:
         apis: List[Dict[str, str]],
         repo_name: str,
         release_tag: str,
-        org: str = "camaraproject",
+        org: str = ORG,
     ) -> str:
         """Format API list with YAML/ReDoc/Swagger links as pre-rendered markdown.
 
@@ -202,3 +196,133 @@ class ReadmeUpdater:
             )
 
         return "\n".join(lines) + "\n"
+
+
+View = Tuple[str, Dict[str, Any]]
+
+
+def _repo_data(repo: str) -> Dict[str, Any]:
+    org, repo_name = repo.split("/")
+    return {"org": org, "repo_name": repo_name, "base_url": f"https://github.com/{org}/{repo_name}"}
+
+
+def _api_links(api_versions: Dict[str, str], repo: str, release_tag: str) -> str:
+    org, repo_name = repo.split("/")
+    apis = [{"file_name": name, "version": version} for name, version in api_versions.items()]
+    return ReadmeUpdater.format_api_links(apis, repo_name, release_tag, org)
+
+
+def tag_view(repo: str, release_tag: str, release_type: str, api_versions: Dict[str, str]) -> View:
+    """The block on a release tag: that release only, no statement about the repository.
+
+    Args:
+        repo: "owner/name"
+        release_tag: e.g. "r1.3"
+        release_type: release-metadata.yaml release_type, e.g. "maintenance-release"
+        api_versions: api_name -> version of this release
+    """
+    info = release_type_info(release_type)
+    version = tag_version(release_tag)
+    return "tag", {
+        **_repo_data(repo),
+        "release_tag": release_tag,
+        "cycle": f"r{version[0]}" if version else "",
+        "release_type_description": info.description if info else release_type,
+        "prerelease": bool(info and info.prerelease),
+        "formatted_apis": _api_links(api_versions, repo, release_tag),
+    }
+
+
+def _published(gh, repo: str, tag: str) -> Tuple[str, str]:
+    """(release_type, formatted API links) of a published release, from its release-metadata.yaml."""
+    org, repo_name = repo.split("/")
+    metadata = gh.get_release_metadata(tag) or {}
+    release_type = (metadata.get("repository") or {}).get("release_type", "")
+    apis = [
+        {"file_name": api.get("api_file_name", api.get("api_name", "")), "version": api.get("api_version", "")}
+        for api in metadata.get("apis") or []
+    ]
+    return release_type, ReadmeUpdater.format_api_links(apis, repo_name, tag, org)
+
+
+def _preview(gh, repo: str, release) -> Dict[str, Any]:
+    release_type, apis = _published(gh, repo, release.tag_name)
+    return {
+        "newest_prerelease": release.tag_name,
+        "prerelease_type": PRERELEASE_WORDING.get(release_type, ""),
+        "formatted_prerelease_apis": apis,
+    }
+
+
+def meta_release_of(gh, repo_name: str, cycle: int) -> str:
+    """The meta-release the mappings assign release cycle rX of the repository to; "" if none or unreadable."""
+    content = gh.get_repository_yaml_file(META_RELEASE_MAPPINGS_REPO, META_RELEASE_MAPPINGS_FILE)
+    if content is None:
+        print(f"Could not read the meta-release mappings ({META_RELEASE_MAPPINGS_REPO}/{META_RELEASE_MAPPINGS_FILE}); "
+              "meta-release omitted")
+        return ""
+    for meta_release, repositories in (content.get("mappings") or {}).items():
+        if (repositories or {}).get(repo_name) == f"r{cycle}":
+            return meta_release
+    print(f"No meta-release mapping for {repo_name} r{cycle}; meta-release omitted")
+    return ""
+
+
+def _main_view(gh, repo: str, releases) -> View:
+    data = _repo_data(repo)
+    latest = latest_public_release(releases)
+    pre = newest_pre_release(releases)
+    if latest and pre and tag_version(pre.tag_name)[0] <= tag_version(latest.tag_name)[0]:
+        pre = None
+    if not latest:
+        return ("main_prerelease_only", {**data, **_preview(gh, repo, pre)}) if pre else ("main_no_release", data)
+
+    _, apis = _published(gh, repo, latest.tag_name)
+    data.update({
+        "latest_public_release": latest.tag_name,
+        "meta_release": meta_release_of(gh, data["repo_name"], tag_version(latest.tag_name)[0]),
+        "formatted_apis": apis,
+    })
+    if pre:
+        return "main_public_with_prerelease", {**data, **_preview(gh, repo, pre)}
+    return "main_public", data
+
+
+def _maintenance_branch_view(gh, repo: str, releases, branch: str, cycle: int) -> Optional[View]:
+    in_cycle = releases_of_cycle(releases, cycle)
+    latest = next((r for r in in_cycle if not r.prerelease), None)
+    if not latest:
+        return None
+    release_type, apis = _published(gh, repo, latest.tag_name)
+    info = release_type_info(release_type)
+    data = {
+        **_repo_data(repo),
+        "branch": branch,
+        "cycle": f"r{cycle}",
+        "latest_release": latest.tag_name,
+        "latest_release_type": info.description if info else "",
+        "formatted_apis": apis,
+    }
+    pre = next((r for r in in_cycle if r.prerelease), None)
+    if pre and tag_version(pre.tag_name) > tag_version(latest.tag_name):
+        data.update(_preview(gh, repo, pre))
+    return "maintenance_branch", data
+
+
+def branch_view(gh, branch: str) -> Optional[View]:
+    """The block on main or maintenance/rX, from the repository's published releases.
+
+    Args:
+        gh: GitHub client of the API repository
+        branch: "main" or "maintenance/rX"
+
+    Returns:
+        (view, data), or None when the branch has no view (another branch, or
+        a maintenance branch whose cycle has no public release)
+    """
+    releases = gh.get_releases(include_drafts=False)
+    if branch == MAIN_BRANCH:
+        return _main_view(gh, gh.repo, releases)
+    if MAINTENANCE_BRANCH_RE.match(branch):
+        return _maintenance_branch_view(gh, gh.repo, releases, branch, int(branch.split("/r")[1]))
+    return None

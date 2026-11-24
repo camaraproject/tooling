@@ -272,9 +272,15 @@ The README must contain release information section delimiters:
 <!-- CAMARA:RELEASE-INFO:END -->
 ```
 
-These delimiters are used by the release automation to update the Release Information section during snapshot creation and post-release sync. If they are missing, the README update is skipped with a warning in the workflow log and the snapshot and the sync PR are created without it; to get the section into the release, add the delimiters on `main`, then `/discard-snapshot` and `/create-snapshot` again.
+The release automation replaces the content between these delimiters; manual edits inside them are overwritten. The section differs by place:
 
-The delimiters are distributed by the `campaign-release-info` campaign in `project-administration`.
+- **Release tag** (written at snapshot creation): describes that release only — tag, release type and API versions.
+- **`main`** (written by each post-release sync PR into `main`): the latest public release of the repository and an upcoming pre-release.
+- **`maintenance/rX`** (written at branch creation and by each post-release sync PR into the branch): a warning that this is a maintenance branch, and the latest release of release cycle rX.
+
+If the delimiters are missing, the README update is skipped with a warning in the workflow log and the snapshot and the sync PR are created without it; to get the section into the release, add the delimiters on `main`, then `/discard-snapshot` and `/create-snapshot` again.
+
+`Template_API_Repository` contains the delimiters; older repositories add them by hand.
 
 ---
 
@@ -289,7 +295,7 @@ CHANGELOG/
   README.md         # Index pointing to available files and legacy CHANGELOG.md
 ```
 
-The CHANGELOG URL rendered into the README release-info section points to `tree/main/CHANGELOG`.
+In the README release-info section, a release tag links its cycle file on the tag (`blob/rX.Y/CHANGELOG/CHANGELOG-rX.md`) and `tree/main/CHANGELOG` for later changes; `main` links `tree/main/CHANGELOG`; `maintenance/rX` links its cycle file on the branch.
 
 ### Onboarding: CHANGELOG.md handling
 

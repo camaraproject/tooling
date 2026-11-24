@@ -19,10 +19,10 @@ import os
 import re
 import sys
 from dataclasses import asdict
-from typing import Optional, Tuple
+from typing import Iterable, List, Optional, Tuple
 
 from .config import MAIN_BRANCH  # noqa: F401  (re-exported)
-from .github_client import GitHubClient
+from .github_client import GitHubClient, Release
 from .trigger import Trigger, parse_trigger, write_outputs
 
 MAINTENANCE_BRANCH_PREFIX = "maintenance/"
@@ -36,6 +36,26 @@ def tag_version(release_tag: str) -> Optional[Tuple[int, int]]:
     """(X, Y) of a tag rX.Y, the order of release tags; None for anything else."""
     match = re.match(r"^r([1-9]\d*)\.(\d+)$", release_tag or "")
     return (int(match.group(1)), int(match.group(2))) if match else None
+
+
+def _by_tag(releases: Iterable[Release]) -> List[Release]:
+    """Releases with an rX.Y tag, highest tag first (not publication order)."""
+    return sorted((r for r in releases if tag_version(r.tag_name)), key=lambda r: tag_version(r.tag_name), reverse=True)
+
+
+def releases_of_cycle(releases: Iterable[Release], cycle: int) -> List[Release]:
+    """The releases of cycle X, highest tag first."""
+    return [r for r in _by_tag(releases) if tag_version(r.tag_name)[0] == cycle]
+
+
+def latest_public_release(releases: Iterable[Release]) -> Optional[Release]:
+    """The release with the highest tag that is not a pre-release: the one GitHub marks Latest."""
+    return next((r for r in _by_tag(releases) if not r.prerelease), None)
+
+
+def newest_pre_release(releases: Iterable[Release]) -> Optional[Release]:
+    """The pre-release with the highest tag."""
+    return next((r for r in _by_tag(releases) if r.prerelease), None)
 
 
 def maintenance_branch(release_tag: str) -> str:

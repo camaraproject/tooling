@@ -342,11 +342,11 @@ def run_sync_pr(run: Run, clients: Clients) -> SyncPrOutcome:
     if base_branch == "main":
         git = clients.git(run.repository, "api-repo", clients.token)
         return create_sync_pr(clients.gh, git, tag, bot_name, bot_email, base_branch=base_branch)
-    # Case B: the cycle CHANGELOG into the line and into main, no README
+    # Case B: into the line and into main, each with the README view of its branch
     line_git = clients.git(run.repository, f"api-repo-{base_branch.replace('/', '-')}", clients.token)
-    line = create_sync_pr(clients.gh, line_git, tag, bot_name, bot_email, base_branch=base_branch, readme=False)
+    line = create_sync_pr(clients.gh, line_git, tag, bot_name, bot_email, base_branch=base_branch)
     main_git = clients.git(run.repository, "api-repo", clients.token)
-    main = create_sync_pr(clients.gh, main_git, tag, bot_name, bot_email, base_branch="main", readme=False)
+    main = create_sync_pr(clients.gh, main_git, tag, bot_name, bot_email, base_branch="main")
     return combine_case_b(line, main)
 
 

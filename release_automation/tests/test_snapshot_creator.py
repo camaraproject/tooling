@@ -248,18 +248,6 @@ class TestGenerateSnapshotId:
         ) == "v1.0.0-abc1234"
 
 
-# --- Tests for _changelog_url ---
-
-
-class TestChangelogUrl:
-    """README release-info links the per-cycle CHANGELOG/ directory for every
-    release type, maintenance included (no flat CHANGELOG.md)."""
-
-    def test_points_to_the_changelog_directory(self):
-        url = SnapshotCreator._changelog_url("camaraproject", "SimpleEdgeDiscovery")
-        assert url == (
-            "https://github.com/camaraproject/SimpleEdgeDiscovery/tree/main/CHANGELOG"
-        )
 
 
 
@@ -1143,28 +1131,6 @@ class TestCustomBaseCommit:
 class TestReleaseDocumentation:
     """Tests for README and CHANGELOG generation in create_snapshot flow."""
 
-    def test_get_latest_public_release_returns_first_non_prerelease(
-        self, snapshot_creator, mock_github_client
-    ):
-        """Returns tag of first non-prerelease release."""
-        mock_github_client.get_releases.return_value = [
-            Mock(tag_name="r4.1-rc.1", prerelease=True),
-            Mock(tag_name="r3.2", prerelease=False),
-            Mock(tag_name="r2.2", prerelease=False),
-        ]
-        result = snapshot_creator._get_latest_public_release()
-        assert result == "r3.2"
-
-    def test_get_latest_public_release_returns_none_when_no_public(
-        self, snapshot_creator, mock_github_client
-    ):
-        """Returns None when only prereleases exist."""
-        mock_github_client.get_releases.return_value = [
-            Mock(tag_name="r4.1-rc.1", prerelease=True),
-        ]
-        result = snapshot_creator._get_latest_public_release()
-        assert result is None
-
     # --- Tests for _get_compare_base ---
 
     def test_compare_base_alpha_uses_previous_release(
@@ -1585,38 +1551,37 @@ class TestReleaseDocumentation:
     ):
         """Returns False when README.md doesn't exist."""
         config = SnapshotConfig(release_tag="r4.1", base_branch="main")
-        result = snapshot_creator._update_readme(
-            str(tmp_path), config, sample_release_plan, {}, {}
-        )
+        result = snapshot_creator._update_readme(str(tmp_path), config, {}, {})
         assert result is False
 
-    @patch("release_automation.scripts.snapshot_creator.ReadmeUpdater")
-    def test_update_readme_determines_prerelease_state(
-        self, mock_updater_cls, snapshot_creator, mock_github_client, tmp_path, sample_release_plan
+    @pytest.mark.parametrize("release_type,wording", [
+        ("pre-release-rc", "a release candidate"),
+        ("public-release", "a public release"),
+        ("maintenance-release", "a maintenance release"),
+    ])
+    def test_update_readme_renders_the_tag_view_from_the_snapshot_alone(
+        self, snapshot_creator, mock_github_client, tmp_path, release_type, wording
     ):
-        """Determines prerelease_only state when no public releases exist."""
-        # Create README with delimiters
+        """The README on the tag describes the release; no repository state, no meta-release."""
         readme = tmp_path / "README.md"
         readme.write_text(
-            "<!-- CAMARA:RELEASE-INFO:START -->\nold\n<!-- CAMARA:RELEASE-INFO:END -->\n"
+            "# Intro\n<!-- CAMARA:RELEASE-INFO:START -->\nold\n<!-- CAMARA:RELEASE-INFO:END -->\n"
         )
-        mock_github_client.get_releases.return_value = []
-
-        mock_instance = Mock()
-        mock_instance.update_release_info.return_value = True
-        mock_updater_cls.return_value = mock_instance
-        mock_updater_cls.format_api_links = Mock(return_value="")
-
         config = SnapshotConfig(release_tag="r4.1", base_branch="main")
-        metadata = {"repository": {"release_type": "pre-release-rc"}}
-        snapshot_creator._update_readme(
-            str(tmp_path), config, sample_release_plan,
-            {"quality-on-demand": "v1.0.0"}, metadata
-        )
+        metadata = {"repository": {"release_type": release_type}}
 
-        # Should be called with prerelease_only state since no public releases
-        call_args = mock_instance.update_release_info.call_args
-        assert call_args[0][1] == "prerelease_only"
+        assert snapshot_creator._update_readme(
+            str(tmp_path), config, {"quality-on-demand": "1.0.0"}, metadata
+        ) is True
+
+        content = readme.read_text()
+        assert "This is release [r4.1](https://github.com/hdamker/TestRepo-QoD/releases/tag/r4.1) of TestRepo-QoD, " \
+               f"{wording}, with the following API versions:" in content
+        assert "**quality-on-demand 1.0.0**" in content
+        assert "blob/r4.1/CHANGELOG/CHANGELOG-r4.md" in content
+        assert "The latest public release is [" not in content
+        mock_github_client.get_releases.assert_not_called()
+        mock_github_client.get_release_metadata.assert_not_called()
 
     @patch("release_automation.scripts.snapshot_creator.ChangelogGenerator")
     def test_generate_changelog_creates_file(
@@ -1798,38 +1763,6 @@ class TestReleaseDocumentation:
         mock_github_client.generate_release_notes.assert_called_once_with(
             "r1.9", "r1.8", target_commitish="8a0a203abc"
         )
-
-    def test_readme_update_uses_shared_release_metadata_loader(
-        self, snapshot_creator, mock_github_client
-    ):
-        """README update goes through GitHubClient shared metadata loading."""
-        mock_github_client.get_releases.return_value = [
-            Mock(tag_name="r3.2", draft=False, prerelease=False, html_url="")
-        ]
-        mock_github_client.get_release_metadata.return_value = {
-            "repository": {
-                "release_type": "public-release",
-                "meta_release": "Fall25",
-            },
-            "apis": [{
-                "api_name": "qod",
-                "api_version": "v1.0.0",
-            }],
-        }
-
-        with patch("release_automation.scripts.snapshot_creator.os.path.exists", return_value=True), \
-             patch("release_automation.scripts.snapshot_creator.ReadmeUpdater.update_release_info", return_value=True), \
-             patch("release_automation.scripts.snapshot_creator.ReadmeUpdater.format_api_links", return_value="formatted-links"):
-            result = snapshot_creator._update_readme(
-                temp_dir="/tmp/test-dir",
-                config=SnapshotConfig(release_tag="r4.1", base_branch="main"),
-                release_plan={},
-                api_versions={"qod": "v1.1.0-rc.1"},
-                metadata={"repository": {"release_type": "pre-release-rc"}},
-            )
-
-        assert result is True
-        mock_github_client.get_release_metadata.assert_called_once_with("r3.2")
 
 
 class TestWipCheckIntegration:

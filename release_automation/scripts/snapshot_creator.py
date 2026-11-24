@@ -18,13 +18,12 @@ from typing import Any, Dict, List, Optional
 import yaml
 
 from . import config
-from .config import is_prerelease as release_type_is_prerelease
 from .changelog_generator import ChangelogGenerator
 from .git_operations import GitOperations, GitOperationsError, PullRequestInfo
 from .github_client import GitHubClient
 from .mechanical_transformer import MechanicalTransformer, TransformationContext
 from .metadata_generator import MetadataGenerator
-from .readme_updater import ReadmeUpdater, ReadmeUpdateError
+from .readme_updater import ReadmeUpdater, ReadmeUpdateError, tag_view
 from .release_line import tag_version
 from .template_loader import render_template
 from .version_calculator import VersionCalculator
@@ -295,13 +294,11 @@ class SnapshotCreator:
             if os.path.exists(plan_path):
                 os.remove(plan_path)
 
-            # Step 9c: Update README Release Information
+            # Step 9c: Update README Release Information (the tag view)
             # Mechanical, like the transforms above — committed with the snapshot,
             # not left editable on the release-review branch.
             try:
-                self._update_readme(
-                    temp_dir, config, release_plan, api_versions, metadata
-                )
+                self._update_readme(temp_dir, config, api_versions, metadata)
             except ReadmeUpdateError as e:
                 result.warnings.append(f"README update skipped: {e}")
             except Exception as e:
@@ -699,13 +696,6 @@ class SnapshotCreator:
             base=f"{self.SNAPSHOT_BRANCH_PREFIX}/{snapshot_id}",
         )
 
-    def _get_latest_public_release(self) -> Optional[str]:
-        """Query GitHub releases for the latest non-prerelease, non-draft release tag."""
-        releases = self.gh.get_releases(include_drafts=False)
-        for release in releases:
-            if not release.prerelease:
-                return release.tag_name
-        return None
 
     def _releases_before(self, release_tag: str) -> list:
         """Published releases with a lower tag version than release_tag, newest tag first.
@@ -850,14 +840,15 @@ class SnapshotCreator:
         self,
         temp_dir: str,
         config: SnapshotConfig,
-        release_plan: Dict[str, Any],
         api_versions: Dict[str, str],
         metadata: Dict[str, Any],
     ) -> bool:
-        """Update README Release Information section on release-review branch.
+        """Render the tag view of the README Release Information section.
 
-        Determines release state by checking existing GitHub releases.
-        Formats API links and calls ReadmeUpdater.
+        The README on the release tag describes that release only, from the
+        snapshot itself: no GitHub calls, no repository state, no meta-release
+        (main and maintenance branches get their views from the post-release
+        sync PR).
 
         Returns:
             True if README was modified, False otherwise.
@@ -868,87 +859,10 @@ class SnapshotCreator:
         readme_path = os.path.join(temp_dir, "README.md")
         if not os.path.exists(readme_path):
             return False
-
-        # Determine release state from metadata (release-metadata.yaml values)
         release_type = metadata.get("repository", {}).get("release_type", "")
-        existing_public = self._get_latest_public_release()
-        # `config` is the SnapshotConfig here; the release-type table is the module's
-        is_prerelease = release_type_is_prerelease(release_type)
-
-        if is_prerelease and not existing_public:
-            release_state = "prerelease_only"
-        elif is_prerelease and existing_public:
-            release_state = "public_with_prerelease"
-        elif not is_prerelease:
-            release_state = "public_release"
-        else:
-            release_state = "no_release"
-
-        repo_name = self.gh.repo.split("/")[-1]
-        org = self.gh.repo.split("/")[0]
-
-        # Build API info for link formatting
-        apis_list = [
-            {"file_name": api_name, "version": version}
-            for api_name, version in api_versions.items()
-        ]
-
-        # Build data dict
-        data = {
-            "repo_name": repo_name,
-            "changelog_url": self._changelog_url(org, repo_name),
-        }
-
-        if release_state in ("public_release", "public_with_prerelease"):
-            if is_prerelease:
-                # Pre-release: public section shows existing public release info
-                public_tag = existing_public
-                public_metadata = self.gh.get_release_metadata(public_tag)
-                public_apis = []
-                public_meta_release = ""
-                if public_metadata:
-                    for api in public_metadata.get("apis", []):
-                        public_apis.append({
-                            "file_name": api.get("api_file_name", api.get("api_name", "")),
-                            "version": api.get("api_version", ""),
-                        })
-                    public_meta_release = public_metadata.get(
-                        "repository", {}
-                    ).get("meta_release", "")
-            else:
-                # Public release: show current snapshot info
-                public_tag = config.release_tag
-                public_apis = apis_list
-                public_meta_release = release_plan.get(
-                    "repository", {}
-                ).get("meta_release", "")
-
-            data["latest_public_release"] = public_tag
-            data["github_url"] = f"https://github.com/{org}/{repo_name}/releases/tag/{public_tag}"
-            data["meta_release"] = public_meta_release
-            data["formatted_apis"] = ReadmeUpdater.format_api_links(
-                public_apis, repo_name, public_tag, org
-            )
-
-        if release_state in ("prerelease_only", "public_with_prerelease"):
-            data["newest_prerelease"] = config.release_tag
-            data["prerelease_github_url"] = (
-                f"https://github.com/{org}/{repo_name}/releases/tag/{config.release_tag}"
-            )
-            data["prerelease_type"] = (
-                "release candidate" if release_type == "pre-release-rc" else "alpha"
-            )
-            data["formatted_prerelease_apis"] = ReadmeUpdater.format_api_links(
-                apis_list, repo_name, config.release_tag, org
-            )
-
-        updater = ReadmeUpdater()
-        return updater.update_release_info(readme_path, release_state, data)
-
-    @staticmethod
-    def _changelog_url(org: str, repo_name: str) -> str:
-        """CHANGELOG link used in README release-info: the per-cycle CHANGELOG/ directory."""
-        return f"https://github.com/{org}/{repo_name}/tree/main/CHANGELOG"
+        return ReadmeUpdater().update_release_info(
+            readme_path, *tag_view(self.gh.repo, config.release_tag, release_type, api_versions)
+        )
 
     def _generate_changelog(
         self,
