@@ -2,7 +2,7 @@
 
 This PR finalizes the reviewable release content for the active snapshot.
 
-Edit and review this PR before merging it into the release snapshot. After Codeowner and Release Management approval, merging this PR creates the draft release.
+Edit and review this PR before merging it into the release snapshot. After Codeowner and Release Management approval, merging this PR {{#publishes_on_merge}}publishes the release{{/publishes_on_merge}}{{^publishes_on_merge}}creates the draft release{{/publishes_on_merge}}.
 
 ### Release contents
 
@@ -78,7 +78,7 @@ M = Mandatory, O = Optional — [Full documentation](https://github.com/camarapr
 
 ### Valid next actions for codeowners
 
-- **Merge this PR** when all Codeowner Actions and Release Management Actions are complete and the required approvals are present — creates the draft release
+- **Merge this PR** when all Codeowner Actions and Release Management Actions are complete and the required approvals are present — {{#publishes_on_merge}}publishes the release{{/publishes_on_merge}}{{^publishes_on_merge}}creates the draft release{{/publishes_on_merge}}
 - Use **`/discard-snapshot <reason>`** in the {{#release_issue_url}}[Release Issue]({{release_issue_url}}){{/release_issue_url}}{{^release_issue_url}}Release Issue{{/release_issue_url}} to discard this snapshot, return to `planned`, and update content on `{{base_branch}}`
 
 ---

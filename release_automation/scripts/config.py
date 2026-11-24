@@ -101,5 +101,11 @@ def is_prerelease(name: Optional[str]) -> bool:
     return known.prerelease if known else False
 
 
+def publishes_on_merge(name: Optional[str]) -> bool:
+    """The Release PR merge publishes the release (publish_mode on_merge); False when unknown."""
+    known = release_type(name)
+    return known.publish_mode == PUBLISH_MODE_ON_MERGE if known else False
+
+
 # Release type display names (short form for titles, messages)
 SHORT_TYPE_MAP = {name: t.short for name, t in RELEASE_TYPES.items()}

@@ -87,6 +87,19 @@ class TestRenderTemplate:
 
         assert len(set(bodies)) == 1, "Codeowner/RM action blocks differ across release statuses"
 
+    @pytest.mark.parametrize("publishes_on_merge,result", [
+        (True, "publishes the release"),
+        (False, "creates the draft release"),
+    ])
+    def test_render_release_review_pr_names_what_the_merge_does(self, publishes_on_merge, result):
+        context = {"release_tag": "r4.1", "snapshot_id": "r4.1-abc1234", "apis": [],
+                   "publishes_on_merge": publishes_on_merge}
+
+        rendered = render_template("release_review_pr", context)
+
+        assert f"merging this PR {result}." in rendered
+        assert f"required approvals are present — {result}" in rendered
+
     def test_render_release_review_pr_no_apis(self):
         """Test rendering with no APIs (edge case)."""
         context = {
