@@ -5,6 +5,7 @@ import json
 import pytest
 
 from release_automation.scripts import release_line
+from release_automation.scripts.github_client import Release
 from release_automation.scripts.release_line import base_branch_for, line_of, maintenance_branch
 from release_automation.scripts.trigger import Trigger
 from release_automation.tests.fake_github import FakeGitHub
@@ -80,6 +81,48 @@ def test_tag_trigger_without_tag_uses_main():
 )
 def test_tag_version(tag, version):
     assert release_line.tag_version(tag) == version
+
+
+# ── release-list helpers: order by tag version, not by publication date ──────
+
+def releases(*tags):
+    """Releases in publication order; a trailing "-pre" marks a pre-release."""
+    return [
+        Release(tag_name=t.removesuffix("-pre"), name=t, draft=False, prerelease=t.endswith("-pre"), html_url="")
+        for t in tags
+    ]
+
+
+def tags(found):
+    return [r.tag_name for r in found] if isinstance(found, list) else (found.tag_name if found else None)
+
+
+def test_latest_public_release_is_the_highest_tag_not_the_newest_publication():
+    # r1.4 (maintenance) published after r2.1: r2.1 stays the latest public release
+    found = release_line.latest_public_release(releases("r1.3", "r2.1", "r1.4", "r3.1-pre"))
+    assert tags(found) == "r2.1"
+
+
+def test_latest_public_release_orders_numbers_numerically():
+    assert tags(release_line.latest_public_release(releases("r1.10", "r1.9"))) == "r1.10"
+
+
+def test_latest_public_release_none_with_pre_releases_only():
+    assert release_line.latest_public_release(releases("r1.1-pre", "r1.2-pre")) is None
+
+
+def test_latest_public_release_ignores_unparsable_tags():
+    assert tags(release_line.latest_public_release(releases("v1.0", "r1.2"))) == "r1.2"
+
+
+def test_releases_of_cycle_newest_first():
+    found = release_line.releases_of_cycle(releases("r1.1-pre", "r1.2", "r2.1", "r1.10", "r1.9"), 1)
+    assert tags(found) == ["r1.10", "r1.9", "r1.2", "r1.1"]
+
+
+def test_newest_pre_release_by_tag():
+    assert tags(release_line.newest_pre_release(releases("r3.1-pre", "r2.2", "r2.1-pre"))) == "r3.1"
+    assert release_line.newest_pre_release(releases("r2.2")) is None
 
 
 # ── main(): the plan job's resolve step (trigger + line → GITHUB_OUTPUT) ─────

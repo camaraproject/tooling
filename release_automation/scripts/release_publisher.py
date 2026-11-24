@@ -6,7 +6,6 @@ new release on the Release PR merge (draft_release.publish_on_merge). Both end
 in complete_publication(): reference tag, pointer branch, branch cleanup.
 """
 
-import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
@@ -14,10 +13,7 @@ from typing import Any, Dict, Optional
 import yaml
 
 from .github_client import GitHubClient, GitHubClientError
-
-def _cycle(release_tag: str) -> Optional[int]:
-    match = re.match(r"r(\d+)\.", release_tag)
-    return int(match.group(1)) if match else None
+from .release_line import latest_public_release, tag_version
 
 
 @dataclass
@@ -264,11 +260,10 @@ class ReleasePublisher:
         and has no later cycle with a public or maintenance release."""
         if is_prerelease:
             return "false"
-        cycle = _cycle(release_tag)
-        for release in self.gh.get_releases(include_drafts=False):
-            other = _cycle(release.tag_name)
-            if not release.prerelease and cycle is not None and other is not None and other > cycle:
-                return "false"
+        version = tag_version(release_tag)
+        latest = latest_public_release(self.gh.get_releases(include_drafts=False))
+        if version and latest and tag_version(latest.tag_name)[0] > version[0]:
+            return "false"
         return "true"
 
     def set_latest(

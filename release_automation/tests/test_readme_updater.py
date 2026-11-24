@@ -1,17 +1,33 @@
 """
 Unit tests for the README release information updater.
 
-Tests cover delimiter checking, template rendering, content replacement,
-API link formatting, and full integration scenarios.
+Three views of the delimited block: a release tag describes that release
+(tag_view), main shows the repository view and maintenance/rX the view of
+its release cycle (branch_view, from the GitHub release list).
 """
 
-import pytest
 from pathlib import Path
+
+import pytest
+import yaml
 
 from release_automation.scripts.readme_updater import (
     ReadmeUpdater,
     ReadmeUpdateError,
+    branch_view,
+    tag_view,
 )
+from release_automation.tests.fake_github import FakeGitHub
+
+START = "<!-- CAMARA:RELEASE-INFO:START -->"
+END = "<!-- CAMARA:RELEASE-INFO:END -->"
+REPO = "camaraproject/DeviceLocation"
+BASE = "https://github.com/camaraproject/DeviceLocation"
+
+
+def render(view_and_data):
+    view, data = view_and_data
+    return ReadmeUpdater().render(view, data)
 
 
 # --- Fixtures ---
@@ -19,20 +35,18 @@ from release_automation.scripts.readme_updater import (
 
 @pytest.fixture
 def updater():
-    """Create a ReadmeUpdater with the actual template directory."""
     return ReadmeUpdater()
 
 
 @pytest.fixture
 def readme_with_delimiters(tmp_path):
-    """Create a README file with release info delimiters."""
     readme = tmp_path / "README.md"
     readme.write_text(
         "# My API\n\nSome introduction.\n\n"
-        "<!-- CAMARA:RELEASE-INFO:START -->\n"
+        f"{START}\n"
         "## Release Information\n\n"
         "Old release info here.\n"
-        "<!-- CAMARA:RELEASE-INFO:END -->\n\n"
+        f"{END}\n\n"
         "## Contributing\n\nContribution guidelines.\n"
     )
     return str(readme)
@@ -40,7 +54,6 @@ def readme_with_delimiters(tmp_path):
 
 @pytest.fixture
 def readme_no_delimiters(tmp_path):
-    """Create a README file without delimiters."""
     readme = tmp_path / "README.md"
     readme.write_text(
         "# My API\n\nSome introduction.\n\n"
@@ -51,285 +64,278 @@ def readme_no_delimiters(tmp_path):
     return str(readme)
 
 
-@pytest.fixture
-def public_release_data():
-    """Data dict for a public release scenario."""
-    return {
-        "repo_name": "QualityOnDemand",
-        "latest_public_release": "r3.2",
-        "github_url": "https://github.com/camaraproject/QualityOnDemand/releases/tag/r3.2",
-        "meta_release": "Spring25",
-        "changelog_url": "https://github.com/camaraproject/QualityOnDemand/tree/main/CHANGELOG",
-        "formatted_apis": (
-            "  * **quality-on-demand v1.1.0**\n"
-            "  [[YAML]](https://github.com/camaraproject/QualityOnDemand/blob/r3.2/"
-            "code/API_definitions/quality-on-demand.yaml)"
-            "  [[ReDoc]](https://redocly.github.io/redoc/"
-            "?url=https://raw.githubusercontent.com/camaraproject/QualityOnDemand/"
-            "r3.2/code/API_definitions/quality-on-demand.yaml&nocors)"
-            "  [[Swagger]](https://camaraproject.github.io/swagger-ui/"
-            "?url=https://raw.githubusercontent.com/camaraproject/QualityOnDemand/"
-            "r3.2/code/API_definitions/quality-on-demand.yaml)\n"
-        ),
-    }
-
-
-@pytest.fixture
-def prerelease_data():
-    """Data dict for a prerelease-only scenario."""
-    return {
-        "repo_name": "QualityOnDemand",
-        "newest_prerelease": "r4.1-rc.1",
-        "prerelease_github_url": "https://github.com/camaraproject/QualityOnDemand/releases/tag/r4.1-rc.1",
-        "prerelease_type": "release candidate",
-        "changelog_url": "https://github.com/camaraproject/QualityOnDemand/tree/main/CHANGELOG",
-        "formatted_prerelease_apis": (
-            "  * **quality-on-demand v1.2.0-rc.1**\n"
-            "  [[YAML]](https://github.com/camaraproject/QualityOnDemand/blob/r4.1-rc.1/"
-            "code/API_definitions/quality-on-demand.yaml)\n"
-        ),
-    }
-
-
 # --- Delimiter Checking ---
 
 
 class TestDelimiterChecking:
-    """Tests for delimiter validation."""
-
     def test_both_delimiters_present_passes(self, updater):
-        """No error when both delimiters are present."""
-        content = (
-            "before\n"
-            "<!-- CAMARA:RELEASE-INFO:START -->\n"
-            "middle\n"
-            "<!-- CAMARA:RELEASE-INFO:END -->\n"
-            "after\n"
-        )
-        # Should not raise
-        updater._check_delimiters(content)
+        updater._check_delimiters(f"before\n{START}\ncontent\n{END}\nafter\n")
 
     def test_missing_start_delimiter_raises_error(self, updater):
-        """ReadmeUpdateError when only END delimiter exists."""
-        content = "before\n<!-- CAMARA:RELEASE-INFO:END -->\nafter\n"
-        with pytest.raises(ReadmeUpdateError, match="missing the start delimiter"):
-            updater._check_delimiters(content)
+        with pytest.raises(ReadmeUpdateError, match="start delimiter"):
+            updater._check_delimiters(f"before\n{END}\nafter\n")
 
     def test_missing_end_delimiter_raises_error(self, updater):
-        """ReadmeUpdateError when only START delimiter exists."""
-        content = "before\n<!-- CAMARA:RELEASE-INFO:START -->\nafter\n"
-        with pytest.raises(ReadmeUpdateError, match="missing the end delimiter"):
-            updater._check_delimiters(content)
+        with pytest.raises(ReadmeUpdateError, match="end delimiter"):
+            updater._check_delimiters(f"before\n{START}\nafter\n")
 
     def test_missing_both_delimiters_raises_error(self, updater):
-        """ReadmeUpdateError when neither delimiter exists."""
-        content = "before\nsome content\nafter\n"
         with pytest.raises(ReadmeUpdateError, match="missing both"):
-            updater._check_delimiters(content)
+            updater._check_delimiters("# README\n\nNo delimiters here.\n")
 
 
-# --- Template Rendering ---
+# --- Block replacement ---
 
 
-class TestTemplateRendering:
-    """Tests for template selection and rendering."""
+class TestReplaceReleaseInfo:
+    def test_replaces_only_the_block(self, updater):
+        content = f"# Title\n\n{START}\nold\n{END}\n\n## Footer\n"
+        result = updater.replace_release_info(content, *tag_view(REPO, "r1.1", "pre-release-alpha", {}))
+        assert result.startswith(f"# Title\n\n{START}\n")
+        assert result.endswith(f"{END}\n\n## Footer\n")
+        assert "old" not in result
 
-    def test_render_no_release_template(self, updater):
-        """No-release template renders without variables."""
-        result = updater._render_template("no_release", {})
-        assert "no (pre)releases yet" in result
-        assert "## Release Information" in result
+    def test_missing_delimiters_raise(self, updater):
+        with pytest.raises(ReadmeUpdateError):
+            updater.replace_release_info("# Title\n", *tag_view(REPO, "r1.1", "pre-release-alpha", {}))
 
-    def test_render_prerelease_only_template(self, updater, prerelease_data):
-        """Prerelease-only template renders with prerelease variables."""
-        result = updater._render_template("prerelease_only", prerelease_data)
-        assert "r4.1-rc.1" in result
-        assert "release candidate" in result
-        assert "latest pre-release" in result
+    def test_unknown_view_raises_value_error(self, updater):
+        with pytest.raises(ValueError, match="Invalid view"):
+            updater.render("no_such_view", {})
 
-    def test_render_public_release_template(self, updater, public_release_data):
-        """Public release template renders with release variables."""
-        result = updater._render_template("public_release", public_release_data)
-        assert "r3.2" in result
-        assert "(Spring25)" in result
-        assert "latest public release" in result
-        assert "releases/latest" in result
-
-    def test_render_public_release_without_meta_release(self, updater, public_release_data):
-        """Public release template omits parentheses when meta_release is empty."""
-        public_release_data["meta_release"] = ""
-        result = updater._render_template("public_release", public_release_data)
-        assert "r3.2" in result
-        assert "()" not in result
-
-    def test_render_public_with_prerelease_template(self, updater, public_release_data, prerelease_data):
-        """Public+prerelease template renders both sections."""
-        data = {**public_release_data, **prerelease_data}
-        result = updater._render_template("public_with_prerelease", data)
-        assert "r3.2" in result
-        assert "r4.1-rc.1" in result
-        assert "Upcoming Release Preview" in result
-        assert "NOTE" in result
-
-    def test_changelog_url_renders_directory_link_in_all_release_templates(
-        self, updater, public_release_data, prerelease_data
-    ):
-        """changelog_url variable is honored by every release template."""
-        dir_url = "https://github.com/camaraproject/QualityOnDemand/tree/main/CHANGELOG"
-        public_release_data["changelog_url"] = dir_url
-        prerelease_data["changelog_url"] = dir_url
-
-        public_result = updater._render_template("public_release", public_release_data)
-        prerelease_result = updater._render_template("prerelease_only", prerelease_data)
-        combined_result = updater._render_template(
-            "public_with_prerelease", {**public_release_data, **prerelease_data}
-        )
-
-        for result in (public_result, prerelease_result, combined_result):
-            assert f"[CHANGELOG]({dir_url})" in result
-
-    def test_replace_existing_content(self, updater):
-        """Replaces content between delimiters."""
-        content = (
-            "before\n"
-            "<!-- CAMARA:RELEASE-INFO:START -->\n"
-            "old content\n"
-            "<!-- CAMARA:RELEASE-INFO:END -->\n"
-            "after\n"
-        )
-        result = updater._replace_delimited_content(content, "new content\n")
-        assert "new content" in result
-        assert "old content" not in result
-
-    def test_preserve_surrounding_content(self, updater):
-        """Content before and after delimiters is preserved."""
-        content = (
-            "# Title\n\n"
-            "<!-- CAMARA:RELEASE-INFO:START -->\n"
-            "old\n"
-            "<!-- CAMARA:RELEASE-INFO:END -->\n\n"
-            "## Footer\n"
-        )
-        result = updater._replace_delimited_content(content, "new\n")
-        assert result.startswith("# Title\n\n")
-        assert result.endswith("## Footer\n")
-
-    def test_delimiters_preserved_in_output(self, updater):
-        """Both START and END delimiters remain in the output."""
-        content = (
-            "<!-- CAMARA:RELEASE-INFO:START -->\n"
-            "old\n"
-            "<!-- CAMARA:RELEASE-INFO:END -->\n"
-        )
-        result = updater._replace_delimited_content(content, "new\n")
-        assert "<!-- CAMARA:RELEASE-INFO:START -->" in result
-        assert "<!-- CAMARA:RELEASE-INFO:END -->" in result
+    def test_block_says_it_is_generated(self):
+        text = render(tag_view(REPO, "r1.1", "pre-release-alpha", {}))
+        assert "release automation" in text
+        assert "project-administration" not in text
 
 
 # --- API Link Formatting ---
 
 
 class TestApiLinkFormatting:
-    """Tests for format_api_links static method."""
-
     def test_format_single_api(self):
-        """Formats a single API with YAML/ReDoc/Swagger links."""
-        apis = [{"file_name": "quality-on-demand", "version": "v1.1.0"}]
-        result = ReadmeUpdater.format_api_links(apis, "QualityOnDemand", "r3.2")
-        assert "**quality-on-demand v1.1.0**" in result
+        result = ReadmeUpdater.format_api_links(
+            [{"file_name": "quality-on-demand", "version": "1.1.0"}], "QualityOnDemand", "r3.2"
+        )
+        assert "**quality-on-demand 1.1.0**" in result
         assert "[[YAML]]" in result
         assert "[[ReDoc]]" in result
         assert "[[Swagger]]" in result
 
-    def test_format_multiple_apis(self):
-        """Formats multiple APIs with separate entries."""
-        apis = [
-            {"file_name": "quality-on-demand", "version": "v1.1.0"},
-            {"file_name": "qos-profiles", "version": "v0.2.0"},
-        ]
-        result = ReadmeUpdater.format_api_links(apis, "QualityOnDemand", "r3.2")
-        assert "quality-on-demand v1.1.0" in result
-        assert "qos-profiles v0.2.0" in result
-
     def test_format_zero_apis_returns_empty(self):
-        """Empty API list returns empty string."""
-        result = ReadmeUpdater.format_api_links([], "QualityOnDemand", "r3.2")
-        assert result == ""
+        assert ReadmeUpdater.format_api_links([], "QualityOnDemand", "r3.2") == ""
 
     def test_format_api_links_url_patterns(self):
-        """Verifies correct URL construction for each link type."""
-        apis = [{"file_name": "my-api", "version": "v1.0.0"}]
-        result = ReadmeUpdater.format_api_links(apis, "TestRepo", "r4.1", org="myorg")
+        result = ReadmeUpdater.format_api_links(
+            [{"file_name": "my-api", "version": "1.0.0"}], "TestRepo", "r4.1", org="myorg"
+        )
         assert "https://github.com/myorg/TestRepo/blob/r4.1/code/API_definitions/my-api.yaml" in result
-        assert "https://redocly.github.io/redoc/?url=https://raw.githubusercontent.com/myorg/TestRepo/r4.1/code/API_definitions/my-api.yaml&nocors" in result
-        assert "https://camaraproject.github.io/swagger-ui/?url=https://raw.githubusercontent.com/myorg/TestRepo/r4.1/code/API_definitions/my-api.yaml" in result
+        assert ("https://redocly.github.io/redoc/?url=https://raw.githubusercontent.com/myorg/TestRepo/r4.1/"
+                "code/API_definitions/my-api.yaml&nocors") in result
+        assert ("https://camaraproject.github.io/swagger-ui/?url=https://raw.githubusercontent.com/myorg/TestRepo/"
+                "r4.1/code/API_definitions/my-api.yaml") in result
 
 
-# --- Full Integration ---
+# --- Tag view: the release itself ---
+
+
+class TestTagView:
+    def test_describes_the_release(self):
+        text = render(tag_view(REPO, "r1.3", "maintenance-release", {"location-verification": "1.0.1"}))
+        assert (
+            f"This is release [r1.3]({BASE}/releases/tag/r1.3) of DeviceLocation, a maintenance release, "
+            "with the following API versions:"
+        ) in text
+        assert "**location-verification 1.0.1**" in text
+        assert f"{BASE}/blob/r1.3/code/API_definitions/location-verification.yaml" in text
+
+    def test_links_the_release_cycle_changelog_on_the_tag_and_main_for_later_changes(self):
+        text = render(tag_view(REPO, "r1.3", "maintenance-release", {}))
+        assert f"For changes in this release see [CHANGELOG-r1.md]({BASE}/blob/r1.3/CHANGELOG/CHANGELOG-r1.md)" in text
+        assert f"{BASE}/releases/latest" in text
+        assert f"for changes in later releases see [CHANGELOG on main]({BASE}/tree/main/CHANGELOG)" in text
+
+    def test_makes_no_statement_about_the_repository(self):
+        text = render(tag_view(REPO, "r2.1", "public-release", {"location-verification": "1.0.0"}))
+        assert "The latest public release is [" not in text
+        assert "Upcoming Release Preview" not in text
+        assert "main branch" not in text
+        assert "a public release" in text
+
+    @pytest.mark.parametrize("release_type,wording", [
+        ("pre-release-alpha", "a pre-release"),
+        ("pre-release-rc", "a release candidate"),
+    ])
+    def test_pre_releases_carry_a_note(self, release_type, wording):
+        text = render(tag_view(REPO, "r3.1", release_type, {}))
+        assert wording in text
+        assert "> [!NOTE]" in text
+        assert "may change before the public release" in text
+
+    def test_public_release_has_no_note(self):
+        assert "[!NOTE]" not in render(tag_view(REPO, "r2.1", "public-release", {}))
+
+
+# --- update_release_info (file) ---
 
 
 class TestUpdateReleaseInfo:
-    """Integration tests for update_release_info."""
-
-    def test_update_public_release(self, updater, readme_with_delimiters, public_release_data):
-        """Full update with public release data modifies README."""
-        changed = updater.update_release_info(
-            readme_with_delimiters, "public_release", public_release_data
-        )
+    def test_update_modifies_only_the_block(self, updater, readme_with_delimiters):
+        changed = updater.update_release_info(readme_with_delimiters, *tag_view(REPO, "r2.1", "public-release", {}))
         assert changed is True
         content = Path(readme_with_delimiters).read_text()
-        assert "r3.2" in content
-        assert "Spring25" in content
+        assert "This is release [r2.1]" in content
         assert "Old release info" not in content
-        # Surrounding content preserved
         assert "# My API" in content
         assert "## Contributing" in content
 
-    def test_update_no_release(self, updater, readme_with_delimiters):
-        """Update with no_release state works."""
-        changed = updater.update_release_info(
-            readme_with_delimiters, "no_release", {}
-        )
-        assert changed is True
-        content = Path(readme_with_delimiters).read_text()
-        assert "no (pre)releases yet" in content
-
-    def test_idempotent_update_returns_false(self, updater, readme_with_delimiters, public_release_data):
-        """Running update twice with same data returns False on second call."""
-        updater.update_release_info(
-            readme_with_delimiters, "public_release", public_release_data
-        )
-        changed = updater.update_release_info(
-            readme_with_delimiters, "public_release", public_release_data
-        )
-        assert changed is False
-
-    def test_invalid_state_raises_value_error(self, updater, readme_with_delimiters):
-        """Invalid release_state raises ValueError."""
-        with pytest.raises(ValueError, match="Invalid release_state"):
-            updater.update_release_info(
-                readme_with_delimiters, "invalid_state", {}
-            )
+    def test_idempotent_update_returns_false(self, updater, readme_with_delimiters):
+        view = tag_view(REPO, "r2.1", "public-release", {})
+        updater.update_release_info(readme_with_delimiters, *view)
+        assert updater.update_release_info(readme_with_delimiters, *view) is False
 
     def test_missing_delimiters_raises_error(self, updater, readme_no_delimiters):
-        """Missing delimiters raises ReadmeUpdateError."""
         with pytest.raises(ReadmeUpdateError):
-            updater.update_release_info(
-                readme_no_delimiters, "no_release", {}
-            )
+            updater.update_release_info(readme_no_delimiters, *tag_view(REPO, "r2.1", "public-release", {}))
 
-    def test_triple_mustache_preserves_markdown(self, updater, readme_with_delimiters):
-        """Triple-mustache renders API links without HTML escaping."""
-        data = {
-            "repo_name": "TestRepo",
-            "newest_prerelease": "r4.1-rc.1",
-            "prerelease_github_url": "https://example.com",
-            "prerelease_type": "release candidate",
-            "formatted_prerelease_apis": "  * **api v1.0** [[YAML]](http://example.com)\n",
-        }
-        updater.update_release_info(
-            readme_with_delimiters, "prerelease_only", data
-        )
-        content = Path(readme_with_delimiters).read_text()
-        # Triple-mustache should preserve the markdown without escaping
-        assert "[[YAML]](http://example.com)" in content
+
+# --- Branch views: from the GitHub release list ---
+
+MAPPINGS = ("camaraproject/project-administration", "config/meta-release-mappings.yaml")
+
+
+def release(tag, prerelease=False):
+    return {"tag": tag, "draft": False, "prerelease": prerelease, "html_url": f"{BASE}/releases/tag/{tag}"}
+
+
+def metadata(tag, release_type, apis=None):
+    return yaml.safe_dump({
+        "repository": {"repository_name": "DeviceLocation", "release_tag": tag, "release_type": release_type},
+        "apis": [{"api_name": n, "api_version": v} for n, v in (apis or {}).items()],
+    })
+
+
+def repo(releases, files=None, mappings=None):
+    """Releases in publication order; metadata per tag in files."""
+    fake = FakeGitHub(releases=releases, files=files or {},
+                      repository_files={MAPPINGS: mappings} if mappings is not None else {})
+    fake.repo = REPO
+    return fake
+
+
+class TestMainView:
+    def test_no_release(self):
+        text = render(branch_view(repo([]), "main"))
+        assert "no (pre)releases yet" in text
+
+    def test_pre_releases_only(self):
+        gh = repo([release("r1.1", True), release("r1.2", True)],
+                  {("r1.2", "release-metadata.yaml"): metadata("r1.2", "pre-release-rc", {"location-verification": "0.2.0-rc.1"})})
+        text = render(branch_view(gh, "main"))
+        assert f"The latest pre-release is [r1.2]({BASE}/releases/tag/r1.2) (release candidate)" in text
+        assert "**location-verification 0.2.0-rc.1**" in text
+
+    def test_latest_public_release_is_the_highest_tag(self):
+        # r1.4 (maintenance on maintenance/r1) published after r2.1
+        gh = repo([release("r1.3"), release("r2.1"), release("r1.4")],
+                  {("r2.1", "release-metadata.yaml"): metadata("r2.1", "public-release", {"location-verification": "2.0.0"})})
+        text = render(branch_view(gh, "main"))
+        assert f"The latest public release is [r2.1]({BASE}/releases/tag/r2.1), with the following API versions:" in text
+        assert f"{BASE}/blob/r2.1/code/API_definitions/location-verification.yaml" in text
+        assert "r1.4" not in text
+        assert "Upcoming Release Preview" not in text
+        assert "main branch" in text
+
+    def test_preview_of_a_pre_release_of_a_later_cycle(self):
+        gh = repo([release("r2.1"), release("r3.1", True)], {
+            ("r2.1", "release-metadata.yaml"): metadata("r2.1", "public-release"),
+            ("r3.1", "release-metadata.yaml"): metadata("r3.1", "pre-release-alpha", {"location-verification": "3.0.0-alpha.1"}),
+        })
+        text = render(branch_view(gh, "main"))
+        assert "The latest public release is [r2.1]" in text
+        assert "### Upcoming Release Preview" in text
+        assert f"* Pre-release: [r3.1]({BASE}/releases/tag/r3.1) (alpha)" in text
+        assert f"{BASE}/blob/r3.1/code/API_definitions/location-verification.yaml" in text
+
+    def test_no_preview_for_a_pre_release_of_the_same_or_an_earlier_cycle(self):
+        gh = repo([release("r2.1", True), release("r2.2")])
+        assert "Upcoming Release Preview" not in render(branch_view(gh, "main"))
+
+    def test_meta_release_from_the_mapping(self):
+        gh = repo([release("r2.1"), release("r2.2")],
+                  mappings={"mappings": {"Fall25": {"DeviceLocation": "r1"}, "Sync26": {"DeviceLocation": "r2"}}})
+        assert f"The latest public release is [r2.2]({BASE}/releases/tag/r2.2) (Sync26)," in render(branch_view(gh, "main"))
+
+    def test_no_meta_release_without_a_mapping_entry(self, capsys):
+        gh = repo([release("r2.1")], mappings={"mappings": {"Fall25": {"DeviceLocation": "r1"}}})
+        text = render(branch_view(gh, "main"))
+        assert "The latest public release is [r2.1]" in text
+        assert "()" not in text and "(Fall25)" not in text
+
+    def test_no_meta_release_when_the_mapping_cannot_be_read(self, capsys):
+        text = render(branch_view(repo([release("r2.1")]), "main"))
+        assert f"The latest public release is [r2.1]({BASE}/releases/tag/r2.1), with" in text
+        assert "meta-release mappings" in capsys.readouterr().out
+
+    @pytest.mark.parametrize("mappings", [
+        {"mappings": ["Sync26"]},
+        {"mappings": {"Sync26": ["DeviceLocation"]}},
+        {"mappings": {"Sync26": "DeviceLocation"}},
+        {"mappings": None},
+        {},
+    ])
+    def test_malformed_mapping_omits_the_meta_release(self, mappings):
+        text = render(branch_view(repo([release("r2.1")], mappings=mappings), "main"))
+        assert f"The latest public release is [r2.1]({BASE}/releases/tag/r2.1), with" in text
+
+    @pytest.mark.parametrize("content", [
+        "repository: r2.1\napis: [location-verification]\n",
+        "- not a mapping\n",
+        "apis:\n  - api_name: location-verification\n  - just-a-string\n",
+    ])
+    def test_malformed_release_metadata_renders_what_it_can(self, content):
+        gh = repo([release("r2.1")], {("r2.1", "release-metadata.yaml"): content})
+        assert "The latest public release is [r2.1]" in render(branch_view(gh, "main"))
+
+    def test_mapping_not_read_without_a_public_release(self):
+        gh = repo([release("r1.1", True)])
+        branch_view(gh, "main")
+        assert "get_repository_yaml_file" not in gh.calls
+
+
+class TestMaintenanceBranchView:
+    def test_latest_release_of_the_cycle_with_a_warning(self):
+        gh = repo([release("r1.6"), release("r1.7"), release("r2.1"), release("r1.8")], {
+            ("r1.8", "release-metadata.yaml"): metadata("r1.8", "maintenance-release", {"location-verification": "1.0.2"}),
+        }, mappings={"mappings": {"Fall25": {"DeviceLocation": "r1"}}})
+        text = render(branch_view(gh, "maintenance/r1"))
+        assert "> [!WARNING]" in text
+        assert "This is the maintenance branch of release cycle r1, not the main branch." in text
+        assert (f"* The latest release of release cycle r1 is [r1.8]({BASE}/releases/tag/r1.8) (maintenance release), "
+                "with the following API versions:") in text
+        assert f"{BASE}/blob/r1.8/code/API_definitions/location-verification.yaml" in text
+        assert f"[CHANGELOG-r1.md]({BASE}/blob/maintenance/r1/CHANGELOG/CHANGELOG-r1.md)" in text
+        assert f"{BASE}/releases/latest" in text
+        assert "The latest public release is [" not in text
+        assert "Fall25" not in text
+        assert "r2.1" not in text
+
+    def test_before_the_first_maintenance_release_the_patched_release(self):
+        gh = repo([release("r1.1", True), release("r1.2"), release("r2.1")],
+                  {("r1.2", "release-metadata.yaml"): metadata("r1.2", "public-release")})
+        text = render(branch_view(gh, "maintenance/r1"))
+        assert f"The latest release of release cycle r1 is [r1.2]({BASE}/releases/tag/r1.2) (public release)" in text
+        assert "Upcoming Release Preview" not in text
+
+    def test_preview_of_a_release_candidate_of_the_cycle(self):
+        gh = repo([release("r1.2"), release("r2.1"), release("r1.3", True)],
+                  {("r1.3", "release-metadata.yaml"): metadata("r1.3", "pre-release-rc")})
+        text = render(branch_view(gh, "maintenance/r1"))
+        assert "The latest release of release cycle r1 is [r1.2]" in text
+        assert f"* Pre-release: [r1.3]({BASE}/releases/tag/r1.3) (release candidate)" in text
+
+    def test_nothing_without_a_public_release_of_the_cycle(self):
+        assert branch_view(repo([release("r1.1", True)]), "maintenance/r1") is None
+
+    def test_nothing_for_another_branch(self):
+        assert branch_view(repo([release("r1.1")]), "feature/x") is None

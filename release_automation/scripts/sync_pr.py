@@ -1,11 +1,15 @@
 """
 Post-release sync PR for CAMARA release automation.
 
-After a publication from main (case A), main receives the README
-release-information block and the release-cycle CHANGELOG from the release
-tag through a pr-to-main/<tag> PR. After a publication from maintenance/rX
-(case B), the release-cycle CHANGELOG alone goes into both maintenance/rX
-(pr-to-maintenance/rX/<tag>) and main (pr-to-main/<tag>). The outcome's status (created | failed | no_changes) is the boundary
+After a publication from main (case A), main receives the release-cycle
+CHANGELOG from the release tag through a pr-to-main/<tag> PR. After a
+publication from maintenance/rX (case B), it goes into both maintenance/rX
+(pr-to-maintenance/rX/<tag>) and main (pr-to-main/<tag>). Each PR also
+renders the README release-information view of its branch from the published
+releases (main: repository view; maintenance/rX: view of the release cycle);
+the README of the tag, which describes the release itself, is not copied.
+
+The outcome's status (created | failed | no_changes) is the boundary
 between the published release and this follow-up: it decides whether the
 Release Issue closes, and a failure here never fails the publication.
 
@@ -15,15 +19,14 @@ so a re-run after a partial failure converges instead of failing on push.
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
 
+from .config import MAIN_BRANCH
 from .draft_release import changelog_candidates
 from .git_operations import GitOperationsError
 from .github_client import GitHubClientError
 from .labels import add_pr_labels
+from .readme_updater import ReadmeUpdateError, ReadmeUpdater, branch_view
 
-RELEASE_INFO_START = "<!-- CAMARA:RELEASE-INFO:START -->"
-RELEASE_INFO_END = "<!-- CAMARA:RELEASE-INFO:END -->"
 SYNC_BRANCH_PREFIX = "pr-to-"
 PR_LABELS = ["post-release", "automated"]
 
@@ -62,42 +65,27 @@ def _warning(message: str) -> None:
     print(f"::warning::{message}")
 
 
-def _release_info_block(readme: str) -> Optional[str]:
-    start = readme.find(RELEASE_INFO_START)
-    end = readme.find(RELEASE_INFO_END)
-    if start == -1 or end == -1 or end < start:
-        return None
-    return readme[start:end + len(RELEASE_INFO_END)]
-
-
-def sync_readme(gh, work_dir: Path, tag: str) -> bool:
-    """Copy the release-information block of README.md from the tag; True if main's README changed."""
-    tag_readme = gh.get_file_content("README.md", ref=tag)
-    if tag_readme is None:
-        _warning(f"Could not read README.md from tag {tag}")
+def sync_readme(gh, work_dir: Path, base_branch: str) -> bool:
+    """Render the release-information view of base_branch into README.md; True if it changed."""
+    view = branch_view(gh, base_branch)
+    if view is None:
+        _warning(f"No release information view for {base_branch}; README.md left unchanged")
         return False
-    tag_block = _release_info_block(tag_readme)
-    if tag_block is None:
-        _warning("Tag README missing release info delimiters")
-        return False
-
     local_path = work_dir / "README.md"
     if not local_path.is_file():
-        _warning("README.md not found in API repo checkout")
+        _warning(f"README.md not found on {base_branch}")
         return False
     local = local_path.read_text(encoding="utf-8")
-    local_block = _release_info_block(local)
-    if local_block is None:
-        _warning("Main README missing release info delimiters")
+    try:
+        updated = ReadmeUpdater().replace_release_info(local, *view)
+    except ReadmeUpdateError:
+        _warning(f"README.md on {base_branch} has no release information delimiters; left unchanged")
         return False
-
-    start = local.find(RELEASE_INFO_START)
-    updated = local[:start] + tag_block + local[start + len(local_block):]
     if updated == local:
         print("README release info already up to date")
         return False
     local_path.write_text(updated, encoding="utf-8")
-    print("README release info synced from tag")
+    print(f"README release info rendered for {base_branch}")
     return True
 
 
@@ -122,14 +110,14 @@ def sync_branch(tag: str, base_branch: str) -> str:
     return f"{SYNC_BRANCH_PREFIX}{base_branch}/{tag}"
 
 
-def pr_body(tag: str, readme: bool = True) -> str:
+def pr_body(tag: str, readme: bool = True, changelog: bool = True) -> str:
     return (
         f"Automated post-release sync PR for {tag}.\n"
         "\n"
         "This PR updates:\n"
-        + ("- README.md Release Information section (copied from release tag)\n" if readme else "")
-        + "- CHANGELOG for the release cycle\n"
-        "\n"
+        + ("- README.md Release Information section, from the published releases\n" if readme else "")
+        + ("- CHANGELOG for the release cycle\n" if changelog else "")
+        + "\n"
         "Created by release automation workflow."
     )
 
@@ -141,7 +129,7 @@ def _failed() -> SyncPrOutcome:
 
 def create_sync_pr(
     gh, git, tag: str, bot_name: str, bot_email: str,
-    base_branch: str, readme: bool = True,
+    base_branch: str,
 ) -> SyncPrOutcome:
     """
     Open the post-release sync PR of a published release into one branch.
@@ -152,8 +140,7 @@ def create_sync_pr(
         tag: Published release tag, e.g. "r4.1"
         bot_name: Commit author and committer name
         bot_email: Commit author and committer email
-        base_branch: Branch the PR targets
-        readme: Also copy the README release-information block (case A only)
+        base_branch: Branch the PR targets; its README view is rendered
 
     Returns:
         SyncPrOutcome; never raises for git or GitHub errors
@@ -166,7 +153,11 @@ def create_sync_pr(
         print(f"Clone failed: {e}")
         return _failed()
 
-    readme_changed = sync_readme(gh, work_dir, tag) if readme else False
+    try:
+        readme_changed = sync_readme(gh, work_dir, base_branch)
+    except Exception as e:  # the release is published; the README never blocks the sync PR
+        _warning(f"README release info not rendered: {e}")
+        readme_changed = False
     changelog_path = sync_changelog(gh, work_dir, tag)
     if not readme_changed and not changelog_path:
         _warning("No content changes to sync")
@@ -193,8 +184,9 @@ def create_sync_pr(
 
     try:
         number, url = gh.create_pr(
-            title=f"Release Automation: Post-release sync ({tag})" + ("" if readme else f" into {base_branch}"),
-            body=pr_body(tag, readme),
+            title=f"Release Automation: Post-release sync ({tag})"
+            + ("" if base_branch == MAIN_BRANCH else f" into {base_branch}"),
+            body=pr_body(tag, readme=readme_changed, changelog=bool(changelog_path)),
             head=branch,
             base=base_branch,
         )

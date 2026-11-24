@@ -518,9 +518,9 @@ class FakeGitHub:
 def stubs(monkeypatch):
     calls = {}
 
-    def fake_sync_pr(gh, git, tag, bot_name, bot_email, base_branch, readme=True):
+    def fake_sync_pr(gh, git, tag, bot_name, bot_email, base_branch):
         calls["sync_pr"] = dict(work_dir=git.work_dir, tag=tag, bot=(bot_name, bot_email))
-        calls.setdefault("sync_prs", []).append(dict(work_dir=git.work_dir, base_branch=base_branch, readme=readme))
+        calls.setdefault("sync_prs", []).append(dict(work_dir=git.work_dir, base_branch=base_branch))
         gh.events.append(("sync-pr", tag, base_branch))
         default = SyncPrOutcome(status="created", pr_url="https://github.com/camaraproject/Example/pull/20", pr_number="20")
         return calls.get("sync_pr_outcomes", {}).get(base_branch) or calls.get("sync_pr_outcome", default)
@@ -607,10 +607,10 @@ LINE_PR = SyncPrOutcome(status="created", pr_url="https://github.com/camaraproje
 def test_case_a_publish_syncs_readme_and_changelog_into_main(stubs, tmp_path):
     run_finalize(make_run(PUBLISH_PLAN, publish()), clients(FakeGitHub(), tmp_path))
 
-    assert stubs["sync_prs"] == [{"work_dir": str(tmp_path / "api-repo"), "base_branch": "main", "readme": True}]
+    assert stubs["sync_prs"] == [{"work_dir": str(tmp_path / "api-repo"), "base_branch": "main"}]
 
 
-def test_case_b_publish_syncs_the_changelog_into_both_lines_then_closes(stubs, tmp_path):
+def test_case_b_publish_syncs_into_both_lines_then_closes(stubs, tmp_path):
     # spec 7.1/7.2
     stubs["sync_pr_outcomes"] = {"maintenance/r1": LINE_PR}
     gh = FakeGitHub()
@@ -620,8 +620,8 @@ def test_case_b_publish_syncs_the_changelog_into_both_lines_then_closes(stubs, t
     report = run_finalize(run, clients(gh, tmp_path), str(summary))
 
     assert stubs["sync_prs"] == [
-        {"work_dir": str(tmp_path / "api-repo-maintenance-r1"), "base_branch": "maintenance/r1", "readme": False},
-        {"work_dir": str(tmp_path / "api-repo"), "base_branch": "main", "readme": False},
+        {"work_dir": str(tmp_path / "api-repo-maintenance-r1"), "base_branch": "maintenance/r1"},
+        {"work_dir": str(tmp_path / "api-repo"), "base_branch": "main"},
     ]
     assert report.sync_pr == SyncPrOutcome(
         status="created", pr_url=LINE_PR.pr_url, pr_number="21",

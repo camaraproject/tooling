@@ -92,10 +92,12 @@ tooling/
 │   │   │   ├── release_review_pr.mustache
 │   │   │
 │   │   ├── readme/
-│   │   │   ├── release-info-no-release.mustache
-│   │   │   ├── release-info-prerelease-only.mustache
-│   │   │   ├── release-info-public.mustache
-│   │   │   └── release-info-public-with-prerelease.mustache
+│   │   │   ├── release-info-tag.mustache
+│   │   │   ├── release-info-main-no-release.mustache
+│   │   │   ├── release-info-main-prerelease-only.mustache
+│   │   │   ├── release-info-main-public.mustache
+│   │   │   ├── release-info-main-public-with-prerelease.mustache
+│   │   │   └── release-info-maintenance-branch.mustache
 │   │   │
 │   │   └── changelog/
 │   │       └── release_section.mustache
@@ -300,7 +302,7 @@ The "Valid actions" block of every comment and of the Release Issue body is the 
 - `release_review_pr.mustache` — Release Review PR body with checklist
 
 **Other templates:**
-- `readme/*.mustache` — 4 README Release Information templates (ported from campaign workflow)
+- `readme/*.mustache` — README Release Information views: release tag, `main` (four states), maintenance branch ([§2.10.1](#2101-readme-updater-readme_updaterpy))
 - `changelog/release_section.mustache` — CHANGELOG draft section template
 
 ---
@@ -455,22 +457,19 @@ branch.
 
 #### 2.10.1 README Updater (`readme_updater.py`)
 
-Updates the "Release Information" section in README.md, replacing content between delimiters (`<!-- CAMARA:RELEASE-INFO:START -->` / `<!-- CAMARA:RELEASE-INFO:END -->`). Runs during
-`/create-snapshot`, before the snapshot commit — the block is a mechanical change, not
-reviewable content, so it is committed with the snapshot rather than left editable on the
-release-review branch.
+Replaces the "Release Information" section in README.md, the content between the delimiters (`<!-- CAMARA:RELEASE-INFO:START -->` / `<!-- CAMARA:RELEASE-INFO:END -->`), with one of three views:
 
-**Release state determination** (during `/create-snapshot`):
+| View | Where | Written by | Content |
+|------|-------|------------|---------|
+| `tag_view` | release tag | `/create-snapshot`, before the snapshot commit | That release only: tag, release type, API versions (links pinned to the tag), the cycle's CHANGELOG file on the tag; a note on pre-releases. No statement about the repository, no meta-release. |
+| `branch_view` of `main` | `main` | post-release sync PR into `main` | Repository view: latest public release (highest tag that is not a pre-release, the release GitHub marks Latest) with its API versions; Upcoming Release Preview for a pre-release of a later cycle. Four templates: no release / pre-release only / public / public with preview. |
+| `branch_view` of `maintenance/rX` | `maintenance/rX` | branch creation, post-release sync PR into the branch | A warning that this is the maintenance branch of release cycle rX; the latest release of rX with its API versions; Upcoming Release Preview for a newer pre-release of rX (in practice a release candidate). |
 
-| release_type | Prior public release? | → release_state |
-|-------------|----------------------|-----------------|
-| pre-release-alpha / pre-release-rc | No | prerelease_only |
-| pre-release-alpha / pre-release-rc | Yes | public_with_prerelease |
-| public-release / maintenance-release | (any) | public_release |
+The tag view is built from the snapshot alone (no GitHub calls). The branch views are built from the published releases (`get_releases`, `release-metadata.yaml` of the releases shown), after the publication.
 
-**Delimiter policy:** Delimiters must already exist in README.md. If missing, the update fails with an error (the campaign workflow's `ensure-delimited-section` action handles initial marker insertion).
+**Meta-release:** shown only in the `main` view, for the latest public release, when `config/meta-release-mappings.yaml` in `camaraproject/project-administration` assigns its release cycle to a meta-release. The mapping is usually added after the public release, so the meta-release appears with a later render. `release-plan.yaml` is never a source: its `meta_release` is the target, not the decision.
 
-**Templates:** 4 Mustache templates in `release_automation/templates/readme/`, ported from the campaign workflow.
+**Delimiter policy:** Delimiters must already exist in README.md (`Template_API_Repository` has them). If missing, the README is left unchanged with a warning; snapshot and sync PR go ahead.
 
 #### 2.10.2 CHANGELOG Generator (`changelog_generator.py`)
 
@@ -692,7 +691,7 @@ Everything the run reads is that branch's: `release-plan.yaml`, the release stat
 
 **Release Issues:** one per branch and release, side by side; a maintenance branch's issue names the branch in its title ("Release r1.9 (maintenance) on maintenance/r1") and in its checklist. Sync, superseded cleanup and close stay within the branch.
 
-**Creating a maintenance branch:** preconditions are that `main` has moved on to a later cycle — `target_release_tag` in `main`'s `release-plan.yaml` is a tag of a later cycle, whatever its release type (`none` included) or state; a tag of cycle X blocks also when it is already `published` — that cycle X has a public release whose newest release is not a pre-release (finish an rc from `main` first), that this release was created by release automation (`src_commit_sha` in its `release-metadata.yaml`), and that `maintenance/rX` does not exist yet. A codeowner then dispatches the caller from `main` with action `create-maintenance-branch` and input `cycle` (e.g. `r1`). When a precondition is not met, the dispatch ran on another branch or the actor lacks write access, `plan` refuses: the run fails and the step summary says why. Otherwise `act` (App token, bypass actor of the `maintenance-branch-protection` ruleset) creates `maintenance/rX` at the `src_commit_sha` of the patched release — the newest public or maintenance release of the cycle — and commits once onto it: `main`'s caller workflows, `CHANGELOG/CHANGELOG-rX.md` from the patched release's tag and `release-plan.yaml` parked at `rX.(N+1)` with `target_release_type: none`. No PR is opened; the step summary names the next step. The codeowner's first PR into the branch plans the release (`maintenance-release`, or `pre-release-rc` first, with patch versions); its merge creates that branch's Release Issue.
+**Creating a maintenance branch:** preconditions are that `main` has moved on to a later cycle — `target_release_tag` in `main`'s `release-plan.yaml` is a tag of a later cycle, whatever its release type (`none` included) or state; a tag of cycle X blocks also when it is already `published` — that cycle X has a public release whose newest release is not a pre-release (finish an rc from `main` first), that this release was created by release automation (`src_commit_sha` in its `release-metadata.yaml`), and that `maintenance/rX` does not exist yet. A codeowner then dispatches the caller from `main` with action `create-maintenance-branch` and input `cycle` (e.g. `r1`). When a precondition is not met, the dispatch ran on another branch or the actor lacks write access, `plan` refuses: the run fails and the step summary says why. Otherwise `act` (App token, bypass actor of the `maintenance-branch-protection` ruleset) creates `maintenance/rX` at the `src_commit_sha` of the patched release — the newest public or maintenance release of the cycle — and commits once onto it: `main`'s caller workflows, `CHANGELOG/CHANGELOG-rX.md` from the patched release's tag, `README.md` with the maintenance-branch view of the release information ([§2.10.1](#2101-readme-updater-readme_updaterpy)) and `release-plan.yaml` parked at `rX.(N+1)` with `target_release_type: none`. No PR is opened; the step summary names the next step. The codeowner's first PR into the branch plans the release (`maintenance-release`, or `pre-release-rc` first, with patch versions); its merge creates that branch's Release Issue.
 
 **CHANGELOG compare base** (`snapshot_creator._get_compare_base`), each the newest release with a lower tag version (cycle, then number — not the date):
 
@@ -709,8 +708,8 @@ The snapshot prepends the section to `CHANGELOG/CHANGELOG-rX.md` of the base bra
 **Publication:** `source/rX.Y` at the release's `src_commit_sha` on its base branch; pointer branch `release/rX.Y` or `pre-release/rX.Y`; Latest as in [§2.11](#211-release-publisher-release_publisherpy). A patch of an older cycle stays behind a later cycle's public or maintenance release and takes Latest only while that cycle has pre-releases alone.
 
 **Post-release sync** (`finalize`):
-- From `main`: one PR into `main` with the README release-information block and `CHANGELOG/CHANGELOG-rX.md` from the tag.
-- From `maintenance/rX`: `CHANGELOG/CHANGELOG-rX.md` from the tag into the maintenance branch (the next release on it builds on it) and into `main`; no README change.
+- From `main`: one PR into `main` with `CHANGELOG/CHANGELOG-rX.md` from the tag and the `main` view of the README release information ([§2.10.1](#2101-readme-updater-readme_updaterpy)).
+- From `maintenance/rX`: `CHANGELOG/CHANGELOG-rX.md` from the tag into the maintenance branch (the next release on it builds on it) and into `main`; each PR renders the README view of its branch.
 - The Release Issue closes once all sync PRs exist; otherwise it stays open and `/sync-issue` retries ([§3.2](#32-caller-workflow-api-repositories)).
 
 **Retiring a maintenance branch:** no RA action. Park the branch's plan at `target_release_type: none` first (closing a `planned` Release Issue recreates it), then close the issue; an admin deletes `maintenance/rX` through the ruleset bypass. The `release/rX.Y` pointer branches keep every tagged commit reachable.

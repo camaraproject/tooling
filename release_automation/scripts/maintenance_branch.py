@@ -10,7 +10,8 @@ with the App token, which bypasses the maintenance-branch-protection ruleset:
    public or maintenance release of the cycle), from its release-metadata.yaml
 2. one direct commit onto it: main's caller workflows, the cycle's CHANGELOG
    from the patched release's tag (the source commit lacks that release's own
-   section) and release-plan.yaml parked at rX.(N+1) with
+   section), README.md with the maintenance-branch view of the release
+   information, and release-plan.yaml parked at rX.(N+1) with
    target_release_type none, API entries as in the patched release
 
 No plan PR: the codeowner's first PR into the branch plans the release, as
@@ -19,18 +20,20 @@ on main, and its merge creates the line's Release Issue.
 
 import re
 from dataclasses import dataclass
-from typing import Union
+from typing import Optional, Union
 
 import yaml
 
 from . import config
 from .github_client import GitHubClientError
-from .release_line import MAINTENANCE_BRANCH_PREFIX, tag_version
+from .readme_updater import ReadmeUpdateError, ReadmeUpdater, branch_view
+from .release_line import MAINTENANCE_BRANCH_PREFIX, releases_of_cycle, tag_version
 
 CALLER_WORKFLOWS = (
     ".github/workflows/release-automation.yml",
     ".github/workflows/camara-validation.yml",
 )
+README_FILE = "README.md"
 CYCLE_RE = re.compile(r"^r([1-9]\d*)$")
 
 
@@ -72,11 +75,7 @@ def check(gh, cycle: str, main_release_tag: str) -> Union[BranchPlan, str]:
     number = int(match.group(1))
     branch = f"{MAINTENANCE_BRANCH_PREFIX}{cycle}"
 
-    releases = sorted(
-        (r for r in gh.get_releases(include_drafts=False) if (tag_version(r.tag_name) or (0,))[0] == number),
-        key=lambda r: tag_version(r.tag_name),
-        reverse=True,
-    )
+    releases = releases_of_cycle(gh.get_releases(include_drafts=False), number)
     if not any(not r.prerelease for r in releases):
         return f"Cycle {cycle} has no public release to maintain."
     if gh.get_branch_sha(branch):
@@ -130,6 +129,23 @@ def parked_plan(text: str, next_tag: str) -> str:
     return updated
 
 
+def _branch_readme(gh, plan: BranchPlan, warnings: list) -> Optional[str]:
+    """The source commit's README.md with the maintenance-branch view; None (and a warning) if not possible."""
+    content = gh.get_file_content(README_FILE, ref=plan.patched_sha, strict=True)
+    if content is None:
+        warnings.append(f"{README_FILE} not found at {plan.patched_sha[:7]}; the branch keeps no README change")
+        return None
+    view = branch_view(gh, plan.branch)
+    if view is None:
+        warnings.append(f"No release information view for {plan.branch}; {README_FILE} left unchanged")
+        return None
+    try:
+        return ReadmeUpdater().replace_release_info(content, *view)
+    except ReadmeUpdateError:
+        warnings.append(f"{README_FILE} at {plan.patched_sha[:7]} has no release information delimiters; left unchanged")
+        return None
+
+
 def create(gh, plan: BranchPlan) -> CreateResult:
     """
     Create the branch and commit onto it.
@@ -165,6 +181,9 @@ def create(gh, plan: BranchPlan) -> CreateResult:
             warnings.append(f"{changelog} not found on tag {plan.patched_release}")
         else:
             files[changelog] = content
+        readme = _branch_readme(gh, plan, warnings)
+        if readme is not None:
+            files[README_FILE] = readme
         plan_text = gh.get_file_content(config.RELEASE_PLAN_FILE, ref=plan.patched_sha, strict=True)
         if plan_text is None:
             raise ValueError(f"{config.RELEASE_PLAN_FILE} not found at {plan.patched_sha[:7]}")

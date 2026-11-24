@@ -17,12 +17,14 @@ REPO_URL = "https://github.com/camaraproject/Example"
 
 class FakeGitHub:
     def __init__(self, files=None, branches=None, tags=None, releases=None, fail=None, issues=None, permissions=None,
-                 latest=None):
+                 latest=None, repository_files=None):
         self.repo = "camaraproject/Example"
         # GitHub's "Latest" release: publishing a release makes it Latest by
         # default; make_latest="false" never demotes the current Latest
         self.latest: Optional[str] = latest
         self.files: Dict[tuple, str] = dict(files or {})   # (ref, path) -> content
+        # Parsed YAML files of other repositories: (repo, path) -> dict
+        self.repository_files: Dict[tuple, dict] = dict(repository_files or {})
         self.branches: Dict[str, str] = dict(branches or {})  # name -> sha
         self.tags: Dict[str, str] = dict(tags or {})  # name -> sha
         self.releases: List[Dict[str, Any]] = list(releases or [])
@@ -49,6 +51,10 @@ class FakeGitHub:
     def get_file_content(self, path, ref="main", strict=False):
         self._call("get_file_content")
         return self.files.get((ref, path))
+
+    def get_repository_yaml_file(self, repo, path, ref="main"):
+        self._call("get_repository_yaml_file")
+        return self.repository_files.get((repo, path))
 
     def update_file(self, path, content, message, branch):
         self._call("update_file")

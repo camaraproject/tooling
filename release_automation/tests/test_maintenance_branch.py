@@ -47,7 +47,13 @@ def release(tag, prerelease=False, draft=False):
 
 
 def metadata(tag, sha=SRC):
-    return f"repository:\n  release_tag: {tag}\n  src_commit_sha: {sha}\n"
+    return f"repository:\n  release_tag: {tag}\n  release_type: maintenance-release\n  src_commit_sha: {sha}\n"
+
+
+SOURCE_README = (
+    "# Example\n\nIntro.\n\n<!-- CAMARA:RELEASE-INFO:START -->\n"
+    "* The latest public release is r1.8\n<!-- CAMARA:RELEASE-INFO:END -->\n\nFooter.\n"
+)
 
 
 def repo(releases=None, branches=None, files=None, tags=None, fail=None):
@@ -61,6 +67,7 @@ def repo(releases=None, branches=None, files=None, tags=None, fail=None):
         ("main", ".github/workflows/release-automation.yml"): RA_CALLER,
         ("main", ".github/workflows/camara-validation.yml"): VF_CALLER,
         (SRC, "release-plan.yaml"): PLAN_R18,
+        (SRC, "README.md"): SOURCE_README,
     }
     return FakeGitHub(
         releases=releases,
@@ -170,6 +177,7 @@ def test_branch_at_the_source_commit_then_one_direct_commit():
         ".github/workflows/camara-validation.yml",
         ".github/workflows/release-automation.yml",
         "CHANGELOG/CHANGELOG-r1.md",
+        "README.md",
         "release-plan.yaml",
     ]
     assert gh.files[(MB, ".github/workflows/release-automation.yml")] == RA_CALLER
@@ -178,6 +186,37 @@ def test_branch_at_the_source_commit_then_one_direct_commit():
     assert gh.files[(MB, "CHANGELOG/CHANGELOG-r1.md")] == CHANGELOG_R18
     assert gh.calls.index("create_branch_at_sha") < gh.calls.index("commit_files")
     assert result == CreateResult(success=True, branch=MB, setup_commit_sha=setup["sha"])
+
+
+def test_setup_commit_carries_the_maintenance_branch_readme_view():
+    # camaraproject/ReleaseManagement#730: a clear warning from creation on, and the patched release
+    # as the cycle's latest release
+    gh = repo()
+
+    result = create(gh, PLAN)
+
+    assert result.success and not result.warning
+    readme = gh.files[(MB, "README.md")]
+    assert readme.startswith("# Example\n\nIntro.\n\n<!-- CAMARA:RELEASE-INFO:START -->\n")
+    assert readme.endswith("<!-- CAMARA:RELEASE-INFO:END -->\n\nFooter.\n")
+    assert "This is the maintenance branch of release cycle r1, not the main branch." in readme
+    assert "The latest release of release cycle r1 is [r1.8]" in readme
+    assert "(maintenance release)" in readme
+    assert "The latest public release is [" not in readme
+
+
+@pytest.mark.parametrize("source_readme,warning", [
+    (None, "README.md not found at aaaaaaa; the branch keeps no README change"),
+    ("# Example\n", "README.md at aaaaaaa has no release information delimiters; left unchanged"),
+])
+def test_readme_problems_are_warnings(source_readme, warning):
+    gh = repo(files={(SRC, "README.md"): source_readme})
+
+    result = create(gh, PLAN)
+
+    assert result.success
+    assert "README.md" not in gh.commits[0]["paths"]
+    assert warning in result.warning
 
 
 def test_setup_commit_parks_the_plan_at_the_next_tag():
@@ -247,7 +286,7 @@ def test_missing_validation_caller_and_changelog_are_warnings():
     result = create(gh, PLAN)
 
     assert result.success
-    assert gh.commits[0]["paths"] == [".github/workflows/release-automation.yml", "release-plan.yaml"]
+    assert gh.commits[0]["paths"] == [".github/workflows/release-automation.yml", "README.md", "release-plan.yaml"]
     assert ".github/workflows/camara-validation.yml not found on main" in result.warning
     assert "CHANGELOG/CHANGELOG-r1.md not found on tag r1.8" in result.warning
 

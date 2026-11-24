@@ -338,19 +338,26 @@ class GitHubClient:
             include_drafts: Whether to include draft releases
 
         Returns:
-            List of Release objects
+            List of Release objects, newest first as GitHub lists them
+
+        Raises:
+            GitHubClientError: If gh fails or its output cannot be parsed
         """
+        # One JSON object per line over all pages; `--jq .` would print one
+        # array per page, which does not parse as one document past 30 releases
         output = self._run_gh([
             "api",
             f"repos/{self.repo}/releases",
             "--paginate",
-            "--jq", "."
+            "--jq", ".[] | {tag_name, name, draft, prerelease, html_url}",
         ])
 
         try:
-            releases_data = json.loads(output)
-        except json.JSONDecodeError:
-            return []
+            releases_data = [json.loads(line) for line in output.splitlines() if line.strip()]
+        except json.JSONDecodeError as e:
+            raise GitHubClientError(f"Unparsable release list: {e}")
+        if not all(isinstance(r, dict) for r in releases_data):
+            raise GitHubClientError("Unparsable release list: expected one release object per line")
 
         releases = []
         for r in releases_data:
