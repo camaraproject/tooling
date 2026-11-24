@@ -811,7 +811,15 @@ def test_failed_publish_on_merge_posts_publish_failed(stubs, tmp_path):
 
     assert kinds(gh) == ["comment"]
     assert report.result_template == "publish_failed"
-    assert "Failed to publish release: 422" in gh.events[0][2]
+    body = gh.events[0][2]
+    assert "Failed to publish release: 422" in body
+    # No draft exists: the state stays snapshot-active and recovery goes through Release Management
+    assert "Publication failed — State: `snapshot-active`" in body
+    assert "The Release PR is merged, but the release was not published" in body
+    assert "contact Release Management (options: re-run the failed jobs" in body
+    assert "`/discard-snapshot <reason>` and a new `/create-snapshot`" in body
+    assert "/publish-release" not in body
+    assert "Valid actions" not in body
 
 
 # ── /sync-issue finishes a publication whose finalize failed (tooling#513) ──

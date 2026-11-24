@@ -244,7 +244,7 @@ class TestSyncReleaseIssue:
         )
         issue_manager.generate_actions_section.assert_called_once_with(
             state="snapshot-active", release_pr_url="https://github.com/org/repo/pull/12", release_tag="r4.1",
-            common_cache_stale=True, common_sync_pr_url="u",
+            common_cache_stale=True, common_sync_pr_url="u", release_type="pre-release-rc",
         )
 
     def test_without_a_snapshot_the_dependencies_come_from_the_plan(self):

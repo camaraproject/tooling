@@ -191,7 +191,8 @@ class IssueManager:
         return "\n".join(lines)
 
     def generate_actions_section(self, state: str, release_pr_url: str = "", release_tag: str = "",
-                                 common_cache_stale: bool = False, common_sync_pr_url: str = "") -> str:
+                                 common_cache_stale: bool = False, common_sync_pr_url: str = "",
+                                 release_type: str = "") -> str:
         """
         Generate content for the ACTIONS section showing valid actions.
 
@@ -201,12 +202,13 @@ class IssueManager:
             release_tag: Release tag (for draft-ready publish command)
             common_cache_stale: /create-snapshot is refused; the sync PR is offered instead
             common_sync_pr_url: The open common sync PR, if any
+            release_type: Names what the Release PR merge does (snapshot-active state)
 
         Returns:
             Formatted actions section content
         """
         return actions_for(state.lower().replace("_", "-"), release_tag, release_pr_url,
-                           common_cache_stale, common_sync_pr_url)
+                           common_cache_stale, common_sync_pr_url, release_type)
 
     def generate_config_section(
         self,

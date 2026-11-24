@@ -688,6 +688,7 @@ class SnapshotCreator:
             "release_issue_url": release_issue_url,
             "apis": apis,
             "short_type": short_type,
+            "publishes_on_merge": config.publishes_on_merge(release_type),
             "commonalities_release": commonalities_release,
             "identity_consent_management_release": icm_release,
         })

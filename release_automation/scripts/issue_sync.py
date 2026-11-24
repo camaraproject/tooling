@@ -465,6 +465,7 @@ class IssueSyncManager:
             release_tag=release_tag,
             common_cache_stale=view.common_cache_status == "stale",
             common_sync_pr_url=view.common_sync_pr_url,
+            release_type=release_plan.get("repository", {}).get("target_release_type", ""),
         )
         updated_body = self.issue_manager.update_section(
             updated_body, "ACTIONS", new_actions_content

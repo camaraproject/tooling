@@ -85,6 +85,18 @@ def test_actions_for_each_state():
     assert actions_for("", "") == ""
 
 
+@pytest.mark.parametrize("release_type,result", [
+    ("pre-release-alpha", "publish the release"),
+    ("pre-release-rc", "publish the release"),
+    ("public-release", "create draft release"),
+    ("maintenance-release", "create draft release"),
+    ("", "create draft release"),
+])
+def test_snapshot_active_names_what_the_merge_does(release_type, result):
+    assert f"→ **Update, review, and merge Release PR to {result}**" in actions_for(
+        config.STATE_SNAPSHOT_ACTIVE, "r1.4", release_type=release_type)
+
+
 def test_actions_for_without_release_pr_url():
     assert "→ **Update, review, and merge Release PR to create draft release**" in actions_for(
         config.STATE_SNAPSHOT_ACTIVE, "r1.4")

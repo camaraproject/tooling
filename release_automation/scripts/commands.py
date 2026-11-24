@@ -69,11 +69,12 @@ DISPATCH_CREATE_MAINTENANCE_BRANCH = "create-maintenance-branch"
 DISPATCH_ACTIONS = (DISPATCH_SYNC_ISSUE, DISPATCH_CREATE_MAINTENANCE_BRANCH)
 
 # What a codeowner can do per state, in display order: a command name, or a
-# prose step ({release_pr} is a link to the Release PR when known).
+# prose step ({release_pr} is a link to the Release PR when known,
+# {merge_result} what its merge does for the release type).
 STATE_ACTIONS: Dict[str, Tuple[str, ...]] = {
     config.STATE_PLANNED: ("create-snapshot",),
     config.STATE_SNAPSHOT_ACTIVE: (
-        "Update, review, and merge {release_pr} to create draft release",
+        "Update, review, and merge {release_pr} to {merge_result}",
         "discard-snapshot",
     ),
     config.STATE_DRAFT_READY: ("publish-release", "delete-draft"),
@@ -98,13 +99,14 @@ def _allowed(state: str) -> List[str]:
 ALLOWED_COMMANDS: Dict[str, List[str]] = {state: _allowed(state) for state in STATE_ACTIONS}
 
 
-def _row(row: str, release_tag: str, release_pr_url: str) -> str:
+def _row(row: str, release_tag: str, release_pr_url: str, release_type: str) -> str:
     cmd = command(row)
     if cmd:
         usage = f" {cmd.usage.format(release_tag=release_tag)}" if cmd.usage else ""
         return f"`/{cmd.name}{usage}` — {cmd.purpose}"
     release_pr = f"[Release PR]({release_pr_url})" if release_pr_url else "Release PR"
-    return row.format(release_pr=release_pr)
+    merge_result = "publish the release" if config.publishes_on_merge(release_type) else "create draft release"
+    return row.format(release_pr=release_pr, merge_result=merge_result)
 
 
 def _cache_row(common_sync_pr_url: str) -> str:
@@ -115,11 +117,11 @@ def _cache_row(common_sync_pr_url: str) -> str:
 
 
 def actions_for(state: str, release_tag: str, release_pr_url: str = "",
-                common_cache_stale: bool = False, common_sync_pr_url: str = "") -> str:
+                common_cache_stale: bool = False, common_sync_pr_url: str = "", release_type: str = "") -> str:
     """The "Valid actions" block for a state, the first action bold; "" when there is none."""
     rows = [
         _cache_row(common_sync_pr_url) if common_cache_stale and row == "create-snapshot"
-        else _row(row, release_tag, release_pr_url)
+        else _row(row, release_tag, release_pr_url, release_type)
         for row in STATE_ACTIONS.get(state, ())
     ]
     if not rows:
