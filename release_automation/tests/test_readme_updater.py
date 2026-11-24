@@ -277,6 +277,26 @@ class TestMainView:
         assert f"The latest public release is [r2.1]({BASE}/releases/tag/r2.1), with" in text
         assert "meta-release mappings" in capsys.readouterr().out
 
+    @pytest.mark.parametrize("mappings", [
+        {"mappings": ["Sync26"]},
+        {"mappings": {"Sync26": ["DeviceLocation"]}},
+        {"mappings": {"Sync26": "DeviceLocation"}},
+        {"mappings": None},
+        {},
+    ])
+    def test_malformed_mapping_omits_the_meta_release(self, mappings):
+        text = render(branch_view(repo([release("r2.1")], mappings=mappings), "main"))
+        assert f"The latest public release is [r2.1]({BASE}/releases/tag/r2.1), with" in text
+
+    @pytest.mark.parametrize("content", [
+        "repository: r2.1\napis: [location-verification]\n",
+        "- not a mapping\n",
+        "apis:\n  - api_name: location-verification\n  - just-a-string\n",
+    ])
+    def test_malformed_release_metadata_renders_what_it_can(self, content):
+        gh = repo([release("r2.1")], {("r2.1", "release-metadata.yaml"): content})
+        assert "The latest public release is [r2.1]" in render(branch_view(gh, "main"))
+
     def test_mapping_not_read_without_a_public_release(self):
         gh = repo([release("r1.1", True)])
         branch_view(gh, "main")

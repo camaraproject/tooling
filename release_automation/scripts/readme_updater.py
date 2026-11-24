@@ -236,13 +236,20 @@ def tag_view(repo: str, release_tag: str, release_type: str, api_versions: Dict[
 def _published(gh, repo: str, tag: str) -> Tuple[str, str]:
     """(release_type, formatted API links) of a published release, from its release-metadata.yaml."""
     org, repo_name = repo.split("/")
-    metadata = gh.get_release_metadata(tag) or {}
-    release_type = (metadata.get("repository") or {}).get("release_type", "")
+    metadata = _mapping(gh.get_release_metadata(tag))
+    release_type = _mapping(metadata.get("repository")).get("release_type", "")
+    entries = metadata.get("apis")
     apis = [
         {"file_name": api.get("api_file_name", api.get("api_name", "")), "version": api.get("api_version", "")}
-        for api in metadata.get("apis") or []
+        for api in (entries if isinstance(entries, list) else [])
+        if isinstance(api, dict)
     ]
     return release_type, ReadmeUpdater.format_api_links(apis, repo_name, tag, org)
+
+
+def _mapping(value: Any) -> Dict[str, Any]:
+    """value if it is a mapping, else {}: files read here are edited by people."""
+    return value if isinstance(value, dict) else {}
 
 
 def _preview(gh, repo: str, release) -> Dict[str, Any]:
@@ -261,8 +268,8 @@ def meta_release_of(gh, repo_name: str, cycle: int) -> str:
         print(f"Could not read the meta-release mappings ({META_RELEASE_MAPPINGS_REPO}/{META_RELEASE_MAPPINGS_FILE}); "
               "meta-release omitted")
         return ""
-    for meta_release, repositories in (content.get("mappings") or {}).items():
-        if (repositories or {}).get(repo_name) == f"r{cycle}":
+    for meta_release, repositories in _mapping(_mapping(content).get("mappings")).items():
+        if _mapping(repositories).get(repo_name) == f"r{cycle}":
             return meta_release
     print(f"No meta-release mapping for {repo_name} r{cycle}; meta-release omitted")
     return ""

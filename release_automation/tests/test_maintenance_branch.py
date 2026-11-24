@@ -189,7 +189,8 @@ def test_branch_at_the_source_commit_then_one_direct_commit():
 
 
 def test_setup_commit_carries_the_maintenance_branch_readme_view():
-    # 103 D4: a clear warning from creation on, and the patched release as the cycle's latest release
+    # camaraproject/ReleaseManagement#730: a clear warning from creation on, and the patched release
+    # as the cycle's latest release
     gh = repo()
 
     result = create(gh, PLAN)

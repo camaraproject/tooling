@@ -278,7 +278,7 @@ The release automation replaces the content between these delimiters; manual edi
 - **`main`** (written by each post-release sync PR into `main`): the latest public release of the repository and an upcoming pre-release.
 - **`maintenance/rX`** (written at branch creation and by each post-release sync PR into the branch): a warning that this is a maintenance branch, and the latest release of release cycle rX.
 
-If the delimiters are missing, the README update is skipped with a warning in the workflow log and the snapshot and the sync PR are created without it; to get the section into the release, add the delimiters on `main`, then `/discard-snapshot` and `/create-snapshot` again.
+If the delimiters are missing, the README update is skipped with a warning in the workflow log and the snapshot and the sync PR are created without it; to get the section into the release, add the delimiters on the release's branch (`main`, or `maintenance/rX` for a maintenance release from that branch), then `/discard-snapshot` and `/create-snapshot` again.
 
 `Template_API_Repository` contains the delimiters; older repositories add them by hand.
 

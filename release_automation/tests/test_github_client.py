@@ -46,6 +46,40 @@ class TestGitHubClient(unittest.TestCase):
         self.assertIn("previous_tag_name=r1.8", args)
 
     @patch("release_automation.scripts.github_client.GitHubClient._run_gh")
+    def test_get_releases_reads_every_page(self, mock_run_gh):
+        # --paginate with a per-release jq filter: one JSON object per line, across all pages
+        lines = [
+            f'{{"draft":{"true" if n == 3 else "false"},"html_url":"u{n}","name":"r1.{n}",'
+            f'"prerelease":false,"tag_name":"r1.{n}"}}'
+            for n in range(1, 36)
+        ]
+        mock_run_gh.return_value = "\n".join(lines) + "\n"
+
+        releases = self.client.get_releases()
+
+        self.assertEqual(len(releases), 34)
+        self.assertEqual(releases[0].tag_name, "r1.1")
+        self.assertEqual(releases[-1].tag_name, "r1.35")
+        self.assertNotIn("r1.3", [r.tag_name for r in releases])
+        self.assertEqual(len(self.client.get_releases(include_drafts=True)), 35)
+        args = mock_run_gh.call_args[0][0]
+        self.assertIn("--paginate", args)
+        self.assertEqual(args[args.index("--jq") + 1], ".[] | {tag_name, name, draft, prerelease, html_url}")
+
+    @patch("release_automation.scripts.github_client.GitHubClient._run_gh")
+    def test_get_releases_without_releases_is_empty(self, mock_run_gh):
+        mock_run_gh.return_value = ""
+        self.assertEqual(self.client.get_releases(), [])
+
+    @patch("release_automation.scripts.github_client.GitHubClient._run_gh")
+    def test_get_releases_unparsable_output_raises(self, mock_run_gh):
+        # Never an empty list that callers would read as "no releases"
+        for output in ('[{"tag_name": "r1.1"}]\n[{"tag_name": "r1.2"}]\n', '{"tag_name": "r1.1"\n'):
+            mock_run_gh.return_value = output
+            with self.assertRaises(GitHubClientError):
+                self.client.get_releases()
+
+    @patch("release_automation.scripts.github_client.GitHubClient._run_gh")
     def test_get_latest_release_tag(self, mock_run_gh):
         mock_run_gh.return_value = "r2.2\n"
         self.assertEqual(self.client.get_latest_release_tag(), "r2.2")

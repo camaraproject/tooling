@@ -163,6 +163,28 @@ def test_tag_readme_is_not_copied(tmp_path, remote):
     assert "This is release r1.3." not in remote_file(remote, "pr-to-main/r1.3", "README.md")
 
 
+def test_unchanged_readme_is_not_named_in_the_pr_body(tmp_path):
+    gh = FakeGitHub(files=tag_files(**{"CHANGELOG/CHANGELOG-r1.md": "# r1.3\n"}))
+    remote = make_remote(tmp_path, "api", {"README.md": rendered(gh, "main")})
+
+    assert run(tmp_path, remote, gh).status == "created"
+    body = gh.created[0]["body"]
+    assert "README.md" not in body
+    assert "- CHANGELOG for the release cycle" in body
+
+
+def test_readme_rendering_error_is_a_warning(tmp_path, remote, capsys, monkeypatch):
+    def broken(gh, branch):
+        raise AttributeError("'list' object has no attribute 'get'")
+    monkeypatch.setattr("release_automation.scripts.sync_pr.branch_view", broken)
+    gh = FakeGitHub(files=tag_files(**{"CHANGELOG/CHANGELOG-r1.md": "# r1.3\n"}))
+
+    assert run(tmp_path, remote, gh).status == "created"
+    assert "::warning::README release info not rendered: 'list' object has no attribute 'get'" in capsys.readouterr().out
+    assert remote_file(remote, "pr-to-main/r1.3", "README.md") == MAIN_README.rstrip("\n")
+    assert "README.md" not in gh.created[0]["body"]
+
+
 def test_flat_changelog_on_the_tag_is_not_synced(tmp_path, remote, capsys):
     gh = FakeGitHub(files=tag_files(**{"CHANGELOG.md": "# Changelog\n"}))
 

@@ -110,14 +110,14 @@ def sync_branch(tag: str, base_branch: str) -> str:
     return f"{SYNC_BRANCH_PREFIX}{base_branch}/{tag}"
 
 
-def pr_body(tag: str) -> str:
+def pr_body(tag: str, readme: bool = True, changelog: bool = True) -> str:
     return (
         f"Automated post-release sync PR for {tag}.\n"
         "\n"
         "This PR updates:\n"
-        "- README.md Release Information section, from the published releases\n"
-        "- CHANGELOG for the release cycle\n"
-        "\n"
+        + ("- README.md Release Information section, from the published releases\n" if readme else "")
+        + ("- CHANGELOG for the release cycle\n" if changelog else "")
+        + "\n"
         "Created by release automation workflow."
     )
 
@@ -155,7 +155,7 @@ def create_sync_pr(
 
     try:
         readme_changed = sync_readme(gh, work_dir, base_branch)
-    except GitHubClientError as e:
+    except Exception as e:  # the release is published; the README never blocks the sync PR
         _warning(f"README release info not rendered: {e}")
         readme_changed = False
     changelog_path = sync_changelog(gh, work_dir, tag)
@@ -186,7 +186,7 @@ def create_sync_pr(
         number, url = gh.create_pr(
             title=f"Release Automation: Post-release sync ({tag})"
             + ("" if base_branch == MAIN_BRANCH else f" into {base_branch}"),
-            body=pr_body(tag),
+            body=pr_body(tag, readme=readme_changed, changelog=bool(changelog_path)),
             head=branch,
             base=base_branch,
         )

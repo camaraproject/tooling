@@ -463,7 +463,7 @@ Replaces the "Release Information" section in README.md, the content between the
 |------|-------|------------|---------|
 | `tag_view` | release tag | `/create-snapshot`, before the snapshot commit | That release only: tag, release type, API versions (links pinned to the tag), the cycle's CHANGELOG file on the tag; a note on pre-releases. No statement about the repository, no meta-release. |
 | `branch_view` of `main` | `main` | post-release sync PR into `main` | Repository view: latest public release (highest tag that is not a pre-release, the release GitHub marks Latest) with its API versions; Upcoming Release Preview for a pre-release of a later cycle. Four templates: no release / pre-release only / public / public with preview. |
-| `branch_view` of `maintenance/rX` | `maintenance/rX` | branch creation, post-release sync PR into the branch | A warning that this is the maintenance branch of release cycle rX; the latest release of rX with its API versions; Upcoming Release Preview for a newer release candidate of rX. |
+| `branch_view` of `maintenance/rX` | `maintenance/rX` | branch creation, post-release sync PR into the branch | A warning that this is the maintenance branch of release cycle rX; the latest release of rX with its API versions; Upcoming Release Preview for a newer pre-release of rX (in practice a release candidate). |
 
 The tag view is built from the snapshot alone (no GitHub calls). The branch views are built from the published releases (`get_releases`, `release-metadata.yaml` of the releases shown), after the publication.
 
