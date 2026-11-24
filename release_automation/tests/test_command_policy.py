@@ -88,7 +88,7 @@ def slash(command, user="alice", args="", confirm_tag=""):
     )
 
 
-def info(state, release_tag="r1.2", release_type="pre-release-alpha"):
+def info(state, release_tag="r1.2", release_type="public-release"):
     return ReleaseInfoResult(
         success=True, release_tag=release_tag, state=state, release_type=release_type, base_branch="main"
     )
@@ -368,13 +368,12 @@ def test_confirm_tag_checked_after_publisher_authorization():
     "release_type",
     ["pre-release-alpha", "pre-release-rc", "public-release", "maintenance-release", "", None],
 )
-def test_initial_policy_is_draft_on_main_for_every_type(release_type):
+def test_base_branch_is_main_for_every_type(release_type):
     result = evaluate(
         slash("sync-issue"), info(ReleaseState.PLANNED, release_type=release_type), client=WRITE
     )
 
     assert result.base_branch == "main"
-    assert result.publish_mode == "draft"
 
 
 def test_publish_modes_cover_all_release_types():
@@ -384,11 +383,19 @@ def test_publish_modes_cover_all_release_types():
         assert release_type.publish_mode in {policy.PUBLISH_MODE_ON_MERGE, policy.PUBLISH_MODE_DRAFT}
         assert release_type.publishers == policy.PUBLISHERS_CODEOWNERS
     assert policy.publish_mode_for("unknown-type") == policy.PUBLISH_MODE_DRAFT
+    assert policy.publish_mode_for(None) == policy.PUBLISH_MODE_DRAFT
 
 
-def test_maintenance_release_publishes_from_a_draft():
-    # Spec 6.5: draft until RM#675 is decided
-    assert policy.publish_mode_for("maintenance-release") == policy.PUBLISH_MODE_DRAFT
+@pytest.mark.parametrize("release_type,mode", [
+    ("pre-release-alpha", "on_merge"),
+    ("pre-release-rc", "on_merge"),
+    ("public-release", "draft"),
+    ("maintenance-release", "draft"),
+])
+def test_publish_mode_per_release_type(release_type, mode):
+    # RM#675 variant c1: pre-releases publish on Release PR merge; public and maintenance
+    # releases stay a draft that codeowners publish with /publish-release
+    assert policy.publish_mode_for(release_type) == mode
 
 
 @pytest.mark.parametrize("command", ["create-snapshot", "discard-snapshot", "delete-draft", "sync-issue"])
@@ -402,7 +409,7 @@ def test_slash_command_plan_responds_with_interim(command):
         command=command,
         release_tag="r1.2",
         state=state.value,
-        release_type="pre-release-alpha",
+        release_type="public-release",
         base_branch="main",
         response="interim_processing",
         action="" if command == "sync-issue" else command,
@@ -433,7 +440,7 @@ def test_non_slash_triggers_are_not_validated(trigger, state):
         command=trigger.command,
         release_tag="r1.2",
         state=state.value,
-        release_type="pre-release-alpha",
+        release_type="public-release",
         base_branch="main",
         response="",
         action=policy.action_for(result),
@@ -584,7 +591,7 @@ def test_plan_and_rejection_serialise_to_json():
         "command": "publish-release",
         "release_tag": "r1.2",
         "state": "draft-ready",
-        "release_type": "pre-release-alpha",
+        "release_type": "public-release",
         "base_branch": "main",
         "confirm_tag": "",
         "publish_mode": "draft",
@@ -967,7 +974,7 @@ def test_main_writes_the_plan_document(tmp_path, monkeypatch):
         cache=CommonCache(status="in_sync"),
         base_branch="main",
         allowed=True,
-        publish_mode="draft",
+        publish_mode="on_merge",
         response="interim_processing",
         action="discard-snapshot",
         repo_url="https://github.com/camaraproject/ReleaseTest2",
